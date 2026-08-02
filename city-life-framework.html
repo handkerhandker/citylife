@@ -300,7 +300,7 @@ h2.sec:first-child{ margin-top:0; }
         <input id="ph-input" class="ph-input grow" type="text" maxlength="60" placeholder="自己写一条（60 字内）…">
         <button class="btn gold" id="ph-send" data-fx>发送</button>
       </div>
-      <h2 class="sec">往来记录 · TA 的回音也在这里 <span class="chip" id="ph-llm">Claude 待机</span></h2>
+      <h2 class="sec">往来记录 · TA 的回音也在这里 <span class="chip" id="ph-llm">AI 待机</span></h2>
       <ul class="log-ul" id="ph-history"></ul>
     </section>
 
@@ -326,7 +326,7 @@ h2.sec:first-child{ margin-top:0; }
       </div>
       <h2 class="sec">AI</h2>
       <div class="set-row">
-        <span class="lbl">Claude 独白<small>短信反应 / 室友对白 / 睡前日记由 Claude 现场生成（✨ 标记），失败自动回退模板</small></span>
+        <span class="lbl">AI 独白<small>短信反应 / 室友对白 / 睡前日记由 AI 现场生成（✨ 标记）：优先 Claude 直连，失败走中转站（DeepSeek），再失败回退模板</small></span>
         <button class="btn small" id="set-llm" data-fx>开</button>
       </div>
       <div class="set-row">
@@ -334,8 +334,12 @@ h2.sec:first-child{ margin-top:0; }
         <span class="num dim" id="set-llm-stat">0 次 · 待机</span>
       </div>
       <div class="set-row">
+        <span class="lbl">通道</span>
+        <span class="num dim" id="set-llm-channel">未连接</span>
+      </div>
+      <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-        <span class="num dim" id="set-build">v12</span>
+        <span class="num dim" id="set-build">v13</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -720,7 +724,7 @@ const state={
   screen:'live',
   forcedLayout:'auto',
   logStick:true,
-  llm:{on:true, calls:0, pending:0, status:'待机', lastErr:'', warned:false},
+  llm:{on:true, calls:0, pending:0, status:'待机', lastErr:'', warned:false, channel:''},
   lastReflectDay:0,
   reduceMotion:matchMedia('(prefers-reduced-motion:reduce)').matches,
   scale:1,
@@ -1109,7 +1113,7 @@ $('#set-motion').addEventListener('click',()=>{
 });
 if(state.reduceMotion){ $('#set-motion').textContent='开'; app.classList.add('reduce-motion'); }
 
-/* ---------- Claude 层：给三处最该有灵魂的地方换脑（失败自动回退模板） ---------- */
+/* ---------- AI 层：三级兜底链（Claude 直连 → 同源中转站 /relay → 模板），给三处最该有灵魂的地方换脑 ---------- */
 function hungerWord(h){ return h>65?'很饿':h>40?'有点饿':'不饿'; }
 function agentCard(ag){
   const fear=(ag.money<300)?'凑不齐下个月房租':ag.fear;
@@ -1122,7 +1126,8 @@ function syncLLMStat(){
   const L=state.llm;
   const detail=L.calls+' 次 · '+L.status+(L.lastErr?('：'+L.lastErr):'')+(L.pending?'（'+L.pending+' 进行中）':'');
   const el=$('#set-llm-stat'); if(el) el.textContent=detail;
-  const chip=$('#ph-llm'); if(chip) chip.textContent='Claude '+(L.on?L.status:'已关');
+  const chip=$('#ph-llm'); if(chip) chip.textContent='AI '+(L.on?L.status:'已关');
+  const ch=$('#set-llm-channel'); if(ch) ch.textContent=L.channel==='claude'?'Claude 直连':(L.channel==='relay'?'中转站（DeepSeek）':'未连接');
 }
 const llmQueue=[]; let llmActive=0;
 function queueCall(prompt, prio){
@@ -1176,7 +1181,37 @@ async function rawCallClaude(prompt){
   }finally{
     clearTimeout(tid);
   }
+  if(j){ L.channel='claude'; }
+  else{ j=await rawCallRelay(prompt); }
   L.pending--; syncLLMStat();
+  return j;
+}
+async function rawCallRelay(prompt){
+  const L=state.llm;
+  L.status='思考中'; syncLLMStat();
+  let j=null, tid=0;
+  try{
+    const timeout=new Promise((_,rej)=>{ tid=setTimeout(()=>rej(new Error('timeout')), 15000); });
+    const req=fetch('/relay',{
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({prompt:prompt})
+    });
+    const r=await Promise.race([req, timeout]);
+    let data=null; try{ data=await r.json(); }catch(_){}
+    if(data && data.error){ L.lastErr=String((data.error&&data.error.message)||data.error).slice(0,90); }
+    else if(!r.ok){ L.lastErr='HTTP '+r.status; }
+    else { L.lastErr=''; }
+    const text=(data && typeof data.text==='string')?data.text:'';
+    j=PURE.parseJsonLoose(text);
+    L.status=j?'在线':'返回异常，已回退';
+    if(!j && !L.lastErr && text) L.lastErr='返回非JSON：'+text.slice(0,60);
+  }catch(err){
+    L.lastErr=(err&&err.message==='timeout')?'15秒超时':'请求被拦截或断网';
+    L.status='失败，模板回退';
+  }finally{
+    clearTimeout(tid);
+  }
+  L.channel=j?'relay':'';
   return j;
 }
 async function enhanceMessage(e){
