@@ -328,6 +328,12 @@ h2.sec:first-child{ margin-top:0; }
         <span class="lbl">世界种子<small>同种子＝同一座城同一种命运（AI 文案除外）；网址加 ?seed=数字 可指定</small></span>
         <span class="num dim" id="set-seed">—</span>
       </div>
+      <h2 class="sec">城市体检</h2>
+      <div class="set-row"><span class="lbl">闲聊 · 关系对<small>给平衡看的仪表：数字健康，日子才有戏</small></span><span class="num dim" id="mt-chat">—</span></div>
+      <div class="set-row"><span class="lbl">动作熵（比特/人）</span><span class="num dim" id="mt-ent">—</span></div>
+      <div class="set-row"><span class="lbl">财富基尼</span><span class="num dim" id="mt-gini">—</span></div>
+      <div class="set-row"><span class="lbl">距上次有戏</span><span class="num dim" id="mt-gap">—</span></div>
+      <div class="set-row"><span class="lbl">雨 / 发薪 / 交租 / 街市</span><span class="num dim" id="mt-anchor">—</span></div>
       <h2 class="sec">AI</h2>
       <div class="set-row">
         <span class="lbl">AI 独白<small>短信反应 / 室友对白 / 睡前日记由 AI 现场生成（✨ 标记）：优先 Claude 直连，失败走中转站（DeepSeek），再失败回退模板</small></span>
@@ -343,7 +349,7 @@ h2.sec:first-child{ margin-top:0; }
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-        <span class="num dim" id="set-build">v14</span>
+        <span class="num dim" id="set-build">v15</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -420,6 +426,26 @@ const PURE = {
       t=(t+Math.imul(t^(t>>>7), 61|t))^t;
       return ((t^(t>>>14))>>>0)/4294967296;
     };
+  },
+  // 香农熵（比特）：counts 为 {类别:次数}
+  entropy(counts){
+    const vals=Object.values(counts||{}).filter(v=>v>0);
+    const total=vals.reduce((s,v)=>s+v,0);
+    if(!total) return 0;
+    let e=0;
+    for(const v of vals){ const p=v/total; e-=p*Math.log2(p); }
+    return e;
+  },
+  // 基尼系数：0=完全平均，趋近1=极端集中
+  gini(arr){
+    const a=(arr||[]).filter(v=>isFinite(v));
+    const n=a.length;
+    if(!n) return 0;
+    const mu=a.reduce((s,v)=>s+v,0)/n;
+    if(mu<=0) return 0;
+    let d=0;
+    for(let i=0;i<n;i++) for(let j=0;j<n;j++) d+=Math.abs(a[i]-a[j]);
+    return d/(2*n*n*mu);
   },
 };
 /*PURE-END*/
@@ -507,6 +533,7 @@ function makeWorld(seed){
   const w={
     t:8*60, speed:1, agents:makeAgents(),
     log:[], lidSeq:0, credits:3, sentToday:[],
+    stats:{act:{}, pair:{}, rain:0, pay:0, rentPaid:0, market:0, maxGap:0},
     weather:{rain:false, until:0}, lastSpark:8*60,
     rentPaidDay:0,
   };
@@ -531,6 +558,7 @@ function pick(w,arr){ return arr[Math.floor(w.rng()*arr.length)]; }
 function pickV(w,arr,ag,key){ let i=Math.floor(w.rng()*arr.length); if(arr.length>1&&ag.flags[key]===i) i=(i+1)%arr.length; ag.flags[key]=i; return arr[i]; }
 
 function setActivity(w,ag,anchorId,type,label,minutes,thought,logText,logType){
+  const S=w.stats; (S.act[ag.id]=S.act[ag.id]||{})[type]=(S.act[ag.id][type]||0)+1; if(anchorId==='market') S.market++;
   const moving = ag.anchor!==anchorId;
   ag.anchor=anchorId;
   ag.activity={type,label};
@@ -566,6 +594,7 @@ function decide(w, ag){
     const until = (mod<wakeAt) ? (w.t - mod + wakeAt) : (w.t - mod + 1440 + wakeAt);
     ag.anchor=ag.bed;
     ag.activity={type:'sleep',label:'睡觉'};
+    const S=w.stats; (S.act[ag.id]=S.act[ag.id]||{})['sleep']=(S.act[ag.id]['sleep']||0)+1;
     ag.busyUntil=until+10;
     delete ag.flags.sleepEarly;
     logAct(w,ag,'回卧室睡觉','今天到此为止。');
@@ -628,6 +657,8 @@ function decide(w, ag){
     ag.flags['cw_'+mate.id]=w.t; mate.flags['cw_'+ag.id]=w.t;
     ag.activity={type:'chat',label:'和'+mate.name+'聊天'}; ag.busyUntil=w.t+20;
     mate.activity={type:'chat',label:'和'+ag.name+'聊天'}; mate.busyUntil=w.t+20;
+    const S=w.stats; (S.act[ag.id]=S.act[ag.id]||{})['chat']=(S.act[ag.id]['chat']||0)+1; (S.act[mate.id]=S.act[mate.id]||{})['chat']=(S.act[mate.id]['chat']||0)+1;
+    const pk=[ag.id,mate.id].sort().join('+'); w.stats.pair[pk]=(w.stats.pair[pk]||0)+1;
     ag.relNotes++; mate.relNotes++;
     pushLog(w,{type:'chat',agent:ag.id,name:ag.name,with:mate.id,
       text:'和'+mate.name+'聊了几句',thought:'「'+line[0]+'」「'+line[1]+'」'});
@@ -664,6 +695,7 @@ function advance10(w){
   const day=PURE.dayOf(w.t);
   if(mod===8*60 && day%30===2 && w.rentPaidDay!==day){       // 每月 2 号交租
     w.rentPaidDay=day;
+    w.stats.rentPaid++;
     for(const ag of w.agents){
       ag.money-=200;
       if(ag.money<200) logAct(w,ag,'交了房租 ¥200','钱包见底了……得想想办法。','sys');
@@ -672,6 +704,7 @@ function advance10(w){
     logSys(w,'今天是交租日。');
   }
   if(mod===18*60 && PURE.weekday(w.t)===4){                  // 周五发薪
+    w.stats.pay++;
     for(const ag of w.agents){ ag.money+=ag.wage; }
     logSys(w,'周五发薪日：工资已到账。有人已经开始盘算周末。');
     w.lastSpark=w.t;
@@ -682,6 +715,7 @@ function advance10(w){
   }
   if(!w.weather.rain && (w.t-w.lastSpark)>200 && mod>9*60 && mod<21*60 && w.rng()<0.3){
     w.weather.rain=true; w.weather.until=w.t+90+Math.floor(w.rng()*6)*10;
+    w.stats.rain++;
     logSys(w,'☔ 突然下起雨来，屋檐下多了几分躲雨的默契。');
     w.lastSpark=w.t;
   }
@@ -692,6 +726,7 @@ function advance10(w){
   // 有社交/系统事件即视为“有戏”
   const last=w.log[w.log.length-1];
   if(last && (last.type==='chat'||last.type==='player')) w.lastSpark=w.t;
+  const g=w.t-w.lastSpark; if(g>w.stats.maxGap) w.stats.maxGap=g;
 }
 
 function step(w, dtMin){
@@ -1127,6 +1162,17 @@ $('#set-motion').addEventListener('click',()=>{
 });
 if(state.reduceMotion){ $('#set-motion').textContent='开'; app.classList.add('reduce-motion'); }
 
+// 城市体检：读 w.stats 只读统计，口径与 sim30.js 一致（熵/基尼由 PURE 计算）
+function renderStats(){
+  const w=state.world, S=w.stats;
+  const pairs=Object.keys(S.pair);
+  $('#mt-chat').textContent=pairs.reduce((s,k)=>s+S.pair[k],0)+' 次 · '+pairs.length+' 对';
+  $('#mt-ent').textContent=w.agents.map(a=>a.name[0]+PURE.entropy(S.act[a.id]||{}).toFixed(2)).join(' ');
+  $('#mt-gini').textContent=PURE.gini(w.agents.map(a=>a.money)).toFixed(2);
+  $('#mt-gap').textContent=(w.t-w.lastSpark)+' 分钟（最长 '+S.maxGap+'）';
+  $('#mt-anchor').textContent=S.rain+' / '+S.pay+' / '+S.rentPaid+' / '+S.market;
+}
+
 /* ---------- AI 层：三级兜底链（Claude 直连 → 同源中转站 /relay → 模板），给三处最该有灵魂的地方换脑 ---------- */
 function hungerWord(h){ return h>65?'很饿':h>40?'有点饿':'不饿'; }
 function agentCard(ag){
@@ -1519,6 +1565,7 @@ function loop(now){
     }
     if($('#scr-roles').classList.contains('active')) renderRoles();
     if($('#scr-phone').classList.contains('active')) renderPhone();
+    if($('#scr-settings').classList.contains('active')) renderStats();
   }
   if($('#scr-live').classList.contains('active')) draw(now);
   requestAnimationFrame(loop);

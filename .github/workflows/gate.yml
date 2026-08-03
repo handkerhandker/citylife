@@ -24,6 +24,8 @@ jobs:
         run: node --check app.js
       - name: 无头模拟测试
         run: node harness.js
+      - name: 30 天退化检查
+        run: node sim30.js
       - name: 中转函数语法检查
         run: |
           cp functions/relay.js relay-check.mjs
