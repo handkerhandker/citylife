@@ -528,10 +528,13 @@ const CHAT_LINES=[
   ['我攒的钱又没到目标。','慢慢来，别学我月光。'],
 ];
 const TEMPO_DEFAULT={durMul:1, durJit:2, mutterGap:6}; // 兜底：旧档/陌生 id 用（可调）
+function tempoNum(v,dft,lo,hi){ v=+v; return isFinite(v)?Math.min(hi,Math.max(lo,v)):dft; }
 function tempoDur(w,ag,base){
-  const tp=(ag&&ag.tempo)||TEMPO_DEFAULT;
-  const m=Math.max(10, Math.round(base*tp.durMul/10)*10);
-  return m + 10*Math.floor(w.rng()*(tp.durJit+1));
+  const t=(ag&&ag.tempo)||{};
+  const mul=tempoNum(t.durMul,TEMPO_DEFAULT.durMul,0.25,4);
+  const jit=tempoNum(t.durJit,TEMPO_DEFAULT.durJit,0,12);
+  const m=Math.max(10, Math.round(base*mul/10)*10);
+  return m + 10*Math.floor(w.rng()*(jit+1));
 }
 
 function makeAgents(){
@@ -696,7 +699,7 @@ function decide(w, ag){
     // 独白节奏逐人化：概率照旧，外加最小间隔门（距该人上次工作独白不足 mutterGap 拍则跳过；
     // 到岗/回到工位日志同样携带工作独白，一并刷新 lastMutterT）
     const mutter = logText===null && w.rng()<0.35
-      && (w.t-(ag.lastMutterT||0)) >= ((ag.tempo||TEMPO_DEFAULT).mutterGap)*10;
+      && (w.t-(ag.lastMutterT||0)) >= tempoNum((ag.tempo||{}).mutterGap,TEMPO_DEFAULT.mutterGap,0,144)*10;
     // 只在会落日志时抽独白，未落日志的拍不消耗当日去重池
     const thought = (logText!==null || mutter)
       ? (slack?pickV(w,SLACK_THOUGHTS,ag,'ls'):pickV(w,WORK_THOUGHTS[ag.workKind],ag,'lw'))
