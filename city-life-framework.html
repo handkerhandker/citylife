@@ -928,7 +928,7 @@ const state={
   reduceMotion:matchMedia('(prefers-reduced-motion:reduce)').matches,
   scale:1,
   simAcc:0, lastTs:performance.now(),
-  logSeenLid:0,
+  logSeenLid:-Infinity,   // 初值取负无穷而非 0：lidSeq 被篡成负数的档（过闸）新条目 lid 为负，仍能上墙不冻
   vis:{},           // 每个小人的可视位置与路径
   dpr:1, cvW:0, cvH:0, view:{s:1,ox:0,oy:0},
 };
@@ -1509,7 +1509,7 @@ function fetchWithDeadline(url, opts, ms){
 async function rawCallClaude(prompt, batch){
   const L=state.llm;
   L.calls++; L.pending++; L.status='思考中'; syncLLMStat();
-  let j=null;
+  let j=null, hardFail=false;
   try{
     if(!llmSkipDirect){
       try{
@@ -1526,11 +1526,14 @@ async function rawCallClaude(prompt, batch){
         L.status=j?'在线':'返回异常，已回退';
         if(!j && !L.lastErr && text) L.lastErr='返回非JSON：'+text.slice(0,60);
       }catch(err){
+        hardFail=!(err&&err.message==='timeout');
         L.lastErr=(err&&err.message==='timeout')?'15秒超时':'请求被拦截或断网';
         L.status='失败，模板回退';
       }
       if(j){ L.channel='claude'; }
-      else{ llmSkipDirect=true; }      // 跳级：直连首败记仇，本局后续调用直接从中转站起步
+      // 跳级：仅拦截/断网类首败记仇（部署站 CORS），本局后续直接从中转站起步；
+      // 超时或返回异常视为偶发，不锁直连——工件内（直连为唯一线路）行为不变
+      else if(hardFail){ llmSkipDirect=true; }
     }
     if(!j) j=await rawCallRelay(prompt, batch);
     if(!j){ L.lastErr='网络不通，已用模板兜底'; }
