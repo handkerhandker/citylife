@@ -324,6 +324,10 @@ h2.sec:first-child{ margin-top:0; }
         <span class="lbl">模拟速度<small>窄屏顶栏隐藏速度键时可在此切换</small></span>
         <button class="btn small" id="set-speed" data-fx>1×</button>
       </div>
+      <div class="set-row">
+        <span class="lbl">世界种子<small>同种子＝同一座城同一种命运（AI 文案除外）；网址加 ?seed=数字 可指定</small></span>
+        <span class="num dim" id="set-seed">—</span>
+      </div>
       <h2 class="sec">AI</h2>
       <div class="set-row">
         <span class="lbl">AI 独白<small>短信反应 / 室友对白 / 睡前日记由 AI 现场生成（✨ 标记）：优先 Claude 直连，失败走中转站（DeepSeek），再失败回退模板</small></span>
@@ -339,7 +343,7 @@ h2.sec:first-child{ margin-top:0; }
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-        <span class="num dim" id="set-build">v13</span>
+        <span class="num dim" id="set-build">v14</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -406,6 +410,16 @@ const PURE = {
     const a=s.indexOf('{'), b=s.lastIndexOf('}');
     if(a<0||b<=a) return null;
     try{ return JSON.parse(s.slice(a,b+1)); }catch(_){ return null; }
+  },
+  // 种子化随机源（mulberry32）：同种子产生同一序列
+  makeRng(seed){
+    let a=(seed>>>0)||1;
+    return function(){
+      a|=0; a=(a+0x6D2B79F5)|0;
+      let t=Math.imul(a^(a>>>15), 1|a);
+      t=(t+Math.imul(t^(t>>>7), 61|t))^t;
+      return ((t^(t>>>14))>>>0)/4294967296;
+    };
   },
 };
 /*PURE-END*/
@@ -489,13 +503,15 @@ function makeAgents(){
     inbox:[], flags:{}, relNotes:0, personalLog:[],
   }));
 }
-function makeWorld(){
+function makeWorld(seed){
   const w={
     t:8*60, speed:1, agents:makeAgents(),
     log:[], lidSeq:0, credits:3, sentToday:[],
     weather:{rain:false, until:0}, lastSpark:8*60,
     rentPaidDay:0,
   };
+  w.seed = Number.isFinite(seed) ? (seed>>>0) : (Date.now()%2147483647);
+  w.rng = PURE.makeRng(w.seed);
   logSys(w,'新的一周开始了。四位住户各有各的打算。');
   return w;
 }
@@ -511,13 +527,8 @@ function logSys(w,text){ pushLog(w,{type:'sys',name:'城市',text}); }
 function logAct(w,ag,text,thought,type){ pushLog(w,{type:type||'act',agent:ag.id,name:ag.name,text,thought}); }
 
 function roomOf(anchorId){ const a=ANCHORS[anchorId]; return a?a.room:'street'; }
-function pick(arr){ return arr[Math.floor(Math.random()*arr.length)]; }
-function pickV(arr, ag, key){
-  let i=Math.floor(Math.random()*arr.length);
-  if(arr.length>1 && ag.flags[key]===i) i=(i+1)%arr.length;
-  ag.flags[key]=i;
-  return arr[i];
-}
+function pick(w,arr){ return arr[Math.floor(w.rng()*arr.length)]; }
+function pickV(w,arr,ag,key){ let i=Math.floor(w.rng()*arr.length); if(arr.length>1&&ag.flags[key]===i) i=(i+1)%arr.length; ag.flags[key]=i; return arr[i]; }
 
 function setActivity(w,ag,anchorId,type,label,minutes,thought,logText,logType){
   const moving = ag.anchor!==anchorId;
@@ -591,15 +602,15 @@ function decide(w, ag){
   const inWork = mod>=start && mod<end && !(mod>=lunchS && mod<lunchE);
   if(inWork){
     if(ag.flags.earlyWork && mod>=startBase) delete ag.flags.earlyWork;
-    const slack=ag.traits.includes('摸鱼') && Math.random()<0.25;
+    const slack=ag.traits.includes('摸鱼') && w.rng()<0.25;
     const label = slack?'上班（摸鱼中）':'上班';
-    const thought = slack?pickV(SLACK_THOUGHTS,ag,'ls'):pickV(WORK_THOUGHTS[ag.workKind],ag,'lw');
+    const thought = slack?pickV(w,SLACK_THOUGHTS,ag,'ls'):pickV(w,WORK_THOUGHTS[ag.workKind],ag,'lw');
     const today=PURE.dayOf(w.t);
     const firstArrive=ag.flags.arrivedDay!==today;
     const logText = (ag.activity.type==='work')?null:(firstArrive?'到岗开始工作':'回到工位');
     if(logText!==null) ag.flags.arrivedDay=today;
     setActivity(w,ag,ag.workAnchor,'work',label,60,thought,logText);
-    if(logText===null && Math.random()<0.35) logAct(w,ag,'工作中',thought);
+    if(logText===null && w.rng()<0.35) logAct(w,ag,'工作中',thought);
     return;
   }
   // 4. 体力低 → 回家小憩
@@ -612,8 +623,8 @@ function decide(w, ag){
   const mate=w.agents.find(o=>o!==ag && roomOf(o.anchor)===roomOf(ag.anchor)
     && (o.activity.type==='idle'||o.activity.type==='stroll')
     && (w.t-(ag.flags['cw_'+o.id]||-1e9))>90);
-  if(mate && (ag.traits.includes('外向') || Math.random()<0.35)){
-    const line=pick(CHAT_LINES);
+  if(mate && (ag.traits.includes('外向') || w.rng()<0.35)){
+    const line=pick(w,CHAT_LINES);
     ag.flags['cw_'+mate.id]=w.t; mate.flags['cw_'+ag.id]=w.t;
     ag.activity={type:'chat',label:'和'+mate.name+'聊天'}; ag.busyUntil=w.t+20;
     mate.activity={type:'chat',label:'和'+ag.name+'聊天'}; mate.busyUntil=w.t+20;
@@ -624,17 +635,17 @@ function decide(w, ag){
   }
   // 6. 周日街市 / 傍晚散步 / 在家待着
   const sunday=PURE.weekday(w.t)===6;
-  if(sunday && mod>=10*60 && mod<17*60 && Math.random()<0.5){
+  if(sunday && mod>=10*60 && mod<17*60 && w.rng()<0.5){
     setActivity(w,ag,'market','stroll','逛街市',40,'人挤人，但热闹是真热闹。','去周日街市逛逛');
     return;
   }
-  if(mod>=18.5*60 && mod<21*60 && Math.random()<0.3){
-    const spot=Math.random()<0.5?'park_bench':'river_walk';
+  if(mod>=18.5*60 && mod<21*60 && w.rng()<0.3){
+    const spot=w.rng()<0.5?'park_bench':'river_walk';
     setActivity(w,ag,spot,'stroll','散步',40,'吹吹江风，把今天散掉一半。','出门散步');
     return;
   }
-  const spot=Math.random()<0.5?'home_table':'home_tv';
-  setActivity(w,ag,spot,'idle','在家待着',30,pickV(IDLE_THOUGHTS,ag,'li'),null);
+  const spot=w.rng()<0.5?'home_table':'home_tv';
+  setActivity(w,ag,spot,'idle','在家待着',30,pickV(w,IDLE_THOUGHTS,ag,'li'),null);
 }
 
 function advance10(w){
@@ -669,8 +680,8 @@ function advance10(w){
   if(w.weather.rain && w.t>=w.weather.until){
     w.weather.rain=false; logSys(w,'雨停了，街道亮得像洗过。'); w.lastSpark=w.t;
   }
-  if(!w.weather.rain && (w.t-w.lastSpark)>200 && mod>9*60 && mod<21*60 && Math.random()<0.3){
-    w.weather.rain=true; w.weather.until=w.t+90+Math.floor(Math.random()*6)*10;
+  if(!w.weather.rain && (w.t-w.lastSpark)>200 && mod>9*60 && mod<21*60 && w.rng()<0.3){
+    w.weather.rain=true; w.weather.until=w.t+90+Math.floor(w.rng()*6)*10;
     logSys(w,'☔ 突然下起雨来，屋檐下多了几分躲雨的默契。');
     w.lastSpark=w.t;
   }
@@ -718,8 +729,10 @@ if(typeof document==='undefined'){ module.exports={PURE, Sim}; return; }
    ============================================================ */
 const $=s=>document.querySelector(s), $$=s=>Array.from(document.querySelectorAll(s));
 const app=$('#app');
+let bootSeed;
+try{ const q=new URLSearchParams(location.search).get('seed'); if(q!==null && q!=='') bootSeed=Number(q); }catch(_){}
 const state={
-  world:Sim.makeWorld(),
+  world:Sim.makeWorld(bootSeed),
   selected:'a1',
   screen:'live',
   forcedLayout:'auto',
@@ -738,6 +751,7 @@ for(const ag of state.world.agents){
   state.vis[ag.id]={x:a.x+0.5,y:a.y+0.5,path:[],anchor:ag.anchor};
 }
 state.cam={fx:Sim.MAPW/2, fy:Sim.MAPH/2, manual:false};
+$('#set-seed').textContent=String(state.world.seed);
 
 /* ---------- 布局管理 ---------- */
 function applyLayout(){

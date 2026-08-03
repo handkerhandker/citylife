@@ -1,0 +1,40 @@
+name: gate
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+      - name: 安装 Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: 提取内联脚本
+        run: |
+          python3 - <<'EOF'
+          import re
+          m=re.search(r'<script>([\s\S]*)</script>',open('city-life-framework.html').read())
+          open('app.js','w').write(m.group(1))
+          EOF
+      - name: 语法检查
+        run: node --check app.js
+      - name: 无头模拟测试
+        run: node harness.js
+      - name: 中转函数语法检查
+        run: |
+          cp functions/relay.js relay-check.mjs
+          node --check relay-check.mjs
+      - name: SIM 块纯净检查
+        run: |
+          python3 - <<'EOF'
+          import re
+          s=open('city-life-framework.html').read()
+          m=re.search(r'/\*SIM-START\*/([\s\S]*?)/\*SIM-END\*/',s)
+          assert m, 'SIM 标记缺失'
+          assert 'Math.random' not in m.group(1), 'SIM 块内发现 Math.random'
+          print('SIM 纯净')
+          EOF

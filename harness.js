@@ -51,6 +51,15 @@ ok(Sim.sendCustomMessage(w,'a1','今晚吃点好的'),'自定义短信可发送'
 ok(w.credits===2,'自定义短信扣额度');
 for(let i=0;i<6;i++) Sim.step(w,10);
 ok(w.log.map(e=>e.text).join('').includes('今晚吃点好的'),'自定义短信被读取');
+// --- 种子化确定性 ---
+{
+  const A=Sim.makeWorld(12345), B=Sim.makeWorld(12345), C=Sim.makeWorld(54321);
+  for(let i=0;i<2*144;i++){ Sim.step(A,10); Sim.step(B,10); Sim.step(C,10); }
+  const sig=w2=>w2.log.map(e=>e.t+e.name+e.text+(e.thought||'')).join('|')+w2.agents.map(a=>a.id+Math.round(a.money)+'@'+a.anchor).join('|');
+  ok(A.seed===12345 && typeof A.rng==='function','世界携带种子与随机源');
+  ok(sig(A)===sig(B),'同种子两日完全一致');
+  ok(sig(A)!==sig(C),'异种子产生不同命运');
+}
 // parseJsonLoose
 ok(PURE.parseJsonLoose('```json\n{"a":1}\n```').a===1,'parseJsonLoose 剥围栏');
 ok(PURE.parseJsonLoose('前言 {"reaction":"好"} 后记').reaction==='好','parseJsonLoose 截大括号');
