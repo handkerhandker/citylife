@@ -827,14 +827,57 @@ let saveMode='normal';
 try{ localStorage.setItem(SAVE_KEY+'.probe','1'); localStorage.removeItem(SAVE_KEY+'.probe'); }
 catch(_){ saveMode='noStore'; }
 if(saveMode==='normal' && seedParam!==null) saveMode='ephemeral';
+// 世界可用性闸（授权偏差·第 6 单补充指令）：hydrate（附件B 冻结）只校验世界外形，
+// 此闸逐字段核验会被渲染或参与运算的字段——白名单（anchor/workKind/color）＋有限数值限幅＋
+// 结构齐全＋字符串限长；agents 逐人，任一不合格整档判坏。不过闸即走既有坏档路径
+// （启动→挪 BAK＋开新城；导入→「这串码读不出来，检查是否完整。」），零新增文案。仅本函数为纯判定，绝不抛错。
+const SV_WORK_KINDS={work:1, clerk:1, trade:1, write:1};
+const SV_COLOR_RE=/^#[0-9a-fA-F]{3,8}$/;   // 渲染进 HTML style 属性，仅放行十六进制色值
+const SV_STRMAX=4000;                       // 字符串字段长度上限（合法字段远短于此）
+function svNumF(x){ return typeof x==='number' && isFinite(x); }
+function svNumR(x,lo,hi){ return svNumF(x) && x>=lo && x<=hi; }
+function svObj(x){ return !!x && typeof x==='object' && !Array.isArray(x); }
+function svStr(x){ return typeof x==='string' && x.length<=SV_STRMAX; }
+function svAnchor(id){ return typeof id==='string' && !!Sim.ANCHORS[id]; }
+function svAgentUsable(a){
+  if(!svObj(a)) return false;
+  if(typeof a.id!=='string' || !a.id) return false;
+  if(!svAnchor(a.anchor) || !svAnchor(a.bed) || !svAnchor(a.workAnchor)) return false;   // 缺/坏 anchor→启动 vis 崩
+  if(typeof a.color!=='string' || !SV_COLOR_RE.test(a.color)) return false;               // F1：color 进 HTML 属性 → 白名单
+  if(!SV_WORK_KINDS[a.workKind]) return false;                                            // WORK_THOUGHTS 索引，非法→pickV 崩
+  if(!svObj(a.metab) || !svNumF(a.metab.hungerRate) || !svNumF(a.metab.energyRate)
+     || !svNumF(a.metab.eatAt) || !svNumF(a.metab.napAt)) return false;                   // F2：缺 metab→首拍崩
+  if(!svObj(a.activity) || typeof a.activity.type!=='string' || !svStr(a.activity.label)) return false;
+  if(!svObj(a.flags)) return false;
+  if(!Array.isArray(a.inbox) || !Array.isArray(a.personalLog)) return false;
+  if(!Array.isArray(a.traits) || !a.traits.every(svStr)) return false;
+  if(!svNumR(a.hunger,0,100) || !svNumR(a.energy,0,100)) return false;
+  if(!svNumF(a.money) || !svNumF(a.wage) || !svNumF(a.busyUntil) || !svNumF(a.relNotes)) return false;
+  if(!svStr(a.name) || !svStr(a.job) || !svStr(a.want) || !svStr(a.fear) || !svStr(a.voice)) return false;
+  return true;
+}
+function worldUsable(w){
+  if(!svObj(w)) return false;
+  if(typeof w.t!=='number' || !isFinite(w.t) || w.t<0) return false;                       // F3：字符串 t 拼接；F4：负 t→周undefined
+  if(!svNumR(w.speed,0,64) || !svNumF(w.credits) || !svNumF(w.lidSeq) || !svNumF(w.lastSpark)
+     || !svNumF(w.rentPaidDay) || !svNumF(w.seed) || !svNumF(w.rngState)) return false;
+  if(!svObj(w.weather) || !svNumF(w.weather.until)) return false;
+  if(!svObj(w.stats) || !svObj(w.stats.act) || !svObj(w.stats.pair)) return false;
+  if(!svNumF(w.stats.rain) || !svNumF(w.stats.pay) || !svNumF(w.stats.rentPaid)
+     || !svNumF(w.stats.market) || !svNumF(w.stats.maxGap)) return false;
+  if(!Array.isArray(w.sentToday)) return false;
+  if(!Array.isArray(w.log) || !w.log.every(svObj)) return false;                           // drainLog 读 e.llm，null 元素会崩
+  if(!Array.isArray(w.agents) || w.agents.length<1) return false;
+  return w.agents.every(svAgentUsable);
+}
 let bootWorld=null, bootMeta=null;
 if(saveMode==='normal'){
   let raw=null;
   try{ raw=localStorage.getItem(SAVE_KEY); }catch(_){}
   if(raw!==null){
     const r=Sim.hydrate(raw);
-    if(r){ bootWorld=r.world; bootMeta=r.meta; }
-    else{ try{ localStorage.setItem(BAK_KEY,raw); localStorage.removeItem(SAVE_KEY); }catch(_){} }  // 坏档移入备份再开新城，绝不静默覆盖
+    if(r && worldUsable(r.world)){ bootWorld=r.world; bootMeta=r.meta; }
+    else{ try{ localStorage.setItem(BAK_KEY,raw); localStorage.removeItem(SAVE_KEY); }catch(_){} }  // 坏档/畸形档移入备份再开新城，绝不静默覆盖
   }
 }
 const state={
@@ -1327,7 +1370,8 @@ $('#sv-import').addEventListener('click',()=>{
     if(raw.indexOf(EXPORT_PREFIX)===0){
       try{
         const s=decodeURIComponent(escape(atob(raw.slice(EXPORT_PREFIX.length))));
-        if(Sim.hydrate(s)) save=s;
+        const r=Sim.hydrate(s);
+        if(r && worldUsable(r.world)) save=s;   // 经 hydrate 且过可用性闸方落盘；畸形/敌意档判坏
       }catch(_){}
     }
     if(save===null){ $('#sv-import-msg').textContent='这串码读不出来，检查是否完整。'; return; }
