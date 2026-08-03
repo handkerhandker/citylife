@@ -363,7 +363,7 @@ h2.sec:first-child{ margin-top:0; }
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-        <span class="num dim" id="set-build">v18</span>
+        <span class="num dim" id="set-build">v19</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -928,7 +928,7 @@ const state={
   reduceMotion:matchMedia('(prefers-reduced-motion:reduce)').matches,
   scale:1,
   simAcc:0, lastTs:performance.now(),
-  logCursor:0,
+  logSeenLid:-Infinity,   // 初值取负无穷而非 0：lidSeq 被篡成负数的档（过闸）新条目 lid 为负，仍能上墙不冻
   vis:{},           // 每个小人的可视位置与路径
   dpr:1, cvW:0, cvH:0, view:{s:1,ox:0,oy:0},
 };
@@ -1148,12 +1148,19 @@ function patchLid(e){
 function nearBottom(el){ return el.scrollHeight-el.scrollTop-el.clientHeight<60; }
 function drainLog(){
   const w=state.world;
-  if(state.logCursor>=w.log.length) return;
+  // 追新按 lid 而非绝对下标：SIM 的 pushLog 满 400 条后从头部裁剪、后续下标整体左移，
+  // 绝对下标游标从此永远 ≥ 长度，日志墙冻死（v17 部署站事故真凶）；lid 单调递增，不受裁剪影响。
+  // lid 仅在（数值有限 且 ≤w.lidSeq）时可信：畸形/越界 lid（篡改档过闸）既不上墙也不推游标，绝不冻墙
+  function lidOk(v){ return typeof v==='number' && isFinite(v) && v<=w.lidSeq; }
+  let i=w.log.length;
+  while(i>0){ const v=w.log[i-1].lid; if(lidOk(v) && v>state.logSeenLid) i--; else break; }
+  if(i>=w.log.length) return;
   const list=$('#log-list'), side=$('#side-list'), ov=$('#ov-loglist');
   const scr=$('#scr-log');
   const sideStick=nearBottom(side);
-  while(state.logCursor<w.log.length){
-    const e=w.log[state.logCursor++];
+  while(i<w.log.length){
+    const e=w.log[i++];
+    if(lidOk(e.lid) && e.lid>state.logSeenLid) state.logSeenLid=e.lid;
     if(state.llm.on && !e.llm && !e.llmPending){
       if(e.type==='player' && e.msg){ e.fb=e.thought; e.thought='（对着屏幕想了想⋯）'; enhanceMessage(e); }
       else if(e.type==='chat' && e.with){ e.fb=e.thought; e.thought='（聊得正起劲⋯）'; enhanceChat(e); }
@@ -1445,19 +1452,28 @@ function syncLLMStat(){
   const chip=$('#ph-llm'); if(chip) chip.textContent='AI '+(L.on?L.status:'已关');
   const ch=$('#set-llm-channel'); if(ch) ch.textContent=L.channel==='claude'?'Claude 直连':(L.channel==='relay'?'中转站（DeepSeek）':'未连接');
 }
-const llmQueue=[]; let llmActive=0;
-function queueCall(prompt, prio){
+const AI_TIMEOUT={direct:4000, relay:15000, batch:30000}; // 毫秒，可调：直连/中转单条/打包（日记等多人一车）死线
+const llmQueue=[]; let llmActive=0, llmSkipDirect=false;  // llmSkipDirect：本局直连首败后跳级记仇（会话级，不入存档）
+function jobLimit(batch){ return 2*(batch?AI_TIMEOUT.batch:AI_TIMEOUT.relay); } // 排队等待+执行合计不超过该级死线的两倍
+function settleJob(job, out){
+  if(job.done) return;
+  job.done=true; clearTimeout(job.tid);
+  const i=llmQueue.indexOf(job); if(i>=0) llmQueue.splice(i,1);
+  job.res(out);
+}
+function queueCall(prompt, prio, batch){
   return new Promise(res=>{
-    const job={prompt,res};
+    const job={prompt, batch:!!batch, res, done:false, tid:0};
+    job.tid=setTimeout(()=>settleJob(job,null), jobLimit(batch)); // 排队也有死线：到点按失败处理（落模板）
     if(prio) llmQueue.unshift(job); else llmQueue.push(job);
     pumpLLM();
   });
 }
-async function callClaude(prompt, prio){
-  let j=await queueCall(prompt, prio);
+async function callClaude(prompt, prio, batch){
+  let j=await queueCall(prompt, prio, batch);
   if(!j){
     await new Promise(r=>setTimeout(r,800));
-    j=await queueCall(prompt, prio);
+    j=await queueCall(prompt, prio, batch);
   }
   if(!j && !state.llm.warned){
     state.llm.warned=true;
@@ -1467,53 +1483,74 @@ async function callClaude(prompt, prio){
 }
 async function pumpLLM(){
   if(llmActive>=2 || !llmQueue.length) return;
-  const job=llmQueue.shift(); llmActive++;
-  const out=await rawCallClaude(job.prompt);
-  llmActive--; job.res(out); pumpLLM();
+  const job=llmQueue.shift();
+  if(job.done){ pumpLLM(); return; }   // 排队期已过死线的任务不再占线
+  llmActive++;
+  try{
+    settleJob(job, await rawCallClaude(job.prompt, job.batch));
+  }catch(_){
+    settleJob(job, null);
+  }finally{
+    llmActive--; pumpLLM();            // 还线：成功/失败/超时/异常一律归还
+  }
 }
-async function rawCallClaude(prompt){
+function fetchWithDeadline(url, opts, ms){
+  // 死线罩住整次通话（连接+收完响应体）；Artifact 的 fetch 桥不支持 AbortSignal，故用 Promise.race
+  let tid=0;
+  const timeout=new Promise((_,rej)=>{ tid=setTimeout(()=>rej(new Error('timeout')), ms); });
+  const attempt=(async()=>{
+    const r=await fetch(url, opts);
+    let data=null; try{ data=await r.json(); }catch(_){}
+    return {r, data};
+  })();
+  attempt.catch(()=>{});   // 死线赢了之后迟到的网络异常不再抛「未处理拒绝」进控制台
+  return Promise.race([attempt, timeout]).finally(()=>clearTimeout(tid));
+}
+async function rawCallClaude(prompt, batch){
   const L=state.llm;
   L.calls++; L.pending++; L.status='思考中'; syncLLMStat();
-  let j=null, tid=0;
+  let j=null, hardFail=false;
   try{
-    const timeout=new Promise((_,rej)=>{ tid=setTimeout(()=>rej(new Error('timeout')), 15000); });
-    const req=fetch('https://api.anthropic.com/v1/messages',{
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({model:'claude-sonnet-4-6', max_tokens:1000,
-        messages:[{role:'user', content:prompt}]})
-    });
-    const r=await Promise.race([req, timeout]);
-    let data=null; try{ data=await r.json(); }catch(_){}
-    if(data && data.error){ L.lastErr=String(data.error.message||data.error.type||'API错误').slice(0,90); }
-    else if(!r.ok){ L.lastErr='HTTP '+r.status; }
-    else { L.lastErr=''; }
-    const text=((data&&data.content)||[]).map(i=>i.type==='text'?i.text:'').join('');
-    j=PURE.parseJsonLoose(text);
-    L.status=j?'在线':'返回异常，已回退';
-    if(!j && !L.lastErr && text) L.lastErr='返回非JSON：'+text.slice(0,60);
-  }catch(err){
-    L.lastErr=(err&&err.message==='timeout')?'15秒超时':'请求被拦截或断网';
-    L.status='失败，模板回退';
+    if(!llmSkipDirect){
+      try{
+        const {r, data}=await fetchWithDeadline('https://api.anthropic.com/v1/messages',{
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({model:'claude-sonnet-4-6', max_tokens:1000,
+            messages:[{role:'user', content:prompt}]})
+        }, batch?AI_TIMEOUT.batch:AI_TIMEOUT.direct);
+        if(data && data.error){ L.lastErr=String(data.error.message||data.error.type||'API错误').slice(0,90); }
+        else if(!r.ok){ L.lastErr='HTTP '+r.status; }
+        else { L.lastErr=''; }
+        const text=((data&&data.content)||[]).map(i=>i.type==='text'?i.text:'').join('');
+        j=PURE.parseJsonLoose(text);
+        L.status=j?'在线':'返回异常，已回退';
+        if(!j && !L.lastErr && text) L.lastErr='返回非JSON：'+text.slice(0,60);
+      }catch(err){
+        hardFail=!(err&&err.message==='timeout');
+        L.lastErr=(err&&err.message==='timeout')?'15秒超时':'请求被拦截或断网';
+        L.status='失败，模板回退';
+      }
+      if(j){ L.channel='claude'; }
+      // 跳级：仅拦截/断网类首败记仇（部署站 CORS），本局后续直接从中转站起步；
+      // 超时或返回异常视为偶发，不锁直连——工件内（直连为唯一线路）行为不变
+      else if(hardFail){ llmSkipDirect=true; }
+    }
+    if(!j) j=await rawCallRelay(prompt, batch);
+    if(!j){ L.lastErr='网络不通，已用模板兜底'; }
   }finally{
-    clearTimeout(tid);
+    L.pending--; syncLLMStat();        // 还线：任何结局都归还「进行中」
   }
-  if(j){ L.channel='claude'; }
-  else{ j=await rawCallRelay(prompt); }
-  L.pending--; syncLLMStat();
   return j;
 }
-async function rawCallRelay(prompt){
+async function rawCallRelay(prompt, batch){
   const L=state.llm;
-  L.status='思考中'; syncLLMStat();
-  let j=null, tid=0;
+  L.status='思考中'; L.lastErr='换线路中…'; syncLLMStat();
+  let j=null;
   try{
-    const timeout=new Promise((_,rej)=>{ tid=setTimeout(()=>rej(new Error('timeout')), 15000); });
-    const req=fetch('/relay',{
+    const {r, data}=await fetchWithDeadline('/relay',{
       method:'POST', headers:{'Content-Type':'application/json'},
       body:JSON.stringify({prompt:prompt})
-    });
-    const r=await Promise.race([req, timeout]);
-    let data=null; try{ data=await r.json(); }catch(_){}
+    }, batch?AI_TIMEOUT.batch:AI_TIMEOUT.relay);
     if(data && data.error){ L.lastErr=String((data.error&&data.error.message)||data.error).slice(0,90); }
     else if(!r.ok){ L.lastErr='HTTP '+r.status; }
     else { L.lastErr=''; }
@@ -1524,8 +1561,6 @@ async function rawCallRelay(prompt){
   }catch(err){
     L.lastErr=(err&&err.message==='timeout')?'15秒超时':'请求被拦截或断网';
     L.status='失败，模板回退';
-  }finally{
-    clearTimeout(tid);
   }
   L.channel=j?'relay':'';
   return j;
@@ -1595,7 +1630,7 @@ async function runReflection(){
   }).join('\n');
   const j=await callClaude(
     '都市生活模拟《云港小事》第'+day+'天深夜，四位合租住户各写一段睡前日记：2-3句，第一人称，允许小情绪和具体细节，禁止总结腔。修辞纪律：职业梗或比喻整段最多一次；禁止连环比喻（不许接连出现"像/跟…似的/如同"句式）；大多数句子说普通人话，生活细节优先于修辞。四段必须风格迥异，逐一对照各自的说话方式；写完自查：盖住名字仍能分清是谁写的，才算合格。\n'
-    +cards+'\n只返回JSON：{"a1":"...","a2":"...","a3":"...","a4":"..."}', true);
+    +cards+'\n只返回JSON：{"a1":"...","a2":"...","a3":"...","a4":"..."}', true, true);
   for(const ag of w.agents){
     const e=entries[ag.id];
     const txt=(j && typeof j[ag.id]==='string') ? j[ag.id].trim() : '';
