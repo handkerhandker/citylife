@@ -76,5 +76,19 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   ok(new Set(w.agents.map(a=>a.metab.eatAt)).size>=3,'开饭阈值已分化');
   ok(new Set(w.agents.map(a=>a.metab.napAt)).size>=3,'小憩阈值已分化');
 }
+// --- 存档往返 ---
+{
+  const w=Sim.makeWorld(7);
+  for(let i=0;i<300;i++) Sim.step(w,10);
+  const s=Sim.serialize(w,{k:1});
+  ok(typeof s==='string' && s.length>200,'序列化产出字符串');
+  const r=Sim.hydrate(s);
+  ok(!!r && r.meta && r.meta.k===1,'反序列化成功且带回 meta');
+  const w2=r.world;
+  const sg=x=>JSON.stringify(x.stats)+'|'+x.agents.map(a=>a.id+':'+a.money+':'+a.anchor+':'+a.hunger+':'+a.energy).join('|')+'|'+x.rngState;
+  for(let i=0;i<300;i++){ Sim.step(w,10); Sim.step(w2,10); }
+  ok(sg(w)===sg(w2),'存档续跑与原世界同命运');
+  ok(Sim.hydrate('垃圾')===null && Sim.hydrate('{"sv":9}')===null,'坏档返回 null');
+}
 console.log(fails? ('\n'+fails+' FAILURES') : '\nALL PASS');
 process.exit(fails?1:0);
