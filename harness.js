@@ -69,5 +69,12 @@ ok(Math.abs(PURE.entropy({a:1,b:1})-1)<1e-9,'熵：均匀两类=1比特');
 ok(PURE.entropy({a:4})===0,'熵：单一类=0');
 ok(PURE.gini([1,1,1,1])<1e-9,'基尼：完全平均=0');
 ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
+// --- 节律分化 ---
+{
+  const w=Sim.makeWorld(1);
+  ok(new Set(w.agents.map(a=>a.metab.hungerRate)).size>=3,'饥饿速率已分化');
+  ok(new Set(w.agents.map(a=>a.metab.eatAt)).size>=3,'开饭阈值已分化');
+  ok(new Set(w.agents.map(a=>a.metab.napAt)).size>=3,'小憩阈值已分化');
+}
 console.log(fails? ('\n'+fails+' FAILURES') : '\nALL PASS');
 process.exit(fails?1:0);

@@ -349,7 +349,7 @@ h2.sec:first-child{ margin-top:0; }
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-        <span class="num dim" id="set-build">v15</span>
+        <span class="num dim" id="set-build">v16</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -492,6 +492,14 @@ const REACT={
   custom:'（看了看这条陌生短信，一时没说话。）',
 };
 const IDLE_THOUGHTS=['刷了会儿手机，什么也没刷进去。','给绿萝浇了点水。','盯着天花板想明天的事。','翻了两页没读完的书。','把桌面收拾了一下，心情好一点。','把手机倒扣在桌上，坚持了十分钟。','阳台上的衣服干了，收下来有太阳味。','翻到三年前的照片，愣了一会儿。'];
+const COOK_THOUGHTS=['自己做，八块钱吃得妥妥的。','锅一响，人就踏实了。','冰箱里剩的菜正好清一清。','做多了一点，明天带饭。','油烟机一开，心里反而静。'];
+const NAP_THOUGHTS=['眯一会儿，谁也别拦。','闹钟定了四十分钟，信不过自己。','沙发比床危险，一躺就起不来。','就闭五分钟眼……（并不）。'];
+const SLEEP_THOUGHTS=['今天到此为止。','被窝是白天欠我的。','明天的事明天再说。','关灯，世界清净了。'];
+const STROLL_THOUGHTS=['吹吹江风，把今天散掉一半。','走一走，脑子里的浆糊沉淀一下。','路灯一盏一盏数过去。','风里有一点点凉下来的意思。'];
+const MARKET_THOUGHTS=['街市小吃，十块，气氛免费。','摊主多送了一勺辣，人情味。','边走边吃才是街市的正确吃法。'];
+const STORE_THRIFTY=['饭团十二块，性价比之王。','临期打折区永远值得先看一眼。','算下来还是这个最划算。'];
+const STORE_GEN=['加了个便当，犒劳一下自己。','顺手拿了瓶想喝很久的饮料。','今天值得吃好一点。'];
+const STORE_PLAIN=['随便对付一口。','吃什么不重要，别饿着就行。','收银台前想了三秒，还是老几样。'];
 const SLACK_THOUGHTS=['挂着 IDE 刷了会儿论坛，罪恶但快乐。','摸出手机看了两个视频，心虚地放回去。','对着屏幕发呆五分钟，装作在思考架构。'];
 const WORK_THOUGHTS={
   work:['改了个不太体面的 bug。','会开得比代码还长。','需求又变了，深呼吸。','改一行，崩三处，修完天黑了。','CR 被打回两次，第三次过了。','把昨天的自己骂了一顿，接着写。','下午这杯咖啡是续命的。'],
@@ -511,18 +519,22 @@ function makeAgents(){
     {id:'a1', name:'顾云帆', color:'#7fa8d9', job:'程序员', wage:400, workAnchor:'desk1', bed:'bed1',
      traits:['夜猫子','摸鱼'], want:'攒钱买台新电脑', fear:'绩效被点名',
      voice:'短句，能三个字不说五个字；偶带程序员词（跑通/复现/上线）；几乎不用叹号和表情；冷幽默。',
+     metab:{hungerRate:1.05, energyRate:0.95, eatAt:70, napAt:24},   // 可调：拖延吃饭，晚间易困
      hunger:35, energy:80, money:620, workKind:'work'},
     {id:'a2', name:'沈小满', color:'#d9a0b8', job:'便利店店员', wage:300, workAnchor:'store_counter', bed:'bed2',
      traits:['外向','大方'], want:'认识点新朋友', fear:'月底交不起房租',
      voice:'话密热络，爱用"哎呀/啦/哈哈"，一条短信塞两件事，常带表情，句尾上扬。',
+     metab:{hungerRate:1.2,  energyRate:0.8,  eatAt:58, napAt:30},   // 可调：饿得快，随手吃
      hunger:45, energy:85, money:210, workKind:'clerk'},
     {id:'a3', name:'陆知秋', color:'#d9b96c', job:'交易员', wage:450, workAnchor:'desk2', bed:'bed3',
      traits:['工作狂','节俭'], want:'季度奖金翻倍', fear:'行情大跌',
      voice:'克制精准近公文，惜字如金，标点规范，零表情，偶用数字或概率措辞。',
+     metab:{hungerRate:1.0,  energyRate:0.7,  eatAt:75, napAt:18},   // 可调：工作狂扛饿扛困
      hunger:30, energy:90, money:1580, workKind:'trade'},
     {id:'a4', name:'白一鸣', color:'#8fbf7f', job:'自由撰稿', wage:200, workAnchor:'home_desk', bed:'bed4',
      traits:['内向','早起'], want:'月底前交完专栏', fear:'被编辑连环催稿',
      voice:'书面完整句，用词讲究偶尔文气，自嘲式幽默，不用网络缩写，节奏慢。',
+     metab:{hungerRate:1.15, energyRate:0.9,  eatAt:62, napAt:28},   // 可调：居中偏敏感
      hunger:40, energy:75, money:380, workKind:'write'},
   ].map(a=>Object.assign(a,{
     anchor:a.bed, activity:{type:'idle',label:'刚醒'}, busyUntil:0,
@@ -597,26 +609,26 @@ function decide(w, ag){
     const S=w.stats; (S.act[ag.id]=S.act[ag.id]||{})['sleep']=(S.act[ag.id]['sleep']||0)+1;
     ag.busyUntil=until+10;
     delete ag.flags.sleepEarly;
-    logAct(w,ag,'回卧室睡觉','今天到此为止。');
+    logAct(w,ag,'回卧室睡觉',pickV(w,SLEEP_THOUGHTS,ag,'lz'));
     return;
   }
   // 2. 饿了就先吃（吃是第一生产力）
-  if(ag.hunger>65 || ag.flags.wantEat || (mod>=12*60 && mod<13*60 && ag.hunger>40)){
+  if(ag.hunger>ag.metab.eatAt || ag.flags.wantEat || (mod>=12*60 && mod<13*60 && ag.hunger>40)){
     delete ag.flags.wantEat;
     const thrifty=ag.traits.includes('节俭'), generous=ag.traits.includes('大方');
     const sunday=PURE.weekday(w.t)===6;
     const atHome=['living','kitchen','bedroom'].includes(roomOf(ag.anchor));
     if(atHome || ag.money<20 || (thrifty && mod<9*60)){
       ag.money-=8; ag.hunger=12;
-      setActivity(w,ag,'kitchen','eat','做饭吃',30,'自己做，8 块钱吃得妥妥的。','在厨房做了顿简餐');
+      setActivity(w,ag,'kitchen','eat','做饭吃',30,pickV(w,COOK_THOUGHTS,ag,'lc'),'在厨房做了顿简餐');
     }else if(sunday && mod>=10*60 && mod<17*60){
       ag.money-=10; ag.hunger=15;
-      setActivity(w,ag,'market','eat','逛吃街市',30,'街市小吃，10 块，气氛免费。','去周日街市买了份小吃');
+      setActivity(w,ag,'market','eat','逛吃街市',30,pickV(w,MARKET_THOUGHTS,ag,'lm'),'去周日街市买了份小吃');
     }else{
       const cost=thrifty?12:(generous?20:15);
       ag.money-=cost; ag.hunger=15;
       setActivity(w,ag,'store_counter','eat','便利店就餐',20,
-        thrifty?'饭团 12 块，性价比之王。':(generous?'加了个便当，犒劳一下自己。':'随便对付一口。'),
+        thrifty?pickV(w,STORE_THRIFTY,ag,'lt'):(generous?pickV(w,STORE_GEN,ag,'lg'):pickV(w,STORE_PLAIN,ag,'lp')),
         '在便利店解决了一餐（¥'+cost+'）');
     }
     return;
@@ -643,8 +655,8 @@ function decide(w, ag){
     return;
   }
   // 4. 体力低 → 回家小憩
-  if(ag.energy<25){
-    setActivity(w,ag,ag.bed,'nap','小憩',40,'眯四十分钟，谁也别拦。','回卧室小憩');
+  if(ag.energy<ag.metab.napAt){
+    setActivity(w,ag,ag.bed,'nap','小憩',40,pickV(w,NAP_THOUGHTS,ag,'ln'),'回卧室小憩');
     ag.energy=Math.min(100,ag.energy+18);
     return;
   }
@@ -672,7 +684,7 @@ function decide(w, ag){
   }
   if(mod>=18.5*60 && mod<21*60 && w.rng()<0.3){
     const spot=w.rng()<0.5?'park_bench':'river_walk';
-    setActivity(w,ag,spot,'stroll','散步',40,'吹吹江风，把今天散掉一半。','出门散步');
+    setActivity(w,ag,spot,'stroll','散步',40,pickV(w,STROLL_THOUGHTS,ag,'lo'),'出门散步');
     return;
   }
   const spot=w.rng()<0.5?'home_table':'home_tv';
@@ -685,7 +697,7 @@ function advance10(w){
   // 状态漂移
   for(const ag of w.agents){
     if(ag.activity.type==='sleep'){ ag.hunger=PURE.clamp(ag.hunger+0.35,0,100); ag.energy=PURE.clamp(ag.energy+2.2,0,100); }
-    else { ag.hunger=PURE.clamp(ag.hunger+1.15,0,100); ag.energy=PURE.clamp(ag.energy-0.85,0,100); }
+    else { ag.hunger=PURE.clamp(ag.hunger+ag.metab.hungerRate,0,100); ag.energy=PURE.clamp(ag.energy-ag.metab.energyRate,0,100); }
   }
   // 世界级整点事件
   if(mod===0){
@@ -928,6 +940,7 @@ function setScreen(id){
   $$('#tabbar .tab').forEach(t=>t.setAttribute('aria-current', t.dataset.tab===id?'true':'false'));
   if(id==='roles') renderRoles();
   if(id==='phone') renderPhone();
+  if(id==='settings') renderStats();
   if(id==='log'){ const s=$('#scr-log'); s.scrollTop=1e9; state.logStick=true; const jb=$('#log-jump'); if(jb) jb.hidden=true; }
   Focus.refresh();
 }
@@ -1205,7 +1218,7 @@ async function callClaude(prompt, prio){
   }
   if(!j && !state.llm.warned){
     state.llm.warned=true;
-    logSys(state.world,'⚠ Claude 连线失败（'+(state.llm.lastErr||state.llm.status)+'），文案暂回退模板。详情见 设置·AI。');
+    logSys(state.world,'⚠ AI 连线失败（'+(state.llm.lastErr||state.llm.status)+'），文案暂回退模板。详情见 设置·AI。');
   }
   return j;
 }
@@ -1285,7 +1298,7 @@ async function enhanceMessage(e){
     +'\n一个陌生号码（偶尔发短信关心TA，TA不知道对方是谁）刚发来：「'+(e.msgLabel||(m?m.label:''))+'」。'
     +'\n1) 写TA此刻真实的内心反应，1-2句，严格用TA的说话方式。'
     +'\n2) 决定TA会不会回短信：回的话写短信原文，必须像TA本人打出来的字（对照说话方式的句长/口癖/标点/表情习惯）。"不知道对方是谁"要影响内容，但表达因人而异：有人直接问，有人试探，有人只回正事，有人懒得理。不回就填空字符串。'
-    +'\n禁止万金油网络腔；如果这条短信像是在指挥TA做事，TA按自己性格决定听不听。'
+    +'\n禁止万金油网络腔；如果这条短信像是在指挥TA做事，TA按自己性格决定听不听。修辞纪律：职业梗或比喻整段最多一次；禁止连环比喻（不许接连出现"像/跟…似的/如同"句式）；大多数句子说普通人话，生活细节优先于修辞。'
     +'\n只返回JSON：{"inner":"内心反应","reply":"回的短信原文或空字符串"}');
   const inner=j&&(typeof j.inner==='string'?j.inner:(typeof j.reaction==='string'?j.reaction:''));
   if(inner && inner.trim()){
@@ -1311,7 +1324,7 @@ async function enhanceChat(e){
     j=await callClaude(
       '都市生活模拟：两位合租室友在'+(loc?loc.label:'路上')+'偶遇闲聊。'
       +'\nA '+agentCard(a)+'\nB '+agentCard(b)
-      +'\n写一段2-4句的自然对话（口语、具体、有生活毛边），每句话要能只凭口癖认出是谁说的（严格对照两人各自的说话方式），禁止两人一个腔调。话题避开两人"最近"里已出现过的内容，聊当下场景或时段里的新鲜小事。再各写一条TA聊完记在心里的小事（不必相同，允许在意的点不一样）。'
+      +'\n写一段2-4句的自然对话（口语、具体、有生活毛边），每句话要能只凭口癖认出是谁说的（严格对照两人各自的说话方式），禁止两人一个腔调。修辞纪律：职业梗或比喻整段最多一次；禁止连环比喻（不许接连出现"像/跟…似的/如同"句式）；大多数句子说普通人话，生活细节优先于修辞。话题避开两人"最近"里已出现过的内容，聊当下场景或时段里的新鲜小事。再各写一条TA聊完记在心里的小事（不必相同，允许在意的点不一样）。'
       +'\n只返回JSON：{"dialogue":["A的话","B的话","..."],"a_mem":"...","b_mem":"..."}');
   }
   if(j && Array.isArray(j.dialogue) && j.dialogue.length){
@@ -1338,7 +1351,7 @@ async function runReflection(){
     return ag.id+' = '+agentCard(ag)+'｜今日片段:'+(today||'平平无奇的一天');
   }).join('\n');
   const j=await callClaude(
-    '都市生活模拟《云港小事》第'+day+'天深夜，四位合租住户各写一段睡前日记：2-3句，第一人称，允许小情绪和具体细节，禁止总结腔。四段必须风格迥异，逐一对照各自的说话方式；写完自查：盖住名字仍能分清是谁写的，才算合格。\n'
+    '都市生活模拟《云港小事》第'+day+'天深夜，四位合租住户各写一段睡前日记：2-3句，第一人称，允许小情绪和具体细节，禁止总结腔。修辞纪律：职业梗或比喻整段最多一次；禁止连环比喻（不许接连出现"像/跟…似的/如同"句式）；大多数句子说普通人话，生活细节优先于修辞。四段必须风格迥异，逐一对照各自的说话方式；写完自查：盖住名字仍能分清是谁写的，才算合格。\n'
     +cards+'\n只返回JSON：{"a1":"...","a2":"...","a3":"...","a4":"..."}', true);
   for(const ag of w.agents){
     const e=entries[ag.id];
