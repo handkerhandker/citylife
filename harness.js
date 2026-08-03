@@ -64,5 +64,10 @@ ok(w.log.map(e=>e.text).join('').includes('今晚吃点好的'),'自定义短信
 ok(PURE.parseJsonLoose('```json\n{"a":1}\n```').a===1,'parseJsonLoose 剥围栏');
 ok(PURE.parseJsonLoose('前言 {"reaction":"好"} 后记').reaction==='好','parseJsonLoose 截大括号');
 ok(PURE.parseJsonLoose('不是json')===null && PURE.parseJsonLoose('{"x":}')===null,'parseJsonLoose 坏输入返回 null');
+// --- 指标纯函数 ---
+ok(Math.abs(PURE.entropy({a:1,b:1})-1)<1e-9,'熵：均匀两类=1比特');
+ok(PURE.entropy({a:4})===0,'熵：单一类=0');
+ok(PURE.gini([1,1,1,1])<1e-9,'基尼：完全平均=0');
+ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
 console.log(fails? ('\n'+fails+' FAILURES') : '\nALL PASS');
 process.exit(fails?1:0);
