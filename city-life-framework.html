@@ -363,7 +363,7 @@ h2.sec:first-child{ margin-top:0; }
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-        <span class="num dim" id="set-build">v17</span>
+        <span class="num dim" id="set-build">v18</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -527,6 +527,12 @@ const CHAT_LINES=[
   ['你们公司最近忙吗？','别提了，比上个月还卷。'],
   ['我攒的钱又没到目标。','慢慢来，别学我月光。'],
 ];
+const TEMPO_DEFAULT={durMul:1, durJit:2, mutterGap:6}; // 兜底：旧档/陌生 id 用（可调）
+function tempoDur(w,ag,base){
+  const tp=(ag&&ag.tempo)||TEMPO_DEFAULT;
+  const m=Math.max(10, Math.round(base*tp.durMul/10)*10);
+  return m + 10*Math.floor(w.rng()*(tp.durJit+1));
+}
 
 function makeAgents(){
   return [
@@ -534,24 +540,28 @@ function makeAgents(){
      traits:['夜猫子','摸鱼'], want:'攒钱买台新电脑', fear:'绩效被点名',
      voice:'短句，能三个字不说五个字；偶带程序员词（跑通/复现/上线）；几乎不用叹号和表情；冷幽默。',
      metab:{hungerRate:1.05, energyRate:0.95, eatAt:70, napAt:24},   // 可调：拖延吃饭，晚间易困
+     tempo:{durMul:1.15, durJit:3, mutterGap:7},   // 可调：干什么都拖一拍
      hunger:35, energy:80, money:620, workKind:'work'},
     {id:'a2', name:'沈小满', color:'#d9a0b8', job:'便利店店员', wage:300, workAnchor:'store_counter', bed:'bed2',
      traits:['外向','大方'], want:'认识点新朋友', fear:'月底交不起房租',
      voice:'话密热络，爱用"哎呀/啦/哈哈"，一条短信塞两件事，常带表情，句尾上扬。',
      metab:{hungerRate:1.2,  energyRate:0.8,  eatAt:58, napAt:30},   // 可调：饿得快，随手吃
+     tempo:{durMul:0.85, durJit:2, mutterGap:5},   // 可调：手脚麻利话密
      hunger:45, energy:85, money:210, workKind:'clerk'},
     {id:'a3', name:'陆知秋', color:'#d9b96c', job:'交易员', wage:450, workAnchor:'desk2', bed:'bed3',
      traits:['工作狂','节俭'], want:'季度奖金翻倍', fear:'行情大跌',
      voice:'克制精准近公文，惜字如金，标点规范，零表情，偶用数字或概率措辞。',
      metab:{hungerRate:1.0,  energyRate:0.7,  eatAt:75, napAt:18},   // 可调：工作狂扛饿扛困
+     tempo:{durMul:0.8,  durJit:1, mutterGap:9},   // 可调：掐表过活话少
      hunger:30, energy:90, money:1580, workKind:'trade'},
     {id:'a4', name:'白一鸣', color:'#8fbf7f', job:'自由撰稿', wage:200, workAnchor:'home_desk', bed:'bed4',
      traits:['内向','早起'], want:'月底前交完专栏', fear:'被编辑连环催稿',
      voice:'书面完整句，用词讲究偶尔文气，自嘲式幽默，不用网络缩写，节奏慢。',
      metab:{hungerRate:1.15, energyRate:0.9,  eatAt:62, napAt:28},   // 可调：居中偏敏感
+     tempo:{durMul:1.25, durJit:4, mutterGap:6},   // 可调：一躺就起不来
      hunger:40, energy:75, money:380, workKind:'write'},
   ].map(a=>Object.assign(a,{
-    anchor:a.bed, activity:{type:'idle',label:'刚醒'}, busyUntil:0,
+    anchor:a.bed, activity:{type:'idle',label:'刚醒'}, busyUntil:0, lastMutterT:0,
     inbox:[], flags:{}, relNotes:0, personalLog:[],
   }));
 }
@@ -588,7 +598,20 @@ function logAct(w,ag,text,thought,type){ pushLog(w,{type:type||'act',agent:ag.id
 
 function roomOf(anchorId){ const a=ANCHORS[anchorId]; return a?a.room:'street'; }
 function pick(w,arr){ return arr[Math.floor(w.rng()*arr.length)]; }
-function pickV(w,arr,ag,key){ let i=Math.floor(w.rng()*arr.length); if(arr.length>1&&ag.flags[key]===i) i=(i+1)%arr.length; ag.flags[key]=i; return arr[i]; }
+function pickV(w,arr,ag,key){
+  // 当日去重：按 住户id|key 记账于 w.saidDay（随存档序列化），跨天自动重置；池尽重置再抽（宁可重复不可沉默）
+  const sd=w.saidDay=(w.saidDay||{});
+  const day=PURE.dayOf(w.t);
+  const k=ag.id+'|'+key;
+  let rec=sd[k];
+  if(!rec || rec.d!==day){ rec=sd[k]={d:day, used:[]}; }
+  let free=[];
+  for(let i=0;i<arr.length;i++){ if(rec.used.indexOf(i)<0) free.push(i); }
+  if(!free.length){ rec.used=[]; for(let i=0;i<arr.length;i++) free.push(i); }
+  const idx=free[Math.floor(w.rng()*free.length)];
+  rec.used.push(idx);
+  return arr[idx];
+}
 
 function setActivity(w,ag,anchorId,type,label,minutes,thought,logText,logType){
   const S=w.stats; (S.act[ag.id]=S.act[ag.id]||{})[type]=(S.act[ag.id][type]||0)+1; if(anchorId==='market') S.market++;
@@ -641,14 +664,14 @@ function decide(w, ag){
     const atHome=['living','kitchen','bedroom'].includes(roomOf(ag.anchor));
     if(atHome || ag.money<20 || (thrifty && mod<9*60)){
       ag.money-=8; ag.hunger=12;
-      setActivity(w,ag,'kitchen','eat','做饭吃',30,pickV(w,COOK_THOUGHTS,ag,'lc'),'在厨房做了顿简餐');
+      setActivity(w,ag,'kitchen','eat','做饭吃',tempoDur(w,ag,30),pickV(w,COOK_THOUGHTS,ag,'lc'),'在厨房做了顿简餐');
     }else if(sunday && mod>=10*60 && mod<17*60){
       ag.money-=10; ag.hunger=15;
-      setActivity(w,ag,'market','eat','逛吃街市',30,pickV(w,MARKET_THOUGHTS,ag,'lm'),'去周日街市买了份小吃');
+      setActivity(w,ag,'market','eat','逛吃街市',tempoDur(w,ag,30),pickV(w,MARKET_THOUGHTS,ag,'lm'),'去周日街市买了份小吃');
     }else{
       const cost=thrifty?12:(generous?20:15);
       ag.money-=cost; ag.hunger=15;
-      setActivity(w,ag,'store_counter','eat','便利店就餐',20,
+      setActivity(w,ag,'store_counter','eat','便利店就餐',tempoDur(w,ag,20),
         thrifty?pickV(w,STORE_THRIFTY,ag,'lt'):(generous?pickV(w,STORE_GEN,ag,'lg'):pickV(w,STORE_PLAIN,ag,'lp')),
         '在便利店解决了一餐（¥'+cost+'）');
     }
@@ -666,18 +689,26 @@ function decide(w, ag){
     if(ag.flags.earlyWork && mod>=startBase) delete ag.flags.earlyWork;
     const slack=ag.traits.includes('摸鱼') && w.rng()<0.25;
     const label = slack?'上班（摸鱼中）':'上班';
-    const thought = slack?pickV(w,SLACK_THOUGHTS,ag,'ls'):pickV(w,WORK_THOUGHTS[ag.workKind],ag,'lw');
     const today=PURE.dayOf(w.t);
     const firstArrive=ag.flags.arrivedDay!==today;
     const logText = (ag.activity.type==='work')?null:(firstArrive?'到岗开始工作':'回到工位');
     if(logText!==null) ag.flags.arrivedDay=today;
+    // 独白节奏逐人化：概率照旧，外加最小间隔门（距该人上次工作独白不足 mutterGap 拍则跳过；
+    // 到岗/回到工位日志同样携带工作独白，一并刷新 lastMutterT）
+    const mutter = logText===null && w.rng()<0.35
+      && (w.t-(ag.lastMutterT||0)) >= ((ag.tempo||TEMPO_DEFAULT).mutterGap)*10;
+    // 只在会落日志时抽独白，未落日志的拍不消耗当日去重池
+    const thought = (logText!==null || mutter)
+      ? (slack?pickV(w,SLACK_THOUGHTS,ag,'ls'):pickV(w,WORK_THOUGHTS[ag.workKind],ag,'lw'))
+      : undefined;
+    if(logText!==null || mutter) ag.lastMutterT=w.t;
     setActivity(w,ag,ag.workAnchor,'work',label,60,thought,logText);
-    if(logText===null && w.rng()<0.35) logAct(w,ag,'工作中',thought);
+    if(mutter){ logAct(w,ag,'工作中',thought); }
     return;
   }
   // 4. 体力低 → 回家小憩
   if(ag.energy<ag.metab.napAt){
-    setActivity(w,ag,ag.bed,'nap','小憩',40,pickV(w,NAP_THOUGHTS,ag,'ln'),'回卧室小憩');
+    setActivity(w,ag,ag.bed,'nap','小憩',tempoDur(w,ag,40),pickV(w,NAP_THOUGHTS,ag,'ln'),'回卧室小憩');
     ag.energy=Math.min(100,ag.energy+18);
     return;
   }
@@ -700,16 +731,16 @@ function decide(w, ag){
   // 6. 周日街市 / 傍晚散步 / 在家待着
   const sunday=PURE.weekday(w.t)===6;
   if(sunday && mod>=10*60 && mod<17*60 && w.rng()<0.5){
-    setActivity(w,ag,'market','stroll','逛街市',40,'人挤人，但热闹是真热闹。','去周日街市逛逛');
+    setActivity(w,ag,'market','stroll','逛街市',tempoDur(w,ag,40),'人挤人，但热闹是真热闹。','去周日街市逛逛');
     return;
   }
   if(mod>=18.5*60 && mod<21*60 && w.rng()<0.3){
     const spot=w.rng()<0.5?'park_bench':'river_walk';
-    setActivity(w,ag,spot,'stroll','散步',40,pickV(w,STROLL_THOUGHTS,ag,'lo'),'出门散步');
+    setActivity(w,ag,spot,'stroll','散步',tempoDur(w,ag,40),pickV(w,STROLL_THOUGHTS,ag,'lo'),'出门散步');
     return;
   }
   const spot=w.rng()<0.5?'home_table':'home_tv';
-  setActivity(w,ag,spot,'idle','在家待着',30,pickV(w,IDLE_THOUGHTS,ag,'li'),null);
+  setActivity(w,ag,spot,'idle','在家待着',tempoDur(w,ag,30),pickV(w,IDLE_THOUGHTS,ag,'li'),null);
 }
 
 function advance10(w){

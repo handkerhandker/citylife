@@ -90,5 +90,37 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   ok(sg(w)===sg(w2),'存档续跑与原世界同命运');
   ok(Sim.hydrate('垃圾')===null && Sim.hydrate('{"sv":9}')===null,'坏档返回 null');
 }
+// --- 磨蹭错峰与当日去重 ---
+{
+  const w=Sim.makeWorld(11);
+  ok(w.agents.every(a=>a.tempo && isFinite(a.tempo.durMul)),'四人磨蹭参数就位');
+  const durs={};
+  let prev=w.agents.map(a=>a.activity.type);
+  for(let i=0;i<4320;i++){
+    Sim.step(w,10);
+    w.agents.forEach((a,j)=>{
+      if(a.activity.type!==prev[j]){ (durs[a.id]=durs[a.id]||[]).push(w.t); prev[j]=a.activity.type; }
+    });
+  }
+  ok(Object.keys(durs).length===4 && w.agents.every(a=>(durs[a.id]||[]).length>10),'活动切换可观测');
+  const dayTexts={};
+  let dup=0;
+  (w.log||[]).forEach(e=>{
+    if(!e||!e.name||!e.text) return;
+    if(!(e.text.indexOf('工作中')===0||e.text.indexOf('回到工位')===0||e.text.indexOf('到岗开始工作')===0)) return;
+    // 等价适配（附件C ※ 注）：独白正文在 e.thought 字段（e.text 仅为事件词），键补 thought，语义不降
+    const k=e.name+'|'+Math.floor(e.t/1440)+'|'+e.text+'|'+(e.thought||'');
+    if(dayTexts[k]) dup++; else dayTexts[k]=1;
+  });
+  ok(dup===0,'同人同日工作独白零复读');
+  const s=Sim.serialize(w,{k:1});
+  const d=JSON.parse(s);
+  d.world.agents.forEach(a=>{ delete a.tempo; });
+  delete d.world.saidDay;
+  const r=Sim.hydrate(JSON.stringify(d));
+  ok(!!r,'旧档（无新字段）可反序列化');
+  for(let i=0;i<300;i++) Sim.step(r.world,10);
+  ok(isFinite(r.world.t) && r.world.agents.every(a=>isFinite(a.hunger)),'旧档续跑 300 拍无异常');
+}
 console.log(fails? ('\n'+fails+' FAILURES') : '\nALL PASS');
 process.exit(fails?1:0);
