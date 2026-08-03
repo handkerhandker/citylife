@@ -604,7 +604,7 @@ function pickV(w,arr,ag,key){
   const day=PURE.dayOf(w.t);
   const k=ag.id+'|'+key;
   let rec=sd[k];
-  if(!rec || rec.d!==day){ rec=sd[k]={d:day, used:[]}; }
+  if(!rec || rec.d!==day || !Array.isArray(rec.used)){ rec=sd[k]={d:day, used:[]}; }   // used 畸形（篡改档过闸）视同新一天，绝不抛错
   let free=[];
   for(let i=0;i<arr.length;i++){ if(rec.used.indexOf(i)<0) free.push(i); }
   if(!free.length){ rec.used=[]; for(let i=0;i<arr.length;i++) free.push(i); }
