@@ -321,6 +321,11 @@ h2.sec:first-child{ margin-top:0; }
         <button class="btn small" id="set-motion" data-fx>关</button>
       </div>
       <div class="set-row">
+        <span class="lbl">像素画风<small>样板间试点：公寓真瓷砖；素材未就位时自动回落</small></span>
+        <button class="btn small" id="set-pix" data-fx>开</button>
+        <span class="num dim" id="set-pix-stat">—</span>
+      </div>
+      <div class="set-row">
         <span class="lbl">模拟速度<small>窄屏顶栏隐藏速度键时可在此切换</small></span>
         <button class="btn small" id="set-speed" data-fx>1×</button>
       </div>
@@ -363,7 +368,7 @@ h2.sec:first-child{ margin-top:0; }
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-        <span class="num dim" id="set-build">v19</span>
+        <span class="num dim" id="set-build">v20</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -380,6 +385,7 @@ h2.sec:first-child{ margin-top:0; }
       </div>
       <h2 class="sec">视口调试</h2>
       <div class="set-row"><span class="lbl">实时读数</span><span class="num dim" id="set-viewport">—</span></div>
+      <p class="faint" style="font-size:.72rem;margin:var(--sp4) 0 0">美术素材：Modern Interiors / Modern Exteriors by LimeZu（limezu.itch.io）</p>
     </section>
   </main>
 
@@ -934,7 +940,7 @@ const state={
 };
 for(const ag of state.world.agents){
   const a=Sim.ANCHORS[ag.anchor];
-  state.vis[ag.id]={x:a.x+0.5,y:a.y+0.5,path:[],anchor:ag.anchor};
+  state.vis[ag.id]={x:a.x+0.5,y:a.y+0.5,path:[],anchor:ag.anchor,dir:3,moving:false};
 }
 state.cam={fx:Sim.MAPW/2, fy:Sim.MAPH/2, manual:false};
 $('#set-seed').textContent=String(state.world.seed);
@@ -1646,6 +1652,30 @@ $('#set-llm').addEventListener('click',()=>{
   state.llm.status=state.llm.on?'待机':'已关闭'; syncLLMStat();
 });
 
+/* ---------- 像素画风：LimeZu 素材运行时侧载（样板间试点：公寓底图＋四住户行走帧，素材缺席自动回落） ---------- */
+const ASSET_BASE='https://assets.cydgames.com';   // 可调：素材站基址（独立「直接上传」型 EdgeOne Pages 项目，双项目分域）；改绑域名只改本行
+const PIX_ROOMS={living:1,kitchen:1,bedroom:1};   // 试点范围：公寓三间房由 apartment.png 整体接管（含门），其余房间照旧色块
+const APT={x:1,y:1,w:16,h:9};                     // apartment.png 覆盖的逻辑网格＝上面三间房的包围盒（单位：格）
+const PIX_IDX={a1:0,a2:1,a3:2,a4:3};              // characters.png 行序：每人两行（先 idle 行后 walk 行），每行 24 帧＝右/上/左/下各 6 帧
+const pix={on:true, apt:null, chars:null, ready:false, failed:false};   // 默认开；任一图失败→本局整体回退旧渲染
+function pixStatLine(){ const el=$('#set-pix-stat'); if(el) el.textContent=pix.failed?'素材未就位':(pix.ready?'已启用':'—'); }
+(function loadPixAssets(){
+  let left=2;
+  function done(){ if(--left===0){ pix.ready=!!(pix.apt&&pix.chars); pix.failed=!pix.ready; pixStatLine(); } }
+  function load(file,slot){
+    const img=new Image();               // 普通 Image 直载不带 crossOrigin：画布只画不读像素，接受受染标记（全文件无 getImageData/toDataURL）
+    img.onload=function(){ pix[slot]=img; done(); };
+    img.onerror=function(){ pix[slot]=null; done(); };
+    img.src=ASSET_BASE+'/'+file;
+  }
+  load('apartment.png','apt');
+  load('characters.png','chars');
+})();
+$('#set-pix').addEventListener('click',()=>{
+  pix.on=!pix.on;
+  $('#set-pix').textContent=pix.on?'开':'关';
+});
+
 /* ---------- 画布：DPR 适配 + 等比取景 + 屏幕空间文字 ---------- */
 const cv=$('#cv'), ctx=cv.getContext('2d');
 function resizeCanvas(){
@@ -1719,10 +1749,12 @@ function updateWalkers(dtSec){
       v.anchor=ag.anchor;
     }
     let budget=5.5*dtSec*mult;
+    v.moving=v.path.length>0 && budget>0;
     while(budget>0 && v.path.length){
       const p=v.path[0];
       const dx=p.x-v.x, dy=p.y-v.y;
       const d=Math.hypot(dx,dy);
+      if(d>1e-4) v.dir = Math.abs(dx)>=Math.abs(dy) ? (dx>0?0:2) : (dy>0?3:1);   // 0右 1上 2左 3下，静止保持最后朝向
       if(d<=budget){ v.x=p.x; v.y=p.y; v.path.shift(); budget-=d; }
       else { v.x+=dx/d*budget; v.y+=dy/d*budget; budget=0; }
     }
@@ -1741,8 +1773,15 @@ function draw(now){
   ctx.fillRect(sx(0),sy(Sim.STREET_Y-0.4),Sim.MAPW*s,1.9*s);
   ctx.fillStyle='#454f68';
   for(let x=1;x<Sim.MAPW;x+=2) ctx.fillRect(sx(x),sy(Sim.STREET_Y+0.5)-1,s*0.8,2);
+  // 像素画风：开关开且两图就绪才走贴图；否则完全走下方旧渲染路径（含加载中/加载失败/开关关）
+  const pixOn=pix.on&&pix.ready;
+  if(pixOn){
+    ctx.imageSmoothingEnabled=false;   // 像素素材禁平滑，保持硬边
+    ctx.drawImage(pix.apt, sx(APT.x), sy(APT.y), APT.w*s, APT.h*s);
+  }
   // 房间
   for(const r of Sim.ROOMS){
+    if(pixOn && PIX_ROOMS[r.id]) continue;   // 公寓三间（地板/墙/门）由拼合图接管，标签照旧
     ctx.fillStyle=r.fill;
     ctx.fillRect(sx(r.x),sy(r.y),r.w*s,r.h*s);
     ctx.strokeStyle=r.edge; ctx.lineWidth=2;
@@ -1768,6 +1807,25 @@ function draw(now){
   for(const ag of list){
     const v=state.vis[ag.id];
     const px=sx(v.x), py=sy(v.y);
+    const tag=ag.activity.type==='sleep'?ag.name+' 💤':ag.name;
+    // 只认自有键：裸索引会沿原型链取值（篡改档过闸的 id 可为 'constructor' 等），非 a1–a4 一律落旧色块路径
+    const ci=Object.prototype.hasOwnProperty.call(PIX_IDX,ag.id)?PIX_IDX[ag.id]:undefined;
+    if(pixOn && ci!==undefined){
+      // 帧几何随图自适应：列数 24、行数 8 写死，帧宽高由图尺寸推出（16/32/48px 档导出均可用）
+      const img=pix.chars, fw=img.width/24, fh=img.height/8;
+      const walking=!!v.moving;
+      const fi=Math.floor(now/1000*(walking?10:6))%6;        // 走路 10 帧/秒、静止 idle 6 帧/秒
+      const dir=(v.dir===undefined)?3:v.dir;
+      const dw=s, dh=(fh/fw)*s;                              // 帧宽＝1 格，高按帧比例（16×32 帧即 2 格高）
+      const dx0=px-dw/2, dy0=py+s*0.5-dh;                    // 脚底贴住所在格底边
+      if(ag.id===state.selected){
+        ctx.strokeStyle='#d9b96c'; ctx.lineWidth=2;
+        ctx.strokeRect(dx0-3,dy0-3,dw+6,dh+6);
+      }
+      ctx.drawImage(img,(dir*6+fi)*fw,(ci*2+(walking?1:0))*fh,fw,fh,dx0,dy0,dw,dh);
+      chip(px, dy0-4, tag, '#ece5d0', 10);
+      continue;
+    }
     const R=Math.max(4, s*0.42);
     if(ag.id===state.selected){
       ctx.strokeStyle='#d9b96c'; ctx.lineWidth=2;
@@ -1777,7 +1835,6 @@ function draw(now){
     ctx.fillRect(px-R-1,py-R-1,R*2+2,R*2+2);
     ctx.fillStyle=ag.color;
     ctx.fillRect(px-R,py-R,R*2,R*2);
-    const tag=ag.activity.type==='sleep'?ag.name+' 💤':ag.name;
     chip(px, py-R-4, tag, '#ece5d0', 10);
   }
   // 雨幕
@@ -1818,9 +1875,16 @@ cv.addEventListener('pointerup',e=>{
   const rect=cv.getBoundingClientRect();
   const cxp=e.clientX-rect.left, cyp=e.clientY-rect.top;
   let best=null,bd=1e9;
+  const pixTap=pix.on&&pix.ready;
   for(const ag of state.world.agents){
     const v=state.vis[ag.id];
-    const d=Math.hypot(sx(v.x)-cxp, sy(v.y)-cyp);
+    // 像素模式下精灵约 2 格高、脚底贴格底：测距锚点上移到精灵视觉中心，点头部同样可选（最近人＋半径逻辑不变，旧渲染不受影响）
+    let cyv=sy(v.y);
+    if(pixTap && Object.prototype.hasOwnProperty.call(PIX_IDX,ag.id)){
+      const fw=pix.chars.width/24, fh=pix.chars.height/8;
+      cyv += state.view.s*0.5 - (fh/fw)*state.view.s/2;
+    }
+    const d=Math.hypot(sx(v.x)-cxp, cyv-cyp);
     if(d<bd){bd=d;best=ag;}
   }
   if(best && bd<Math.max(18, state.view.s*0.9)){
