@@ -368,7 +368,7 @@ h2.sec:first-child{ margin-top:0; }
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-        <span class="num dim" id="set-build">v20</span>
+        <span class="num dim" id="set-build">v21</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -1653,7 +1653,7 @@ $('#set-llm').addEventListener('click',()=>{
 });
 
 /* ---------- 像素画风：LimeZu 素材运行时侧载（样板间试点：公寓底图＋四住户行走帧，素材缺席自动回落） ---------- */
-const ASSET_BASE='https://assets.cydgames.com';   // 可调：素材站基址（独立「直接上传」型 EdgeOne Pages 项目，双项目分域）；改绑域名只改本行
+const ASSET_BASE='assets';   // 可调：素材基址＝同源相对路径（成品随仓库一起部署，第 10 单补充指令二授权）；改回独立素材站只改本行
 const PIX_ROOMS={living:1,kitchen:1,bedroom:1};   // 试点范围：公寓三间房由 apartment.png 整体接管（含门），其余房间照旧色块
 const APT={x:1,y:1,w:16,h:9};                     // apartment.png 覆盖的逻辑网格＝上面三间房的包围盒（单位：格）
 const PIX_IDX={a1:0,a2:1,a3:2,a4:3};              // characters.png 行序：每人两行（先 idle 行后 walk 行），每行 24 帧＝右/上/左/下各 6 帧
