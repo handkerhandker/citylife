@@ -38,7 +38,7 @@ await page.evaluate(() => {
   const put = (id, x, y) => { const v = __pv.state.vis[id]; v.x = x; v.y = y; v.path = []; v.moving = false; };
   put('a1', 5.5, 9.5);    // 顾:客厅餐桌旁(home_table 站位)
   put('a2', 14.1, 9.5);   // 沈:灶台前(kitchen 站位)
-  put('a3', 11.5, 4.5);   // 陆:卧室门厅走道(床侧)
+  put('a3', 12.1, 4.5);   // 陆:卧室门厅走道(净道中线,零贴墙)
   put('a4', 17.5, 5.3);   // 白:卧室东下床位(毯面就寝位)
   __pv.state.world.speed = 0;
   __pv.state.cam.manual = true;

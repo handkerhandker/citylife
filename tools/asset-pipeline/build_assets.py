@@ -73,7 +73,7 @@ CORR_COLS = (10, 11)          # 纵廊两列 = 卧室门洞列 = 纵廊街口列
 DOOR_LIVING = (5, 6)          # 客厅底缘门洞图列(2 格)
 DOOR_KITCHEN = (15, 16)       # 厨房底缘门洞图列(2 格)
 WIN_LIVING = (191, 100)       # 客厅北墙窗(落位像素;窗属墙体构件层入基准)
-WIN_BEDROOM = (500, 4)        # 卧室北墙窗
+WIN_BEDROOM = (504, 4)        # 卧室北墙窗(西界墙整柱 480-501 以东,零叠墙)
 
 
 def region(gx, gy):
@@ -143,6 +143,61 @@ GAME_SOLID_CELLS = (
 
 def log(msg):
     print(msg, flush=True)
+
+
+# ------------------- 蓝图独立推导(第 11 单目验制度修补) -------------------
+# 根因:「空房仅墙」基准与成品同源生成,蓝图错则双双错、断言恒绿。
+# 修补:从 city-life-framework.html(SIM 块 ROOMS/APT,唯一权威蓝图)独立解析几何,
+# 推导墙段模型(房间四边闭合、仅门洞处留口),对基准图逐像素巡检;
+# 门洞位置与 door 字段逐一对账。本推导与上方拼装常量零共享。
+
+def parse_blueprint():
+    import re
+    html = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'city-life-framework.html')
+    s = open(html, encoding='utf-8').read()
+    sim = re.search(r'/\*SIM-START\*/([\s\S]*?)/\*SIM-END\*/', s).group(1)
+    rooms = {}
+    for m in re.finditer(r"\{id:'(\w+)',\s*label:'[^']*',\s*x:([\d.]+),\s*y:([\d.]+),"
+                         r"\s*w:([\d.]+),\s*h:([\d.]+),\s*door:\{x:([\d.]+),\s*side:'([bt])'", sim):
+        rooms[m.group(1)] = dict(x=float(m.group(2)), y=float(m.group(3)), w=float(m.group(4)),
+                                 h=float(m.group(5)), doorx=float(m.group(6)), side=m.group(7))
+    am = re.search(r'const APT=\{x:(\d+),y:(\d+),w:(\d+),h:(\d+)\}', s)
+    apt = dict(x=int(am.group(1)), y=int(am.group(2)), w=int(am.group(3)), h=int(am.group(4)))
+    return rooms, apt
+
+
+def derive_wall_model(rooms, apt):
+    """墙段模型:8 条墙线(图内像素),h 段带门洞登记;附纵廊推导矩形(世界坐标)。"""
+    lv, kt, bd = rooms['living'], rooms['kitchen'], rooms['bedroom']
+    px = lambda wx: int(round((wx - apt['x']) * C))
+    py = lambda wy: int(round((wy - apt['y']) * C))
+    south = apt['y'] + apt['h']
+    cor = dict(x0=float(int(bd['doorx'])), x1=float(int(bd['doorx'])) + 2, y0=bd['y'] + bd['h'], y1=south)
+    door2 = lambda r: (px(int(r['doorx'])), px(int(r['doorx']) + 2))
+    segs = [
+        dict(axis='v', pos=px(lv['x']),           lo=py(lv['y']), hi=py(south), gaps=[], label='V1 客厅西外墙 x=%g' % lv['x']),
+        dict(axis='v', pos=px(bd['x']),           lo=py(bd['y']), hi=py(south), gaps=[], label='V2 卧室西外墙+客厅|右翼界墙 x=%g(全高整柱)' % bd['x']),
+        dict(axis='v', pos=px(kt['x']),           lo=py(kt['y']), hi=py(south), gaps=[], label='V3 纵廊|厨房隔断 x=%g' % kt['x']),
+        dict(axis='v', pos=px(bd['x'] + bd['w']), lo=py(bd['y']), hi=py(south), gaps=[], label='V4 东外墙 x=%g' % (bd['x'] + bd['w'])),
+        dict(axis='h', pos=py(bd['y']),           lo=px(bd['x']), hi=px(bd['x'] + bd['w']), gaps=[], label='H1 卧室北墙 y=%g' % bd['y']),
+        dict(axis='h', pos=py(lv['y']),           lo=px(lv['x']), hi=px(lv['x'] + lv['w']), gaps=[], label='H2 客厅北墙 y=%g' % lv['y']),
+        dict(axis='h', pos=py(bd['y'] + bd['h']), lo=px(bd['x']), hi=px(bd['x'] + bd['w']),
+             gaps=[door2(bd)], label='H3 卧室南缘隔墙 y=%g(卧室门洞)' % (bd['y'] + bd['h'])),
+        dict(axis='h', pos=py(south),             lo=px(lv['x']), hi=px(bd['x'] + bd['w']),
+             gaps=[door2(lv), door2(bd), door2(kt)], label='H4 包围盒南缘 y=%g(客厅门/纵廊街口/厨房门)' % south),
+    ]
+    return segs, cor
+
+
+def zone_by_blueprint(rooms, cor, apt, gx, gy):
+    wx, wy = apt['x'] + gx + 0.5, apt['y'] + gy + 0.5
+    for k in ('living', 'kitchen', 'bedroom'):
+        r = rooms[k]
+        if r['x'] <= wx < r['x'] + r['w'] and r['y'] <= wy < r['y'] + r['h']:
+            return k
+    if cor['x0'] <= wx < cor['x1'] and cor['y0'] <= wy < cor['y1']:
+        return 'corridor'
+    return None
 
 
 def resolve_pack(args):
@@ -305,13 +360,13 @@ def build_apartment(root, out_dir):
     for gy in range(GRID_H):
         if gy >= LIVING_TOP_ROW:
             apt.alpha_composite(vtrim, (0, gy * C))                                   # 客厅西外缘
-            apt.alpha_composite(vtrim, (480 - 10, gy * C))                            # 客厅|右翼隔断柱(全高)
-        else:
-            apt.alpha_composite(vtrim, (480, gy * C))                                 # 卧室西外缘(客厅屋线以上)
+        # 卧室西墙=客厅|右翼界墙:自窗顶到房底同线连续整柱 x480-501(第 11 单目验返修一:
+        # 原上下两段错位 10px,沿卧室西边线呈断墙观感;归一后一条直墙,墙段闭合断言兜底)
+        apt.alpha_composite(vtrim, (480, gy * C))
         apt.alpha_composite(vtrim.transpose(Image.FLIP_LEFT_RIGHT), (W - 21, gy * C))  # 东外缘
         if gy >= PART_ROW:
             apt.alpha_composite(vtrim, (576 - 10, gy * C))                            # 纵廊|厨房隔断柱
-    log('  描边完成(底缘门洞 c5-6/c15-16 与纵廊街口 c10-11 已留)')
+    log('  描边完成(底缘门洞 c5-6/c15-16 与纵廊街口 c10-11 已留;西界墙全高同线整柱)')
 
     # 3.5) 墙面构件:窗户×2(挂墙件,属基准层非家具层;墙体完整性断言以本层完成后为基准)
     win = sheet(root, '1_Generic_48x48.png').crop((393, 2085, 468, 2145))
@@ -341,7 +396,7 @@ def build_apartment(root, out_dir):
 
 # -------------------------------- 自检 -------------------------------------
 
-def selfcheck(root, ch, ap, integrity, placed, baseline):
+def selfcheck(root, ch, ap, integrity, placed, baseline, bp):
     fails = []
     def ok(cond, msg):
         log(('  ok : ' if cond else '  FAIL: ') + msg)
@@ -403,8 +458,8 @@ def selfcheck(root, ch, ap, integrity, placed, baseline):
         strip_eq(gx * C, H - 18, (gx + 1) * C, H, f'门洞可走:客厅底缘 c{gx}(纯地板,无实墙无家具)')
     for gx in DOOR_KITCHEN:
         strip_eq(gx * C, H - 18, (gx + 1) * C, H, f'门洞可走:厨房底缘 c{gx}(纯地板,无实墙无家具)')
-    strip_eq(491, 2 * C, 566, H,
-             '纵廊净道可走(x491-566,r2-r10):卧室门厅→隔墙门洞→纵廊→街口全程纯地板(净宽 75px≥人宽 48px)')
+    strip_eq(501, 2 * C, 566, H,
+             '纵廊净道可走(x501-566,r2-r10):卧室门厅→隔墙门洞→纵廊→街口全程纯地板(净宽 65px≥人宽 48px)')
     # 纵廊全柱零家具:c10-11 全行成品与基准逐字节一致(基准含描边与窗,家具零改写)
     corr_ok = True
     for gx in CORR_COLS:
@@ -483,6 +538,93 @@ def selfcheck(root, ch, ap, integrity, placed, baseline):
                 if fin[xx, yy] != bl[xx, yy]:
                     viol += 1
     ok(viol == 0, f'墙体完整性:墙体像素 {wall_px} 处与空房仅墙基准逐像素一致(家具层零改写,违例 {viol})')
+
+    # —— 蓝图独立推导闭合巡检(制度修补):模型解析自 SIM 块 ROOMS/APT,与拼装常量零共享。
+    # 认证链:ROOMS 推导墙段模型 → 认证基准图(空房仅墙)四边闭合仅门洞留口
+    #        → 墙体完整性再保成品零改写基准 → 成品闭合性成立
+    rooms, aptbp = bp
+    ok((GRID_W, GRID_H) == (aptbp['w'], aptbp['h']),
+       f"蓝图对账:APT {aptbp['w']}×{aptbp['h']} = 画幅格数 {GRID_W}×{GRID_H}")
+    lv, kt, bd = rooms['living'], rooms['kitchen'], rooms['bedroom']
+    coh = (lv['x'] + lv['w'] == bd['x'] and bd['y'] + bd['h'] == kt['y']
+           and int(bd['doorx']) + 2 == kt['x']
+           and kt['x'] + kt['w'] == bd['x'] + bd['w'] == aptbp['x'] + aptbp['w']
+           and lv['y'] + lv['h'] == kt['y'] + kt['h'] == aptbp['y'] + aptbp['h'])
+    ok(coh, '蓝图几何自洽:客厅东缘=卧室西缘、卧室南缘=厨房北缘、纵廊东缘=厨房西缘、三区南/东缘归包围盒')
+    segs, cor = derive_wall_model(rooms, aptbp)
+    zone_ok = True
+    for gy in range(GRID_H):
+        for gx in range(GRID_W):
+            if zone_by_blueprint(rooms, cor, aptbp, gx, gy) != region(gx, gy):
+                zone_ok = False
+    ok(zone_ok, '分区对账:19×11 逐格分区(含纵廊与室外)与 ROOMS 独立推导逐格一致')
+    from PIL import ImageChops
+    dmask = None
+    for band in ImageChops.difference(baseline, floor_only).split():
+        b = band.point(lambda v: 255 if v else 0)
+        dmask = b if dmask is None else ImageChops.lighter(dmask, b)
+    def wallpx(x0, y0, x1, y1):
+        x0 = max(0, x0); y0 = max(0, y0); x1 = min(W, x1); y1 = min(H, y1)
+        if x1 <= x0 or y1 <= y0:
+            return 0
+        return dmask.crop((x0, y0, x1, y1)).histogram()[255]
+    log('—— 墙段逐段清点表(蓝图独立推导 · 8 线 4 门洞;基准=空房仅墙)——')
+    closure_ok = recon_ok = True
+    for sg in segs:
+        span = sg['hi'] - sg['lo']
+        breaks = 0
+        free = []
+        run = None
+        for t in range(sg['lo'], sg['hi']):
+            if sg['axis'] == 'v':
+                n = wallpx(sg['pos'] - 24, t, sg['pos'] + 24, t + 1)
+            else:
+                n = wallpx(t, sg['pos'] - 20, t + 1, sg['pos'] + 50)
+            if n >= 8:
+                if run:
+                    free.append(tuple(run)); run = None
+            else:
+                run = [t, t + 1] if run is None else [run[0], t + 1]
+                if not any(g0 - 2 <= t < g1 + 2 for g0, g1 in sg['gaps']):
+                    breaks += 1
+        if run:
+            free.append(tuple(run))
+        # 全段一致墙柱/墙带宽度:逐列(行)统计沿整段的墙覆盖率≥95% 的连续束宽
+        if sg['axis'] == 'v':
+            cols = [x for x in range(sg['pos'] - 24, sg['pos'] + 25)
+                    if span and wallpx(x, sg['lo'], x + 1, sg['hi']) >= 0.95 * span]
+            need = 18
+        else:
+            good = span - sum(g1 - g0 for g0, g1 in sg['gaps'])
+            def rowpx(y):
+                n = wallpx(sg['lo'], y, sg['hi'], y + 1)
+                for g0, g1 in sg['gaps']:
+                    n -= wallpx(g0, y, g1, y + 1)
+                return n
+            cols = [y for y in range(sg['pos'] - 20, sg['pos'] + 50) if good and rowpx(y) >= 0.95 * good]
+            need = 15
+        width = 0
+        cur = 0
+        prev = None
+        for c in cols:
+            cur = cur + 1 if prev is not None and c == prev + 1 else 1
+            width = max(width, cur)
+            prev = c
+        seg_ok = breaks == 0 and width >= need
+        if not seg_ok:
+            closure_ok = False
+        openings = []
+        for g0, g1 in sg['gaps']:
+            net = [f for f in free if f[0] >= g0 - 2 and f[1] <= g1 + 2 and f[1] - f[0] >= 48]
+            if len(net) != 1:
+                recon_ok = False
+            openings.append(net[0] if net else None)
+        gtxt = '' if not sg['gaps'] else ' 门洞:' + ','.join(
+            f"[{g0},{g1})净开口{(o[1] - o[0]) if o else 0}px" for (g0, g1), o in zip(sg['gaps'], openings))
+        log(f"  {'ok ' if seg_ok else 'FAIL'} {sg['label']}  范围[{sg['lo']},{sg['hi']})px"
+            f" 登记外断点{breaks}px 全段一致墙宽{width}px{gtxt}")
+    ok(closure_ok, '墙段闭合性:8 条墙线沿边界逐像素巡检,除登记门洞外无断点,全段一致墙宽达标(竖≥18px/横≥15px)')
+    ok(recon_ok, '门洞对账:全部门洞与 door 字段逐一对应,每洞恰一段≥48px 连续净开口,无登记外通口')
     return fails
 
 
@@ -506,7 +648,7 @@ def main():
     ch = build_characters(root, args.out)
     log('—— 机器拼房 ——')
     ap, integrity, placed, baseline = build_apartment(root, args.out)
-    fails = selfcheck(root, ch, ap, integrity, placed, baseline)
+    fails = selfcheck(root, ch, ap, integrity, placed, baseline, parse_blueprint())
     print_game_registry()
     if fails:
         log(f'\n自检未过 {len(fails)} 项,产物不可交付')
