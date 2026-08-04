@@ -14,6 +14,8 @@
       卧室经由它接街,零家具);厨房 c12-18×r6-10;左上 c0-9×r0-1 为室外(透明)
       三门洞各 2 格:客厅底缘 c5-6、厨房底缘 c15-16、卧室→纵廊(隔墙 r6 的 c10-11 缺口);
       纵廊街口 c10-11 底缘同宽敞开
+      两内连门各 2 格(第 16 单,同楼互访走纵廊不出楼门):客厅东墙 x=11 图行 r8-9、
+      厨房西墙 x=13 图行 r9-10;开洞法=该行不落竖描边,洞内即纯地板(与三门洞同法)
       家具按「整件登记表」四元组拼装(名称→源图区域→整件宽高→落位),四床整件
       零侵墙零侵纵廊零互叠、床间距≥1 格(48px),脚底占格避开全部门洞与纵廊
 
@@ -72,6 +74,14 @@ PART_ROW = 6                  # 厨房北隔墙带行(卧室与下层分界;c10-
 CORR_COLS = (10, 11)          # 纵廊两列 = 卧室门洞列 = 纵廊街口列
 DOOR_LIVING = (5, 6)          # 客厅底缘门洞图列(2 格)
 DOOR_KITCHEN = (15, 16)       # 厨房底缘门洞图列(2 格)
+# 内连门登记表(第 16 单):同楼房间互访经纵廊,故客厅东墙与厨房西墙各向纵廊开 2 格门洞。
+# 登记口径与既有三门洞一致(位置+跨度+可走断言);trim_x=该墙竖描边落位,rows=图行闭区间。
+# 对账口径:与游戏侧楼身分组表 BUILDING_PLAN.apt.link 的内连门走线逐一对账(见 selfcheck)。
+INNER_DOORS = (
+    dict(name='客厅东墙内连门', trim_x=480,      rows=(8, 9),  world_x=11, world_rows=(9, 10)),
+    dict(name='厨房西墙内连门', trim_x=576 - 10, rows=(9, 10), world_x=13, world_rows=(10, 11)),
+)
+INNER_SKIP = {(d['trim_x'], gy) for d in INNER_DOORS for gy in range(d['rows'][0], d['rows'][1] + 1)}
 WIN_LIVING = (191, 100)       # 客厅北墙窗(落位像素;窗属墙体构件层入基准)
 WIN_BEDROOM = (504, 4)        # 卧室北墙窗(西界墙整柱 480-501 以东,零叠墙)
 
@@ -166,6 +176,19 @@ def parse_blueprint():
     return rooms, apt
 
 
+def parse_building_plan():
+    """解析游戏侧楼身分组表的内连门走线(city-life-framework.html 为唯一权威),供内连门对账。"""
+    import re
+    html = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'city-life-framework.html')
+    s = open(html, encoding='utf-8').read()
+    blk = re.search(r'const BUILDING_PLAN=\{([\s\S]*?)\n\};', s).group(1)
+    hall_x = float(re.search(r'hallX:([\d.]+)', blk).group(1))
+    links = {}
+    for m in re.finditer(r"(\w+)\s*:\{gate:\{x:([\d.]+),\s*y:([\d.]+)\},\s*hy:([\d.]+)\}", blk):
+        links[m.group(1)] = dict(gx=float(m.group(2)), gy=float(m.group(3)), hy=float(m.group(4)))
+    return hall_x, links
+
+
 def derive_wall_model(rooms, apt):
     """墙段模型:8 条墙线(图内像素),h 段带门洞登记;附纵廊推导矩形(世界坐标)。"""
     lv, kt, bd = rooms['living'], rooms['kitchen'], rooms['bedroom']
@@ -174,10 +197,16 @@ def derive_wall_model(rooms, apt):
     south = apt['y'] + apt['h']
     cor = dict(x0=float(int(bd['doorx'])), x1=float(int(bd['doorx'])) + 2, y0=bd['y'] + bd['h'], y1=south)
     door2 = lambda r: (px(int(r['doorx'])), px(int(r['doorx']) + 2))
+    # 内连门在竖墙线上开口:gaps 取图内 y 像素区间(与 h 段的 x 区间同构)
+    def inner_gaps(wall_world_x):
+        return [(d['rows'][0] * C, (d['rows'][1] + 1) * C)
+                for d in INNER_DOORS if d['world_x'] == wall_world_x]
     segs = [
         dict(axis='v', pos=px(lv['x']),           lo=py(lv['y']), hi=py(south), gaps=[], label='V1 客厅西外墙 x=%g' % lv['x']),
-        dict(axis='v', pos=px(bd['x']),           lo=py(bd['y']), hi=py(south), gaps=[], label='V2 卧室西外墙+客厅|右翼界墙 x=%g(全高整柱)' % bd['x']),
-        dict(axis='v', pos=px(kt['x']),           lo=py(kt['y']), hi=py(south), gaps=[], label='V3 纵廊|厨房隔断 x=%g' % kt['x']),
+        dict(axis='v', pos=px(bd['x']),           lo=py(bd['y']), hi=py(south), gaps=inner_gaps(bd['x']),
+             label='V2 卧室西外墙+客厅|右翼界墙 x=%g(全高整柱,客厅东墙内连门)' % bd['x']),
+        dict(axis='v', pos=px(kt['x']),           lo=py(kt['y']), hi=py(south), gaps=inner_gaps(kt['x']),
+             label='V3 纵廊|厨房隔断 x=%g(厨房西墙内连门)' % kt['x']),
         dict(axis='v', pos=px(bd['x'] + bd['w']), lo=py(bd['y']), hi=py(south), gaps=[], label='V4 东外墙 x=%g' % (bd['x'] + bd['w'])),
         dict(axis='h', pos=py(bd['y']),           lo=px(bd['x']), hi=px(bd['x'] + bd['w']), gaps=[], label='H1 卧室北墙 y=%g' % bd['y']),
         dict(axis='h', pos=py(lv['y']),           lo=px(lv['x']), hi=px(lv['x'] + lv['w']), gaps=[], label='H2 客厅北墙 y=%g' % lv['y']),
@@ -362,11 +391,13 @@ def build_apartment(root, out_dir):
             apt.alpha_composite(vtrim, (0, gy * C))                                   # 客厅西外缘
         # 卧室西墙=客厅|右翼界墙:自窗顶到房底同线连续整柱 x480-501(第 11 单目验返修一:
         # 原上下两段错位 10px,沿卧室西边线呈断墙观感;归一后一条直墙,墙段闭合断言兜底)
-        apt.alpha_composite(vtrim, (480, gy * C))
+        if (480, gy) not in INNER_SKIP:                                               # 第 16 单:客厅东墙内连门 r8-9 不落描边
+            apt.alpha_composite(vtrim, (480, gy * C))
         apt.alpha_composite(vtrim.transpose(Image.FLIP_LEFT_RIGHT), (W - 21, gy * C))  # 东外缘
-        if gy >= PART_ROW:
+        if gy >= PART_ROW and (576 - 10, gy) not in INNER_SKIP:                       # 第 16 单:厨房西墙内连门 r9-10 不落描边
             apt.alpha_composite(vtrim, (576 - 10, gy * C))                            # 纵廊|厨房隔断柱
-    log('  描边完成(底缘门洞 c5-6/c15-16 与纵廊街口 c10-11 已留;西界墙全高同线整柱)')
+    log('  描边完成(底缘门洞 c5-6/c15-16 与纵廊街口 c10-11 已留;西界墙整柱在内连门 r8-9 处留口;'
+        '纵廊|厨房隔断柱在内连门 r9-10 处留口)')
 
     # 3.5) 墙面构件:窗户×2(挂墙件,属基准层非家具层;墙体完整性断言以本层完成后为基准)
     win = sheet(root, '1_Generic_48x48.png').crop((393, 2085, 468, 2145))
@@ -460,6 +491,13 @@ def selfcheck(root, ch, ap, integrity, placed, baseline, bp):
         strip_eq(gx * C, H - 18, (gx + 1) * C, H, f'门洞可走:厨房底缘 c{gx}(纯地板,无实墙无家具)')
     strip_eq(501, 2 * C, 566, H,
              '纵廊净道可走(x501-566,r2-r10):卧室门厅→隔墙门洞→纵廊→街口全程纯地板(净宽 65px≥人宽 48px)')
+    # 内连门可走(第 16 单):竖描边整柱宽度内、门洞行区间与纯地板铺装逐字节一致。
+    # 下缘 18px 为南墙自身的横描边带(规范二.5:描边属墙体厚度,不计入通道扣减),故净道验到 H-18 为止。
+    for d in INNER_DOORS:
+        y0, y1 = d['rows'][0] * C, min((d['rows'][1] + 1) * C, H - 18)
+        strip_eq(d['trim_x'], y0, d['trim_x'] + 21, y1,
+                 f"内连门可走:{d['name']}(x{d['trim_x']}-{d['trim_x'] + 21},r{d['rows'][0]}-{d['rows'][1]}"
+                 f",净开口 {y1 - y0}px≥人宽 48px,纯地板无实墙无家具)")
     # 纵廊全柱零家具:c10-11 全行成品与基准逐字节一致(基准含描边与窗,家具零改写)
     corr_ok = True
     for gx in CORR_COLS:
@@ -568,7 +606,21 @@ def selfcheck(root, ch, ap, integrity, placed, baseline, bp):
         if x1 <= x0 or y1 <= y0:
             return 0
         return dmask.crop((x0, y0, x1, y1)).histogram()[255]
-    log('—— 墙段逐段清点表(蓝图独立推导 · 8 线 4 门洞;基准=空房仅墙)——')
+    # 内连门对账:每洞恰对应楼身分组表一条穿墙走线(与三门洞对 door 字段同口径)
+    hall_x, links = parse_building_plan()
+    recon_inner = True
+    log('—— 内连门对账表(游戏侧楼身分组表 BUILDING_PLAN.apt.link 为权威)——')
+    for d in INNER_DOORS:
+        hits = [(k, v) for k, v in links.items()
+                if min(v['gx'], hall_x) < d['world_x'] < max(v['gx'], hall_x)
+                and d['world_rows'][0] <= int(v['gy']) <= d['world_rows'][1]]
+        if len(hits) != 1:
+            recon_inner = False
+        log(f"  {'ok ' if len(hits) == 1 else 'FAIL'} {d['name']}:世界 x={d['world_x']} "
+            f"行 {d['world_rows'][0]}-{d['world_rows'][1]} ← " +
+            (','.join(f"{k} 走线 gate x{v['gx']}→廊 x{hall_x} @y{v['gy']}" for k, v in hits) or '无对应走线'))
+    ok(recon_inner, '内连门对账:每洞恰对应楼身分组表一条内连走线,穿墙点落在洞内(与 door 字段对账口径一致)')
+    log('—— 墙段逐段清点表(蓝图独立推导 · 8 线 6 门洞;基准=空房仅墙)——')
     closure_ok = recon_ok = True
     for sg in segs:
         span = sg['hi'] - sg['lo']
@@ -591,8 +643,14 @@ def selfcheck(root, ch, ap, integrity, placed, baseline, bp):
             free.append(tuple(run))
         # 全段一致墙柱/墙带宽度:逐列(行)统计沿整段的墙覆盖率≥95% 的连续束宽
         if sg['axis'] == 'v':
-            cols = [x for x in range(sg['pos'] - 24, sg['pos'] + 25)
-                    if span and wallpx(x, sg['lo'], x + 1, sg['hi']) >= 0.95 * span]
+            # 与 h 段同构:登记门洞区间不计入墙宽统计(第 16 单起 v 段也带门洞)
+            good = span - sum(g1 - g0 for g0, g1 in sg['gaps'])
+            def colpx(x):
+                n = wallpx(x, sg['lo'], x + 1, sg['hi'])
+                for g0, g1 in sg['gaps']:
+                    n -= wallpx(x, g0, x + 1, g1)
+                return n
+            cols = [x for x in range(sg['pos'] - 24, sg['pos'] + 25) if good and colpx(x) >= 0.95 * good]
             need = 18
         else:
             good = span - sum(g1 - g0 for g0, g1 in sg['gaps'])
