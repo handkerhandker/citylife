@@ -368,7 +368,7 @@ h2.sec:first-child{ margin-top:0; }
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-        <span class="num dim" id="set-build">v25</span>
+        <span class="num dim" id="set-build">v26</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -1444,12 +1444,30 @@ refreshSaveLine();
 
 /* ---------- AI 层：三级兜底链（Claude 直连 → 同源中转站 /relay → 模板），给三处最该有灵魂的地方换脑 ---------- */
 function hungerWord(h){ return h>65?'很饿':h>40?'有点饿':'不饿'; }
+// —— 语言指纹降剂量（第 13 单）：提示词侧覆盖表，SIM 块 agents 卡 voice 原文零改动 ——
+// 口径写死：口头禅/职业口癖是偏好不是必答题（每 3-4 次发言至多 1 次）；开场句式必须轮换
+// （禁止连续两次同型开场）；比喻/起兴对象禁止与该角色上一次发言重复；性格底色（用词习惯、思维方式）不设限。
+const AI_VOICE={
+  a1:'短句，能三个字不说五个字；几乎不用叹号和表情；冷幽默。程序员词（跑通/复现/上线）是偏好不是必答题：每 3-4 次发言至多用 1 次。开场句式要换着来，禁止连续两次同型开场；打比方的对象禁止与你上次发言里的重复。短句冷幽默的性格底色不设限。',
+  a2:'话密热络，一条短信塞两件事，常带表情，句尾上扬。"哎呀/啦/哈哈"这类口头禅是偏好不是必答题：每 3-4 次发言至多出现 1 次，不许每次开口都"哎呀"打头。开场句式要换着来，禁止连续两次同型开场（尤其禁止连续感叹词开场、连续看景起兴开场）；比方和起兴对象（窗外的云、楼道的声音之类）禁止与你上次发言里的重复。热络爱聊的性格底色不设限。',
+  a3:'克制精准近公文，惜字如金，标点规范，零表情。数字/百分比/概率措辞是偏好不是必答题：每 3-4 次发言至多用 1 次，不许每次都报数。开场句式要换着来，禁止连续两次同型开场；比方（若有）的对象禁止与你上次发言里的重复。公文式克制的性格底色不设限。',
+  a4:'书面完整句，用词讲究偶尔文气，自嘲式幽默，不用网络缩写，节奏慢。文气意象是偏好不是必答题：每 3-4 次发言至多来 1 处，禁止意象堆叠。开场句式要换着来，禁止连续两次同型开场；比喻/意象的对象禁止与你上次发言里的重复。书面自嘲的性格底色不设限。',
+};
+// 短期记性（第 13 单）：记下该角色最近一条 ✨ 发言摘录（短信回复/对白/日记就近取最新），下次调用注入以避连招。
+// lastUtterance 属 DOM 层 AI 模块自有状态，挂 agent 随 serialize 全量拷贝入档；旧档无此字段→读取处 ||'' 兜底，绝不判坏档。
+function noteUtter(ag, text){
+  const t=String(text||'').replace(/\s+/g,' ').trim();
+  if(t) ag.lastUtterance=t.slice(0,80);
+}
 function agentCard(ag){
   const fear=(ag.money<300)?'凑不齐下个月房租':ag.fear;
   const recent=ag.personalLog.slice(-3).map(e=>e.text).join('；')||'（今天刚开始）';
+  const last=String(ag.lastUtterance||'').slice(0,80);   // 旧档/开局缺字段→空串，不注入
   return ag.name+'（'+ag.job+'）｜特质:'+ag.traits.join('/')+'｜心愿:'+ag.want+'｜担忧:'+fear
     +'｜钱包:¥'+Math.round(ag.money)+'｜'+hungerWord(ag.hunger)+'、体力'+Math.round(ag.energy)
-    +'｜正在:'+ag.activity.label+'｜说话方式:'+ag.voice+'｜最近:'+recent;
+    +'｜正在:'+ag.activity.label+'｜说话方式:'+(AI_VOICE[ag.id]||ag.voice)
+    +(last?'｜上次开口:「'+last+'」（硬性要求：本次开场句式、比喻/起兴对象都不得与这句雷同）':'')
+    +'｜最近:'+recent;
 }
 function syncLLMStat(){
   const L=state.llm;
@@ -1593,6 +1611,7 @@ async function enhanceMessage(e){
   patchLid(e);
   if(ag){
     const rep=(j && typeof j.reply==='string')?j.reply.trim():'';
+    noteUtter(ag, rep||(e.llm?e.thought:''));   // 回信原文优先，已读不回取 ✨ 内心独白；模板兜底不记
     if(rep) pushLog(w,{type:'player',sms:'reply',agent:ag.id,name:ag.name,text:'回了你的短信',thought:rep,llm:true});
     else pushLog(w,{type:'player',sms:'noreply',agent:ag.id,name:ag.name,text:'看了你的短信，没有回。'});
   }
@@ -1613,6 +1632,8 @@ async function enhanceChat(e){
   }
   if(j && Array.isArray(j.dialogue) && j.dialogue.length){
     e.thought=j.dialogue.map(s=>'「'+String(s)+'」').join(''); e.llm=true;
+    if(a) noteUtter(a, j.dialogue.filter((_,i)=>i%2===0).join(' '));   // 对白 A/B 轮替约定：偶数句归 A
+    if(b) noteUtter(b, j.dialogue.filter((_,i)=>i%2===1).join(' '));
     const t=w.t;
     if(a&&j.a_mem){ a.personalLog.push({t, text:'记在心里', thought:String(j.a_mem)}); if(a.personalLog.length>30) a.personalLog.shift(); }
     if(b&&j.b_mem){ b.personalLog.push({t, text:'记在心里', thought:String(j.b_mem)}); if(b.personalLog.length>30) b.personalLog.shift(); }
@@ -1640,7 +1661,7 @@ async function runReflection(){
   for(const ag of w.agents){
     const e=entries[ag.id];
     const txt=(j && typeof j[ag.id]==='string') ? j[ag.id].trim() : '';
-    if(txt){ e.thought=txt; e.llm=true; }
+    if(txt){ e.thought=txt; e.llm=true; noteUtter(ag, txt); }
     else { e.thought='（写了两行，没写下去，合上了本子。）'; }
     e.llmPending=false;
     patchLid(e);
