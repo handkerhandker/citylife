@@ -69,23 +69,22 @@ PART_ROW = 4                  # 隔墙所在行(卧室顶行)
 # 脚底占格红线:三门洞(图列 5/12 底缘、隔墙图列 12)与第 12 图列走廊(厨房门→卧室门直廊)零家具;
 # 客厅门线(图列 5 纵线)家具零占格(餐桌居 3-4 列,右椅镜像置于 6 列外侧)。
 FURNITURE = [
-    dict(name='tv',      sheet='2_LivingRoom_48x48.png', src=(99, 24, 189, 78),      size=(90, 54),   pos=(51, 36)),
+    dict(name='tv',      sheet='2_LivingRoom_48x48.png', src=(99, 24, 189, 78),      size=(90, 54),   pos=(51, 48)),
     dict(name='sofa',    sheet='2_LivingRoom_48x48.png', src=(192, 1359, 336, 1440), size=(144, 81),  pos=(24, 111)),
-    dict(name='shelf',   sheet='2_LivingRoom_48x48.png', src=(480, 1170, 576, 1272), size=(96, 102),  pos=(240, 38)),
-    dict(name='plant',   sheet='2_LivingRoom_48x48.png', src=(501, 27, 555, 96),     size=(54, 69),   pos=(22, 31)),
+    dict(name='shelf',   sheet='2_LivingRoom_48x48.png', src=(480, 1170, 576, 1272), size=(96, 102),  pos=(240, 48)),
+    dict(name='plant',   sheet='2_LivingRoom_48x48.png', src=(501, 27, 555, 96),     size=(54, 69),   pos=(22, 48)),
     dict(name='desk',    sheet='5_Classroom_and_library_48x48.png', src=(246, 69, 330, 144), size=(84, 75), pos=(342, 62)),
-    dict(name='window',  sheet='1_Generic_48x48.png',    src=(393, 2085, 468, 2145), size=(75, 60),   pos=(154, 4)),
     dict(name='chair_n', sheet='1_Generic_48x48.png',    src=(195, 2403, 237, 2460), size=(42, 57),   pos=(171, 139)),
     dict(name='chair_l', sheet='1_Generic_48x48.png',    src=(438, 2403, 477, 2466), size=(39, 63),   pos=(100, 203)),
     dict(name='chair_r', sheet='1_Generic_48x48.png',    src=(438, 2403, 477, 2466), size=(39, 63),   pos=(250, 203), flip=True),
     dict(name='table',   sheet='1_Generic_48x48.png',    src=(39, 1635, 153, 1746),  size=(114, 111), pos=(135, 184)),
-    dict(name='fridge',  sheet='12_Kitchen_48x48.png',   src=(432, 1125, 486, 1224), size=(54, 99),   pos=(480, 48)),
-    dict(name='stove',   sheet='12_Kitchen_48x48.png',   src=(384, 534, 432, 609),   size=(48, 75),   pos=(528, 72)),
-    dict(name='counter', sheet='12_Kitchen_48x48.png',   src=(96, 480, 192, 513),    size=(96, 33),   pos=(651, 93)),
+    dict(name='fridge',  sheet='12_Kitchen_48x48.png',   src=(432, 1125, 486, 1224), size=(54, 99),   pos=(693, 48)),
+    dict(name='stove',   sheet='12_Kitchen_48x48.png',   src=(384, 534, 432, 609),   size=(48, 75),   pos=(492, 72)),
+    dict(name='counter', sheet='12_Kitchen_48x48.png',   src=(96, 480, 192, 513),    size=(96, 33),   pos=(627, 58)),
     # 四床全部换用带床架的板床整件款(补充指令四:地铺款观感残缺弃用;板床仅三色,西列两张同款灰蓝,PR 声明)
-    dict(name='bed1',    sheet='4_Bedroom_48x48.png',    src=(147, 1863, 255, 1938), size=(108, 75),  pos=(467, 232)),
-    dict(name='bed2',    sheet='4_Bedroom_48x48.png',    src=(144, 1987, 252, 2112), size=(105, 75),  pos=(642, 232), clean=(2060, 2110, False)),
-    dict(name='bed3',    sheet='4_Bedroom_48x48.png',    src=(147, 1863, 255, 1938), size=(108, 75),  pos=(467, 337)),
+    dict(name='bed1',    sheet='4_Bedroom_48x48.png',    src=(147, 1863, 255, 1938), size=(108, 75),  pos=(468, 240)),
+    dict(name='bed2',    sheet='4_Bedroom_48x48.png',    src=(144, 1987, 252, 2112), size=(105, 75),  pos=(642, 240), clean=(2060, 2110, False)),
+    dict(name='bed3',    sheet='4_Bedroom_48x48.png',    src=(147, 1863, 255, 1938), size=(108, 75),  pos=(468, 337)),
     dict(name='bed4',    sheet='4_Bedroom_48x48.png',    src=(147, 2151, 255, 2226), size=(108, 75),  pos=(639, 337)),
 ]
 
@@ -96,9 +95,9 @@ GAME_FURN_TALL = [
     dict(name='shelf',   rect=(240, 38, 96, 102),  footY=3.917),
     dict(name='desk',    rect=(342, 62, 84, 75),   footY=3.854),
     dict(name='table',   rect=(135, 184, 114, 111), footY=7.146),
-    dict(name='fridge',  rect=(480, 48, 54, 99),   footY=4.063),
-    dict(name='stove',   rect=(528, 72, 48, 75),   footY=4.063),
-    dict(name='counter', rect=(651, 58, 96, 33),   footY=2.896),
+    dict(name='fridge',  rect=(693, 48, 54, 99),   footY=4.063),
+    dict(name='stove',   rect=(492, 72, 48, 75),   footY=4.063),
+    dict(name='counter', rect=(627, 58, 96, 33),   footY=2.896),
 ]
 # 实体格(人物脚底不得落入显示;世界格坐标):墙带 + 家具占格(床仅枕头格,毯面可躺)
 GAME_SOLID_CELLS = (
@@ -111,8 +110,8 @@ GAME_SOLID_CELLS = (
     [(1, 2)] +                                                # plant
     [(4, 5), (5, 5), (4, 6), (5, 6), (4, 7), (5, 7)] +        # table
     [(3, 6), (7, 6)] +                                        # chairs 左/右
-    [(11, 2), (11, 3)] +                                      # fridge
-    [(12, 2), (12, 3)] +                                      # stove
+    [(11, 2), (11, 3), (12, 2), (12, 3)] +                    # stove(西,贴隔断)
+    [(15, 2), (15, 3), (16, 2), (16, 3)] +                    # fridge(东,贴外墙)
     [(14, 2), (15, 2), (16, 2)] +                             # counter
     [(11, 6), (14, 6), (11, 8), (14, 8)]                      # 床枕头格
 )
@@ -278,8 +277,15 @@ def build_apartment(root, out_dir):
     for gy in range(GRID_H):
         apt.alpha_composite(vtrim, (0, gy * C))
         apt.alpha_composite(vtrim.transpose(Image.FLIP_LEFT_RIGHT), (W - 21, gy * C))
-        apt.alpha_composite(vtrim, (480 - 10, gy * C))
-    log('  描边完成(底缘两门洞已留:图列 5/12)')
+        if gy < 5:   # 客厅|右侧竖隔断柱只画到 y240=西床床头线(补充指令五:墙体不可侵占,西列 85px 放不下任何整床,柱短一段换床容身)
+            apt.alpha_composite(vtrim, (480 - 10, gy * C))
+    log('  描边完成(底缘两门洞已留:图列 5/12;竖隔断柱止于床头线 y240)')
+
+    # 3.5) 墙面构件:窗户(挂墙件,属基准层非家具层;墙体完整性断言以本层完成后为基准)
+    win = sheet(root, '1_Generic_48x48.png').crop((393, 2085, 468, 2145))
+    apt.alpha_composite(win, (154, 4))
+    baseline = apt.copy()   # 「空房仅墙」基准(地板+墙+描边+窗)
+    log('  墙面构件完成(窗户挂墙,入基准层)')
 
     # 4) 家具:按登记表整件落位(y 序落画,低者后画压高者);记录整件与落位供对外验真
     integrity = []
@@ -297,12 +303,12 @@ def build_apartment(root, out_dir):
 
     path = os.path.join(out_dir, 'apartment.png')
     apt.save(path)
-    return apt, integrity, placed
+    return apt, integrity, placed, baseline
 
 
 # -------------------------------- 自检 -------------------------------------
 
-def selfcheck(root, ch, ap, integrity, placed):
+def selfcheck(root, ch, ap, integrity, placed, baseline):
     fails = []
     def ok(cond, msg):
         log(('  ok : ' if cond else '  FAIL: ') + msg)
@@ -398,6 +404,23 @@ def selfcheck(root, ch, ap, integrity, placed):
         verify_ok = verify_ok and good
         log(f"  {'ok ' if good else 'FAIL'} {item['name']:8s} 源区{item['src']} 可见{vis_n}px 不符{bad}px")
     ok(verify_ok, '逐件对外验真:全部件可见像素与源样逐像素一致')
+    # 墙体完整性(补充指令五):墙体像素为不可侵占区——基准(空房仅墙)中属于墙/描边/窗的像素,
+    # 在成品中逐像素一致;墙体掩膜=基准与纯地板铺装的差异像素
+    floor_only = Image.new('RGBA', ap.size, (0, 0, 0, 0))
+    fl = {k: cell(rbim, *FLOOR[k]) for k in FLOOR}
+    for gy in range(GRID_H):
+        for gx in range(GRID_W):
+            k = 'living' if gx <= 9 else ('kitchen' if gy <= 3 else 'bedroom')
+            floor_only.alpha_composite(fl[k], (gx * C, gy * C))
+    fo, bl, fin = floor_only.load(), baseline.load(), ap.load()
+    wall_px = viol = 0
+    for yy in range(ap.size[1]):
+        for xx in range(ap.size[0]):
+            if bl[xx, yy] != fo[xx, yy]:
+                wall_px += 1
+                if fin[xx, yy] != bl[xx, yy]:
+                    viol += 1
+    ok(viol == 0, f'墙体完整性:墙体像素 {wall_px} 处与空房仅墙基准逐像素一致(家具层零改写,违例 {viol})')
     return fails
 
 
@@ -420,8 +443,8 @@ def main():
     log('—— 机器捏人 ——')
     ch = build_characters(root, args.out)
     log('—— 机器拼房 ——')
-    ap, integrity, placed = build_apartment(root, args.out)
-    fails = selfcheck(root, ch, ap, integrity, placed)
+    ap, integrity, placed, baseline = build_apartment(root, args.out)
+    fails = selfcheck(root, ch, ap, integrity, placed, baseline)
     print_game_registry()
     if fails:
         log(f'\n自检未过 {len(fails)} 项,产物不可交付')

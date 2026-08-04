@@ -54,6 +54,7 @@ async function shotRegion(name, wx0, wy0, wc, hc) {
   await page.screenshot({ path: path.join(OUT, `preview_${name}.png`), clip: reg });
   console.log(`preview_${name}.png 已输出`);
 }
+await shotRegion('full', 0.8, 0.8, 16.4, 9.4);      // 公寓全景(不裁边,补充指令五)
 await shotRegion('living', 0.7, 0.7, 10.6, 9.6);    // 客厅(含门洞下缘)
 await shotRegion('kitchen', 10.7, 0.7, 6.6, 4.8);   // 厨房(含隔墙门洞)
 await shotRegion('bedroom', 10.7, 4.2, 6.6, 6.2);   // 卧室(含底缘门洞)
