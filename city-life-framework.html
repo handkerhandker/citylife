@@ -368,7 +368,7 @@ h2.sec:first-child{ margin-top:0; }
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-        <span class="num dim" id="set-build">v22</span>
+        <span class="num dim" id="set-build">v24</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -1658,8 +1658,8 @@ const PIX_ROOMS={living:1,kitchen:1,bedroom:1};   // 试点范围：公寓三间
 const APT={x:1,y:1,w:16,h:9};                     // apartment.png 覆盖的逻辑网格＝上面三间房的包围盒（单位：格）
 const PIX_IDX={a1:0,a2:1,a3:2,a4:3};              // characters.png 行序：每人两行（先 idle 行后 walk 行），每行 24 帧＝右/上/左/下各 6 帧
 // —— 补充指令三(拼装引擎返修):高件家具层级与实体格钳制,均与 tools/asset-pipeline/build_assets.py 登记表联动 ——
-const PIX_FURN_TALL=[[24,111,144,81,5.000],[240,38,96,102,3.917],[342,62,84,75,3.854],[135,184,114,111,7.146],[480,69,54,75,4.000],[528,69,48,75,4.000],[651,58,96,33,2.896]];   // 高件家具:apartment.png 内矩形(x,y,w,h,脚底世界y);与人物混合按脚底 y 排序重绘该矩形形成遮挡
-const PIX_SOLID=new Set(['1,1','1,2','1,3','1,4','2,1','2,2','2,3','2,4','3,1','3,2','3,3','3,4','3,6','4,1','4,3','4,4','4,5','4,6','4,7','5,1','5,5','5,6','5,7','6,1','6,2','6,3','7,1','7,2','7,3','7,6','8,1','8,2','8,3','9,1','9,2','9,3','10,1','11,1','11,2','11,3','11,5','11,6','11,8','12,1','12,2','12,3','12,5','13,1','14,1','14,2','14,5','14,6','14,8','15,1','15,2','15,5','16,1','16,2','16,5']);   // 实体格(世界格 'x,y'):桌面/灶台面/床枕头/墙带等,人物脚底不得落入显示
+const PIX_FURN_TALL=[[24,111,144,81,5.000],[240,48,96,102,4.125],[342,62,84,75,3.854],[135,184,114,111,7.146],[693,48,54,99,4.063],[492,72,48,75,4.063],[627,58,96,33,2.896]];   // 高件家具:apartment.png 内矩形(x,y,w,h,脚底世界y);与人物混合按脚底 y 排序重绘该矩形形成遮挡
+const PIX_SOLID=new Set(['1,1','1,2','1,3','1,4','2,1','2,2','2,3','2,4','3,1','3,2','3,3','3,4','3,6','4,1','4,3','4,4','4,5','4,6','4,7','5,1','5,5','5,6','5,7','6,1','6,2','6,3','7,1','7,2','7,3','7,6','8,1','8,2','8,3','9,1','9,2','9,3','10,1','11,1','11,2','11,3','11,5','11,6','11,8','12,1','12,2','12,3','12,5','13,1','14,1','14,2','14,5','14,6','14,8','15,1','15,2','15,3','15,5','16,1','16,2','16,3','16,5']);   // 实体格(世界格 'x,y'):桌面/灶台面/床枕头/墙带等,人物脚底不得落入显示
 function pixStandPos(v){
   // 实体格钳制:仅改显示落点,SIM 坐标零改动(补充指令三);从脚底格找最近可站格(格心),扫描序固定保证确定性
   const fx=v.x, fy=v.y+0.5;
@@ -1821,7 +1821,18 @@ function draw(now){
   const dispPos={};
   for(const ag of state.world.agents){
     const v=state.vis[ag.id];
-    dispPos[ag.id]=(pixOn && Object.prototype.hasOwnProperty.call(PIX_IDX,ag.id)) ? pixStandPos(v) : {x:v.x,y:v.y};
+    if(!(pixOn && Object.prototype.hasOwnProperty.call(PIX_IDX,ag.id))){ v.dspX=v.x; v.dspY=v.y; dispPos[ag.id]={x:v.x,y:v.y}; continue; }
+    // 补充指令四:移动中零钳制(显示=SIM 插值原样为目标);仅静止时按登记落位;切换经限速短程滑动,禁跨格瞬现
+    let tx=v.x, ty=v.y;
+    if(!v.moving){ const q=pixStandPos(v); tx=q.x; ty=q.y; }
+    if(v.dspX===undefined || Math.hypot(tx-v.dspX,ty-v.dspY)>3){ v.dspX=tx; v.dspY=ty; }   // 初始化/传送级跳变直置
+    else{
+      const dx=tx-v.dspX, dy=ty-v.dspY, len=Math.hypot(dx,dy);
+      const cap=(5.5*(state.world.speed||1)+6)*dtFrame;   // SIM 本帧步长上限+过渡余量,保证追随不落后
+      if(len<=cap){ v.dspX=tx; v.dspY=ty; }
+      else{ v.dspX+=dx/len*cap; v.dspY+=dy/len*cap; }
+    }
+    dispPos[ag.id]={x:v.dspX,y:v.dspY};
   }
   const ents=state.world.agents.map(ag=>({kind:'a',ag,fy:dispPos[ag.id].y+0.5}));
   if(pixOn) for(const f of PIX_FURN_TALL) ents.push({kind:'f',f,fy:f[4]});
@@ -1907,11 +1918,9 @@ cv.addEventListener('pointerup',e=>{
   for(const ag of state.world.agents){
     const v=state.vis[ag.id];
     // 像素模式下精灵约 2 格高、脚底贴格底：测距锚点上移到精灵视觉中心，点头部同样可选（最近人＋半径逻辑不变，旧渲染不受影响）
-    // 测距基点与绘制同用钳制显示位(补充指令三:显示被钳制后可点性不退化)
+    // 测距基点与绘制同用平滑显示位(补充指令三/四:落位显示后可点性不退化)
     let vx=v.x, vy=v.y;
-    if(pixTap && Object.prototype.hasOwnProperty.call(PIX_IDX,ag.id)){
-      const q=pixStandPos(v); vx=q.x; vy=q.y;
-    }
+    if(pixTap && Object.prototype.hasOwnProperty.call(PIX_IDX,ag.id) && v.dspX!==undefined){ vx=v.dspX; vy=v.dspY; }
     let cyv=sy(vy);
     if(pixTap && Object.prototype.hasOwnProperty.call(PIX_IDX,ag.id)){
       const fw=pix.chars.width/24, fh=pix.chars.height/8;
