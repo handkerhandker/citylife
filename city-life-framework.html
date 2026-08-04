@@ -368,7 +368,7 @@ h2.sec:first-child{ margin-top:0; }
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-        <span class="num dim" id="set-build">v26</span>
+        <span class="num dim" id="set-build">v27</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -471,7 +471,7 @@ const PURE = {
 /*PURE-END*/
 
 /*SIM-START*/
-const TILE=16, MAPW=47, MAPH=24, STREET_Y=13;
+const TILE=16, MAPW=47, MAPH=28, STREET_Y=13;
 const ROOMS=[
   {id:'living', label:'公寓·客厅', x:1,  y:3, w:10, h:9, door:{x:6, side:'b'}, fill:'#242c3b', edge:'#4c5a78'},
   {id:'kitchen',label:'公寓·厨房', x:13, y:7, w:7,  h:5, door:{x:16,side:'b',via:'living'}, fill:'#28303f', edge:'#4c5a78'},
@@ -496,7 +496,7 @@ const ANCHORS={
   desk2:{room:'office',x:42.5,y:6,label:'公司·工位', s:'公司'},
   park_bench:{room:'park',x:8,y:19.5,label:'滨江公园·长椅', s:'公园'},
   river_walk:{room:'river',x:36,y:19.5,label:'江边步道', s:'江边'},
-  market:{room:'street',x:28,y:STREET_Y+0.5,label:'周日街市', s:'街市'},
+  market:{room:'street',x:22,y:19,label:'周日街市', s:'街市'},
 };
 const MSGS=[
   {id:'eat',  label:'记得吃饭'},
@@ -1756,6 +1756,54 @@ function chip(x,y,text,color,size){
   ctx.textAlign='center'; ctx.textBaseline='middle';
   ctx.fillText(text, x, y-6.5);
 }
+/* ---------- 云港城市总规 B 案骨架（第 16 单）：广场／江面／岸线的几何常量集中登记 ----------
+   数字以《云港城市总规》（docs/云港城市总规.md）B 图为准绳；房区几何与其余锚点零移动。
+   本组常量只供渲染层放样消费（SIM 不读），二期·室外篇铺装接手时以此为底图坐标。 */
+const PLAZA={x:18, y:15, w:9, h:8};                 // 广场 9×8：列 18–26 × 行 15–22（公园止列 17／步道起列 27 之间的唯一整块留白）
+const PLAZA_WAY={x:21, w:3};                        // T 竖净道＝T 口：列 21–23，宽 3 格（规范二.2 双人对向），北接动脉、南下岸线
+const PLAZA_STALL={x:18, w:2, y:15, h:2, n:3};      // 常设街市摊位 ×3：列 18–19，行 15–20 贴排（摊间不留缝，故不构成规范二.4 走道）
+const PLAZA_BROWSE={x:20, w:1};                     // 摊前驻足带：列 20（驻足人群独立成带，永不侵入净道；宽松口径见总规文档）
+const PLAZA_TALK={x:24, y:15, w:3, h:3};            // 夜谈角：列 24–26 × 行 15–17（周日夜谈聚集点，零新增锚点）
+const PLAZA_TREE={x:24, y:20, w:3, h:3};            // 江畔景观锚（大树）：列 24–26 × 行 20–22，南贴岸线
+const SHORE_Y=23;                                   // 岸线步道：第 23 行，贯通东西
+const RIVER_Y=24;                                   // 江面：第 24–27 行＝4 行落地（南锚，下缘恰为 MAPH）
+
+/* ---------- 楼身分组表与楼内连通（第 16 单）：同楼房间互访走内部路径，不出楼门、不上街 ----------
+   归属判定用集中登记的分组表（ROOMS 的 door.via 只有 kitchen 一条且卧室缺位，见总规文档「室内连通」节，
+   故取任务书许可的「等价楼身分组表」路线；door.via 字段本身零触碰）。表外房间一律按跨楼处理，照旧经动脉。 */
+const BUILDING_OF={living:'apt', kitchen:'apt', bedroom:'apt'};
+// 楼身内部骨架：公寓纵廊＝列 11–12 × 行 7–11（第 11 单甲案蓝图，素材说明「全程零家具」，卧室经它接街）。
+// gate＝房内连门点（房间一侧），hy＝该房接驳点在纵廊竖轴上的行位；纵廊竖轴唯一（hallX），故廊内纵走隐含成段。
+const BUILDING_PLAN={
+  apt:{
+    hallX:12.1,                                                  // 纵廊步行中线＝卧室 door.x+0.5（列 12），卧室出门即入廊
+    link:{
+      living :{gate:{x:10.5,y:10.5}, hy:10.5},                   // 客厅东墙内连门（行 9–10 净区）→ 门厅横轴 y=10.5
+      kitchen:{gate:{x:13.5,y:10.5}, hy:10.5},                   // 厨房西墙内连门（行 10–11 净区，避开贴隔断的灶台）→ 同一横轴
+      bedroom:{gate:{x:12.1,y:6.5},  hy:7.5},                    // 卧室南门洞（隔墙行 7 的列 11–12 缺口，既有门洞）→ 廊内
+    },
+  },
+};
+// 楼身包围盒由成员房间坐标推导（ROOMS 改坐标自动跟随，无第二处硬编码）：用于判定「人在楼内但不在任何房间」（纵廊内）。
+const BUILDING_BODY=(function(){
+  const m={};
+  for(const r of Sim.ROOMS){
+    const b=BUILDING_OF[r.id]; if(!b) continue;
+    const e=m[b]||(m[b]={x0:r.x,y0:r.y,x1:r.x+r.w,y1:r.y+r.h});
+    e.x0=Math.min(e.x0,r.x); e.y0=Math.min(e.y0,r.y);
+    e.x1=Math.max(e.x1,r.x+r.w); e.y1=Math.max(e.y1,r.y+r.h);
+    m[b]=e;
+  }
+  return m;
+})();
+function buildingAt(x,y,room){
+  if(room) return BUILDING_OF[room.id]||null;                    // 在某房间内：归属只认分组表
+  for(const id in BUILDING_BODY){                                // 不在任何房间：落在楼身包围盒内即算在楼内（纵廊/门厅）
+    const b=BUILDING_BODY[id];
+    if(x>=b.x0&&x<b.x1&&y>=b.y0&&y<b.y1) return id;
+  }
+  return null;
+}
 function buildPath(fromX,fromY,toAnchorId){
   const a=Sim.ANCHORS[toAnchorId];
   const pts=[];
@@ -1769,6 +1817,18 @@ function buildPath(fromX,fromY,toAnchorId){
     return r.door.side==='b' ? [{x:dx,y:r.y+r.h-0.5},{x:dx,y:sYc}] : [{x:dx,y:r.y+0.5},{x:dx,y:sYc}];
   }
   if(fromRoom && toRoom && fromRoom.id===toRoom.id){ pts.push(target); return pts; }
+  // 同楼内部连通：起讫同属一楼身时走纵廊/门厅，全程不出楼门、不触街心线（仅渲染走线，SIM 零改动）
+  const fromB=buildingAt(fromX,fromY,fromRoom), toB=toRoom?BUILDING_OF[toRoom.id]:null;
+  if(fromB && fromB===toB){
+    const plan=BUILDING_PLAN[fromB], from=fromRoom?plan.link[fromRoom.id]:null, to=plan.link[toRoom.id];
+    if(to && (from||!fromRoom)){                                  // 人已在纵廊内（不属任何房间）时无须房内出门段，直接上竖轴
+      if(from){ pts.push({x:from.gate.x,y:from.gate.y}); pts.push({x:plan.hallX,y:from.hy}); }
+      pts.push({x:plan.hallX,y:to.hy});
+      pts.push({x:to.gate.x,y:to.gate.y});
+      pts.push(target);
+      return pts.filter((p,i,arr)=>i===0||Math.abs(p.x-arr[i-1].x)>1e-9||Math.abs(p.y-arr[i-1].y)>1e-9);
+    }
+  }
   const out=doorOut(fromRoom); if(out) pts.push(...out);
   if(!fromRoom) pts.push({x:fromX,y:sYc});
   if(toRoom){
@@ -1814,6 +1874,29 @@ function draw(now){
   ctx.fillRect(sx(0),sy(Sim.STREET_Y-1),Sim.MAPW*s,3*s);
   ctx.fillStyle='#454f68';
   for(let x=1;x<Sim.MAPW;x+=2) ctx.fillRect(sx(x),sy(Sim.STREET_Y+0.5)-1,s*0.8,2);
+  // 云港城市总规 B 案骨架（第 16 单）：江面＝南锚 → 岸线步道贯通东西 → 广场＝中心节点（色块底图，二期·室外篇铺装接手）
+  ctx.fillStyle='#1b3757';
+  ctx.fillRect(sx(0),sy(RIVER_Y),Sim.MAPW*s,(Sim.MAPH-RIVER_Y)*s);
+  ctx.strokeStyle='rgba(150,190,225,.26)'; ctx.lineWidth=1;
+  ctx.beginPath();
+  for(let wy=RIVER_Y+0.55; wy<Sim.MAPH; wy+=1.1)
+    for(let wx=0; wx<Sim.MAPW; wx+=2.4){
+      ctx.moveTo(sx(wx),sy(wy));
+      ctx.quadraticCurveTo(sx(wx+1.2),sy(wy)+s*0.26,sx(wx+2.4),sy(wy));
+    }
+  ctx.stroke();
+  ctx.fillStyle='#3d4358';                                             // 岸线步道（第 23 行，贯通东西）
+  ctx.fillRect(sx(0),sy(SHORE_Y),Sim.MAPW*s,s);
+  ctx.fillStyle='#5a6480';                                             // 岸线护栏（贴江侧）
+  ctx.fillRect(sx(0),sy(SHORE_Y+1)-2,Sim.MAPW*s,2);
+  ctx.fillStyle='#363a55';                                             // 广场铺装 9×8
+  ctx.fillRect(sx(PLAZA.x),sy(PLAZA.y),PLAZA.w*s,PLAZA.h*s);
+  ctx.fillStyle='#3c4165';                                             // 摊前驻足带（列 20）
+  ctx.fillRect(sx(PLAZA_BROWSE.x),sy(PLAZA.y),PLAZA_BROWSE.w*s,PLAZA.h*s);
+  ctx.fillStyle='#434877';                                             // T 竖净道＝T 口（列 21–23，北接动脉、南下岸线）
+  ctx.fillRect(sx(PLAZA_WAY.x),sy(PLAZA.y),PLAZA_WAY.w*s,PLAZA.h*s);
+  ctx.strokeStyle='#5b5f8c'; ctx.lineWidth=2;                          // 广场边界
+  ctx.strokeRect(sx(PLAZA.x)+1,sy(PLAZA.y)+1,PLAZA.w*s-2,PLAZA.h*s-2);
   // 像素画风：开关开且两图就绪才走贴图；否则完全走下方旧渲染路径（含加载中/加载失败/开关关）
   const pixOn=pix.on&&pix.ready;
   if(pixOn){
@@ -1833,11 +1916,33 @@ function draw(now){
     if(r.door.side==='b') ctx.fillRect(sx(dx-0.5),sy(r.y+r.h)-3,s,4);
     else ctx.fillRect(sx(dx-0.5),sy(r.y)-1,s,4);
   }
-  // 周日街市摊位
-  if(PURE.weekday(state.world.t)===6){
+  // 广场常设件（B 案）：街市摊位 ×3 贴排于广场西列（已撤离步行动脉）＋夜谈角＋江畔景观锚；脚底全部 ≥ 行 15，零压主干道
+  for(let i=0;i<PLAZA_STALL.n;i++){
+    const ty=PLAZA_STALL.y+i*PLAZA_STALL.h;
     ctx.fillStyle='#b6924a';
-    for(let i=0;i<4;i++) ctx.fillRect(sx(24+i*2.2),sy(Sim.STREET_Y-0.2),1.4*s,0.5*s);
-    chip(sx(28),sy(Sim.STREET_Y-0.5),'周日街市','#d9b96c',10);
+    ctx.fillRect(sx(PLAZA_STALL.x)+2,sy(ty)+2,PLAZA_STALL.w*s-4,PLAZA_STALL.h*s-4);
+    ctx.fillStyle='#8a6d33';                                           // 摊棚
+    ctx.fillRect(sx(PLAZA_STALL.x)+2,sy(ty)+2,PLAZA_STALL.w*s-4,PLAZA_STALL.h*s*0.32);
+  }
+  ctx.fillStyle='#3f4a5e';                                             // 夜谈角（周日夜谈聚集点，复用广场东北角）
+  ctx.fillRect(sx(PLAZA_TALK.x)+2,sy(PLAZA_TALK.y)+2,PLAZA_TALK.w*s-4,PLAZA_TALK.h*s-4);
+  ctx.fillStyle='#d9b96c';                                             // 角上一盏灯
+  ctx.fillRect(sx(PLAZA_TALK.x+PLAZA_TALK.w/2)-1.5,sy(PLAZA_TALK.y+PLAZA_TALK.h/2)-1.5,3,3);
+  ctx.fillStyle='#6b4a2f';                                             // 江畔景观锚：树干
+  ctx.fillRect(sx(PLAZA_TREE.x+PLAZA_TREE.w/2)-s*0.09,sy(PLAZA_TREE.y+PLAZA_TREE.h*0.5),s*0.18,PLAZA_TREE.h*s*0.5-2);
+  ctx.fillStyle='#4f7a46';                                             // 江畔景观锚：树冠
+  ctx.beginPath();
+  ctx.arc(sx(PLAZA_TREE.x+PLAZA_TREE.w/2),sy(PLAZA_TREE.y+PLAZA_TREE.h*0.45),PLAZA_TREE.w*s*0.42,0,Math.PI*2);
+  ctx.fill();
+  // 广场／岸线／江面标签（屏幕空间字号，与房间标签同口径）
+  if(PLAZA.w*s>52){
+    chip(sx(PLAZA.x+PLAZA.w/2), sy(PLAZA.y)+16, '云港广场', '#b9b0d6', Math.max(9,Math.min(12, s*0.7)));
+    chip(sx(PLAZA_TALK.x+PLAZA_TALK.w/2), sy(PLAZA_TALK.y+PLAZA_TALK.h)-2, '夜谈角', '#9fb0c2', 9);
+    chip(sx(PLAZA_STALL.x+PLAZA_STALL.w/2), sy(PLAZA_STALL.y+PLAZA_STALL.n*PLAZA_STALL.h)+11, PURE.weekday(state.world.t)===6?'周日街市':'常设街市', '#d9b96c', 9);
+  }
+  if(Sim.MAPW*s>52){
+    chip(sx(6), sy(SHORE_Y)+13, '岸线步道', '#9aa4bb', 9);
+    chip(sx(Sim.MAPW/2), sy((RIVER_Y+Sim.MAPH)/2)+6, '江面', '#8fb4d9', Math.max(9,Math.min(12, s*0.7)));
   }
   // 房间标签（屏幕空间字号，任何缩放下可读）
   for(const r of Sim.ROOMS){
