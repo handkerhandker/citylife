@@ -79,13 +79,14 @@ FURNITURE = [
     dict(name='chair_l', sheet='1_Generic_48x48.png',    src=(438, 2403, 477, 2466), size=(39, 63),   pos=(100, 203)),
     dict(name='chair_r', sheet='1_Generic_48x48.png',    src=(438, 2403, 477, 2466), size=(39, 63),   pos=(250, 203), flip=True),
     dict(name='table',   sheet='1_Generic_48x48.png',    src=(39, 1635, 153, 1746),  size=(114, 111), pos=(135, 184)),
-    dict(name='fridge',  sheet='12_Kitchen_48x48.png',   src=(432, 1125, 486, 1200), size=(54, 75),   pos=(480, 69)),
-    dict(name='stove',   sheet='12_Kitchen_48x48.png',   src=(384, 534, 432, 609),   size=(48, 75),   pos=(528, 69)),
+    dict(name='fridge',  sheet='12_Kitchen_48x48.png',   src=(432, 1125, 486, 1224), size=(54, 99),   pos=(480, 48)),
+    dict(name='stove',   sheet='12_Kitchen_48x48.png',   src=(384, 534, 432, 609),   size=(48, 75),   pos=(528, 72)),
     dict(name='counter', sheet='12_Kitchen_48x48.png',   src=(96, 480, 192, 513),    size=(96, 33),   pos=(651, 93)),
-    dict(name='bed1',    sheet='4_Bedroom_48x48.png',    src=(0, 1858, 106, 1924),   size=(91, 52),   pos=(485, 255), clean=(1875, 1920, True)),
-    dict(name='bed2',    sheet='4_Bedroom_48x48.png',    src=(0, 2050, 106, 2116),   size=(91, 58),   pos=(640, 249), clean=(2067, 2112, True)),
-    dict(name='bed3',    sheet='4_Bedroom_48x48.png',    src=(0, 1954, 106, 2020),   size=(91, 58),   pos=(485, 354), clean=(1971, 2016, True)),
-    dict(name='bed4',    sheet='4_Bedroom_48x48.png',    src=(144, 1987, 252, 2112), size=(105, 75),  pos=(633, 339), clean=(2060, 2110, False)),
+    # 四床全部换用带床架的板床整件款(补充指令四:地铺款观感残缺弃用;板床仅三色,西列两张同款灰蓝,PR 声明)
+    dict(name='bed1',    sheet='4_Bedroom_48x48.png',    src=(147, 1863, 255, 1938), size=(108, 75),  pos=(467, 232)),
+    dict(name='bed2',    sheet='4_Bedroom_48x48.png',    src=(144, 1987, 252, 2112), size=(105, 75),  pos=(642, 232), clean=(2060, 2110, False)),
+    dict(name='bed3',    sheet='4_Bedroom_48x48.png',    src=(147, 1863, 255, 1938), size=(108, 75),  pos=(467, 337)),
+    dict(name='bed4',    sheet='4_Bedroom_48x48.png',    src=(147, 2151, 255, 2226), size=(108, 75),  pos=(639, 337)),
 ]
 
 # 游戏侧登记(与上表联动;世界格 = 图格 + 1;此两表须与 city-life-framework.html 硬编码一致):
@@ -95,8 +96,8 @@ GAME_FURN_TALL = [
     dict(name='shelf',   rect=(240, 38, 96, 102),  footY=3.917),
     dict(name='desk',    rect=(342, 62, 84, 75),   footY=3.854),
     dict(name='table',   rect=(135, 184, 114, 111), footY=7.146),
-    dict(name='fridge',  rect=(480, 69, 54, 75),   footY=4.000),
-    dict(name='stove',   rect=(528, 69, 48, 75),   footY=4.000),
+    dict(name='fridge',  rect=(480, 48, 54, 99),   footY=4.063),
+    dict(name='stove',   rect=(528, 72, 48, 75),   footY=4.063),
     dict(name='counter', rect=(651, 58, 96, 33),   footY=2.896),
 ]
 # 实体格(人物脚底不得落入显示;世界格坐标):墙带 + 家具占格(床仅枕头格,毯面可躺)
@@ -280,8 +281,9 @@ def build_apartment(root, out_dir):
         apt.alpha_composite(vtrim, (480 - 10, gy * C))
     log('  描边完成(底缘两门洞已留:图列 5/12)')
 
-    # 4) 家具:按登记表整件落位(y 序落画,低者后画压高者)
+    # 4) 家具:按登记表整件落位(y 序落画,低者后画压高者);记录整件与落位供对外验真
     integrity = []
+    placed = []
     for item in sorted(FURNITURE, key=lambda i: i['pos'][1] + i['size'][1]):
         piece = cut_piece(root, item)
         ew, eh = item['size']
@@ -289,17 +291,18 @@ def build_apartment(root, out_dir):
         ok_size = piece.size == (ew, eh)
         ok_fit = px_ >= 0 and py_ >= 0 and px_ + ew <= W and py_ + eh <= H
         integrity.append((item['name'], piece.size, (ew, eh), ok_size and ok_fit))
+        placed.append((item, piece))
         apt.alpha_composite(piece, (px_, py_))
     log('  家具整件落位完成(共 %d 件)' % len(FURNITURE))
 
     path = os.path.join(out_dir, 'apartment.png')
     apt.save(path)
-    return apt, integrity
+    return apt, integrity, placed
 
 
 # -------------------------------- 自检 -------------------------------------
 
-def selfcheck(root, ch, ap, integrity):
+def selfcheck(root, ch, ap, integrity, placed):
     fails = []
     def ok(cond, msg):
         log(('  ok : ' if cond else '  FAIL: ') + msg)
@@ -359,6 +362,42 @@ def selfcheck(root, ch, ap, integrity):
             all_ok = False
             log(f'       整件不符:{name} 实测 {got_sz} ≠ 登记 {exp_sz}')
     ok(all_ok, f'整件完整性:{len(integrity)} 件家具 bbox 尺寸=登记宽高(±0)且未越幅')
+    # 逐件对外验真(补充指令四):件的可见像素(未被后画件遮盖)在成品中与源样逐像素一致
+    log('—— 逐件对外验真表(件名/源区/可见像素/比对)——')
+    verify_ok = True
+    for idx, (item, piece) in enumerate(placed):
+        px_, py_ = item['pos']
+        pw, ph = piece.size
+        pa = piece.load()
+        covers = []
+        for j in range(idx + 1, len(placed)):
+            it2, pc2 = placed[j]
+            covers.append((it2['pos'][0], it2['pos'][1], pc2.size[0], pc2.size[1], pc2.load()))
+        aa = ap.load()
+        vis_n = 0
+        bad = 0
+        for yy in range(ph):
+            for xx in range(pw):
+                if pa[xx, yy][3] == 0:
+                    continue
+                gx, gy = px_ + xx, py_ + yy
+                covered = False
+                for (cx0, cy0, cw2, ch2, ca) in covers:
+                    if cx0 <= gx < cx0 + cw2 and cy0 <= gy < cy0 + ch2 and ca[gx - cx0, gy - cy0][3] > 0:
+                        covered = True
+                        break
+                if covered:
+                    continue
+                vis_n += 1
+                pr, pg, pb, p_al = pa[xx, yy]
+                if p_al == 255:
+                    if aa[gx, gy][:3] != (pr, pg, pb):
+                        bad += 1
+                # 半透明边缘像素与地板混色,跳过逐值比对(数量极少)
+        good = bad == 0
+        verify_ok = verify_ok and good
+        log(f"  {'ok ' if good else 'FAIL'} {item['name']:8s} 源区{item['src']} 可见{vis_n}px 不符{bad}px")
+    ok(verify_ok, '逐件对外验真:全部件可见像素与源样逐像素一致')
     return fails
 
 
@@ -381,8 +420,8 @@ def main():
     log('—— 机器捏人 ——')
     ch = build_characters(root, args.out)
     log('—— 机器拼房 ——')
-    ap, integrity = build_apartment(root, args.out)
-    fails = selfcheck(root, ch, ap, integrity)
+    ap, integrity, placed = build_apartment(root, args.out)
+    fails = selfcheck(root, ch, ap, integrity, placed)
     print_game_registry()
     if fails:
         log(f'\n自检未过 {len(fails)} 项,产物不可交付')
