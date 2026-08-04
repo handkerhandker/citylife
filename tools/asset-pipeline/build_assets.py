@@ -1,17 +1,18 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-素材流水线(第 10 单):从 LimeZu Modern Interiors 原包程序化产出两张成品图。
+素材流水线(第 10 单,含补充指令三·拼装引擎返修):
+从 LimeZu Modern Interiors 原包程序化产出两张成品图。
 
   产出 A characters.png(1152×768):四住户行走图,八行铁律
       行序 = 顾idle/顾walk/沈idle/沈walk/陆idle/陆walk/白idle/白walk
       每行 24 帧 = 面向右/上/左/下各 6 帧(生成器图层表原样顺序),帧 48×96,透明底
   产出 B apartment.png(768×432):公寓三间房拼合图,16×9 格 × 48px
-      布局表 = docs/素材制作说明.md 第三章(客厅 1-10 列、厨房 11-16×1-4、卧室 11-16×5-9,
-      三门洞:客厅下缘第 6 列、卧室下缘第 13 列、厨卧隔墙第 13 列)
+      布局表 = docs/素材制作说明.md 第三章;家具按「整件登记表」四元组拼装
+      (名称→源图区域→整件宽高→落位),脚底占格避开三门洞与第 12 图列走廊
 
 授权红线:本脚本只读原包、只出两张拼合成品;原包与其任何中间文件不入仓库、不上公网。
-原包位置经运行时参数/环境变量注入,仓库内零素材、零下载地址。
+原包位置经运行时参数/环境变量注入,仓库内(assets/ 两张成品之外)零素材、零下载地址。
 
 用法(二选一):
   python3 build_assets.py --zip /路径/moderninteriors-win.zip --out ./out
@@ -52,15 +53,68 @@ RESIDENTS = [  # 顺序铁律:a1 顾云帆、a2 沈小满、a3 陆知秋、a4 �
 ]
 
 # ---------------------------------------------------------------------------
-# 配方 B:公寓图块(Room_Builder 与 Theme_Sorter 表,均为 48px 档;坐标单位=48px 格)
+# 配方 B:公寓图块(Room_Builder 与 Theme_Sorter 表,均为 48px 档)
 GRID_W, GRID_H = 16, 9
 FLOOR = dict(living=(35, 22), kitchen=(47, 14), bedroom=(35, 30))  # 金木板/灰白棋盘/编木纹
 WALL_FACES = [0, 1, 2]        # 奶油墙面三连(Room_Builder 行 17,含白色压顶;踢脚线取行 18 底 6px)
 WALL_ROW_A, WALL_ROW_B = 17, 18
 HTRIM_CELL, VTRIM_CELL = (6, 0), (8, 0)   # 白色天花描边:横条(取上 18px)/竖条(取左 21px)
-DOOR_COLS = (5, 12)           # 底缘门洞(0 基列)= 布局表第 6 列、第 13 列
-PART_GAP_COL = 12             # 厨卧隔墙门洞(0 基)= 布局表第 13 列
+DOOR_COLS = (5, 12)           # 底缘门洞(0 基图列)= 布局表第 6 列、第 13 列
+PART_GAP_COL = 12             # 厨卧隔墙门洞(0 基图列)= 布局表第 13 列
 PART_ROW = 4                  # 隔墙所在行(卧室顶行)
+
+# 家具整件登记表(补充指令三·四元组):名称 → 源图区域(绝对像素) → 整件宽高 → 落位(左上角像素)
+# clean=(keep_y0, keep_y1, top_clip):源区内贴邻杂件经连通域清理;整件尺寸仍须与登记宽高恰等
+# flip=True:水平镜像(成对椅子,原包该组仅单朝向干净件)
+# 脚底占格红线:三门洞(图列 5/12 底缘、隔墙图列 12)与第 12 图列走廊(厨房门→卧室门直廊)零家具;
+# 客厅门线(图列 5 纵线)家具零占格(餐桌居 3-4 列,右椅镜像置于 6 列外侧)。
+FURNITURE = [
+    dict(name='tv',      sheet='2_LivingRoom_48x48.png', src=(99, 24, 189, 78),      size=(90, 54),   pos=(51, 36)),
+    dict(name='sofa',    sheet='2_LivingRoom_48x48.png', src=(192, 1359, 336, 1440), size=(144, 81),  pos=(24, 111)),
+    dict(name='shelf',   sheet='2_LivingRoom_48x48.png', src=(480, 1170, 576, 1272), size=(96, 102),  pos=(240, 38)),
+    dict(name='plant',   sheet='2_LivingRoom_48x48.png', src=(501, 27, 555, 96),     size=(54, 69),   pos=(22, 31)),
+    dict(name='desk',    sheet='5_Classroom_and_library_48x48.png', src=(246, 69, 330, 144), size=(84, 75), pos=(342, 62)),
+    dict(name='window',  sheet='1_Generic_48x48.png',    src=(393, 2085, 468, 2145), size=(75, 60),   pos=(154, 4)),
+    dict(name='chair_n', sheet='1_Generic_48x48.png',    src=(195, 2403, 237, 2460), size=(42, 57),   pos=(171, 139)),
+    dict(name='chair_l', sheet='1_Generic_48x48.png',    src=(438, 2403, 477, 2466), size=(39, 63),   pos=(100, 203)),
+    dict(name='chair_r', sheet='1_Generic_48x48.png',    src=(438, 2403, 477, 2466), size=(39, 63),   pos=(250, 203), flip=True),
+    dict(name='table',   sheet='1_Generic_48x48.png',    src=(39, 1635, 153, 1746),  size=(114, 111), pos=(135, 184)),
+    dict(name='fridge',  sheet='12_Kitchen_48x48.png',   src=(432, 1125, 486, 1200), size=(54, 75),   pos=(480, 69)),
+    dict(name='stove',   sheet='12_Kitchen_48x48.png',   src=(384, 534, 432, 609),   size=(48, 75),   pos=(528, 69)),
+    dict(name='counter', sheet='12_Kitchen_48x48.png',   src=(96, 480, 192, 513),    size=(96, 33),   pos=(651, 93)),
+    dict(name='bed1',    sheet='4_Bedroom_48x48.png',    src=(0, 1858, 106, 1924),   size=(91, 52),   pos=(485, 255), clean=(1875, 1920, True)),
+    dict(name='bed2',    sheet='4_Bedroom_48x48.png',    src=(0, 2050, 106, 2116),   size=(91, 58),   pos=(640, 249), clean=(2067, 2112, True)),
+    dict(name='bed3',    sheet='4_Bedroom_48x48.png',    src=(0, 1954, 106, 2020),   size=(91, 58),   pos=(485, 354), clean=(1971, 2016, True)),
+    dict(name='bed4',    sheet='4_Bedroom_48x48.png',    src=(144, 1987, 252, 2112), size=(105, 75),  pos=(633, 339), clean=(2060, 2110, False)),
+]
+
+# 游戏侧登记(与上表联动;世界格 = 图格 + 1;此两表须与 city-life-framework.html 硬编码一致):
+# 高件家具(tall,参与人物层级遮挡)的覆盖矩形(图像素)与脚底世界 y:
+GAME_FURN_TALL = [
+    dict(name='sofa',    rect=(24, 111, 144, 81),  footY=5.000),
+    dict(name='shelf',   rect=(240, 38, 96, 102),  footY=3.917),
+    dict(name='desk',    rect=(342, 62, 84, 75),   footY=3.854),
+    dict(name='table',   rect=(135, 184, 114, 111), footY=7.146),
+    dict(name='fridge',  rect=(480, 69, 54, 75),   footY=4.000),
+    dict(name='stove',   rect=(528, 69, 48, 75),   footY=4.000),
+    dict(name='counter', rect=(651, 58, 96, 33),   footY=2.896),
+]
+# 实体格(人物脚底不得落入显示;世界格坐标):墙带 + 家具占格(床仅枕头格,毯面可躺)
+GAME_SOLID_CELLS = (
+    [(x, 1) for x in range(1, 17)] +                          # 北墙带 row0(世界 y1)
+    [(x, 5) for x in (11, 12, 14, 15, 16)] +                  # 厨卧隔墙(留门洞列 13)
+    [(2, 2), (3, 2)] +                                        # tv
+    [(1, 3), (2, 3), (3, 3), (4, 3), (1, 4), (2, 4), (3, 4), (4, 4)] +  # sofa
+    [(6, 2), (7, 2), (6, 3), (7, 3)] +                        # shelf
+    [(8, 2), (9, 2), (8, 3), (9, 3)] +                        # desk
+    [(1, 2)] +                                                # plant
+    [(4, 5), (5, 5), (4, 6), (5, 6), (4, 7), (5, 7)] +        # table
+    [(3, 6), (7, 6)] +                                        # chairs 左/右
+    [(11, 2), (11, 3)] +                                      # fridge
+    [(12, 2), (12, 3)] +                                      # stove
+    [(14, 2), (15, 2), (16, 2)] +                             # counter
+    [(11, 6), (14, 6), (11, 8), (14, 8)]                      # 床枕头格
+)
 
 
 def log(msg):
@@ -78,7 +132,6 @@ def resolve_pack(args):
         log(f'解包 {os.path.basename(zip_path)} → 临时目录(用毕自弃,不入库)')
         with zipfile.ZipFile(zip_path) as z:
             z.extractall(pack_dir)
-    # 兼容 zip 内多一层目录的情况
     root = pack_dir
     need = '2_Characters'
     if not os.path.isdir(os.path.join(root, need)):
@@ -93,19 +146,13 @@ def resolve_pack(args):
 
 
 def inventory(root):
-    """盘点摘要(仅目录结构与数量,不含任何路径串以外的敏感信息)。"""
+    """盘点摘要(仅目录结构与数量)。"""
     log('—— 原包盘点 ——')
     for top in sorted(os.listdir(root)):
         p = os.path.join(root, top)
         if os.path.isdir(p):
             n = sum(len(fs) for _, _, fs in os.walk(p))
             log(f'  {top}/  共 {n} 个文件')
-    cg = os.path.join(root, '2_Characters/Character_Generator')
-    if os.path.isdir(cg):
-        for part in sorted(os.listdir(cg)):
-            q = os.path.join(cg, part, '48x48')
-            if os.path.isdir(q):
-                log(f'  部件 {part}: 48px 档 {len(os.listdir(q))} 件')
 
 
 # ------------------------------- characters -------------------------------
@@ -144,15 +191,9 @@ def cell(im, cx, cy, w=1, h=1):
     return im.crop((int(cx * C), int(cy * C), int((cx + w) * C), int((cy + h) * C)))
 
 
-def bbox_crop(im, x0, y0, x1, y1):
-    c = im.crop((int(x0 * C), int(y0 * C), int(x1 * C), int(y1 * C)))
-    return c.crop(c.getbbox())
-
-
-def clean_crop(im, x0, y0, x1, y1, keep_y0, keep_y1, top_clip=False):
-    """像素窗裁切(参数为绝对像素),仅保留与 [keep_y0,keep_y1) 纵带相交的 alpha 连通域;
-    top_clip 时把纵带上沿-9px 以上残留清除(床头顶线)。用于图集内贴邻摆放的家具。"""
-    c = im.crop((int(x0), int(y0), int(x1), int(y1)))
+def clean_components(c, keep_y0_local, keep_y1_local, top_clip):
+    """仅保留与 [keep_y0,keep_y1) 纵带(裁窗内坐标)相交的 alpha 连通域;
+    top_clip 时清除纵带上沿-9px 以上残留(床头顶线)。"""
     w, h = c.size
     px = c.load()
     seen = [[False] * w for _ in range(h)]
@@ -173,37 +214,37 @@ def clean_crop(im, x0, y0, x1, y1, keep_y0, keep_y1, top_clip=False):
                         seen[ny][nx] = True
                         stack.append((nx, ny))
             comps.append(comp)
-    ka, kb = keep_y0 - int(y0), keep_y1 - int(y0)
     for comp in comps:
-        if not any(ka <= y_ < kb for _, y_ in comp):
+        if not any(keep_y0_local <= y_ < keep_y1_local for _, y_ in comp):
             for x_, y_ in comp:
                 px[x_, y_] = (0, 0, 0, 0)
     if top_clip:
-        for yy in range(max(0, ka - 9)):
+        for yy in range(max(0, keep_y0_local - 9)):
             for xx in range(w):
                 px[xx, yy] = (0, 0, 0, 0)
-    return c.crop(c.getbbox())
+    return c
 
 
-def paste_c(canvas, item, cx_px, bottom_px):
-    canvas.alpha_composite(item, (int(cx_px - item.width / 2), int(bottom_px - item.height)))
-
-
-def paste_l(canvas, item, left_px, bottom_px):
-    canvas.alpha_composite(item, (int(left_px), int(bottom_px - item.height)))
+def cut_piece(root, item):
+    """按登记表整件裁切;返回收紧后的整件图(bbox 尺寸须与登记宽高恰等,由自检兜底)。"""
+    im = sheet(root, item['sheet'])
+    x0, y0, x1, y1 = item['src']
+    c = im.crop((x0, y0, x1, y1))
+    if 'clean' in item:
+        ka, kb, tclip = item['clean']
+        c = clean_components(c, ka - y0, kb - y0, tclip)
+    c = c.crop(c.getbbox())
+    if item.get('flip'):
+        c = c.transpose(Image.FLIP_LEFT_RIGHT)
+    return c
 
 
 def build_apartment(root, out_dir):
     rb = Image.open(os.path.join(root, '1_Interiors/48x48/Room_Builder_48x48.png')).convert('RGBA')
-    LV = sheet(root, '2_LivingRoom_48x48.png')
-    BD = sheet(root, '4_Bedroom_48x48.png')
-    KT = sheet(root, '12_Kitchen_48x48.png')
-    GN = sheet(root, '1_Generic_48x48.png')
-    CL = sheet(root, '5_Classroom_and_library_48x48.png')
     W, H = GRID_W * C, GRID_H * C
     apt = Image.new('RGBA', (W, H), (0, 0, 0, 0))
 
-    # 1) 地板:客厅金木板 / 厨房棋盘 / 卧室编木纹
+    # 1) 地板
     fl = {k: cell(rb, *v) for k, v in FLOOR.items()}
     for gy in range(GRID_H):
         for gx in range(GRID_W):
@@ -211,7 +252,7 @@ def build_apartment(root, out_dir):
             apt.alpha_composite(fl[k], (gx * C, gy * C))
     log('  地板铺装完成(三间房三种花色)')
 
-    # 2) 墙面:北墙 row0 全宽;厨卧隔墙 row4(留门洞);面砖含白压顶+踢脚线
+    # 2) 墙面
     def wall_tile(k):
         t = cell(rb, k, WALL_ROW_A).copy()
         t.alpha_composite(cell(rb, k, WALL_ROW_B).crop((0, C - 6, C, C)), (0, C - 6))
@@ -225,7 +266,7 @@ def build_apartment(root, out_dir):
         apt.alpha_composite(wt[gx % 3], (gx * C, PART_ROW * C))
     log('  墙面完成(北墙+厨卧隔墙,隔墙门洞已留)')
 
-    # 3) 白色天花描边:底缘(留两门洞)/左右外缘/客厅右侧竖隔断(骑缝 x=480)
+    # 3) 白色天花描边
     htrim = cell(rb, *HTRIM_CELL).crop((0, 0, C, 18))
     vtrim = cell(rb, *VTRIM_CELL).crop((0, 0, 21, C))
     htrim_b = htrim.transpose(Image.FLIP_TOP_BOTTOM)
@@ -237,49 +278,28 @@ def build_apartment(root, out_dir):
         apt.alpha_composite(vtrim, (0, gy * C))
         apt.alpha_composite(vtrim.transpose(Image.FLIP_LEFT_RIGHT), (W - 21, gy * C))
         apt.alpha_composite(vtrim, (480 - 10, gy * C))
-    log('  描边完成(底缘两门洞已留:第 6、13 列)')
+    log('  描边完成(底缘两门洞已留:图列 5/12)')
 
-    # 4) 家具(位置对应 SIM 锚点;下方后画压上方)
-    window = bbox_crop(GN, 8, 43, 10, 45)
-    apt.alpha_composite(window, (int(3 * C + (2 * C - window.width) / 2), 4))
-    paste_c(apt, bbox_crop(LV, 2, 0, 4, 2),  2.0 * C, 1.9 * C)     # 电视(锚点 home_tv)
-    paste_c(apt, bbox_crop(LV, 4, 28, 7, 30), 2.0 * C, 4.0 * C)    # 沙发
-    paste_c(apt, bbox_crop(LV, 10, 24, 12, 27), 6.0 * C, 2.9 * C)  # 书架
-    paste_c(apt, bbox_crop(CL, 5, 1, 7, 3),  8.0 * C, 2.85 * C)    # 写作角书桌(home_desk)
-    paste_c(apt, bbox_crop(LV, 10, 0, 12, 2), 0.75 * C, 2.1 * C)   # 盆栽
-    table = bbox_crop(GN, 0, 34, 3, 37)                            # 深木餐桌(home_table)
-    chair_r = bbox_crop(GN, 9, 50, 10, 52)
-    chair_l = chair_r.transpose(Image.FLIP_LEFT_RIGHT)             # 镜像成对
-    paste_c(apt, chair_r, 3.35 * C, 5.55 * C)
-    paste_c(apt, chair_l, 6.65 * C, 5.55 * C)
-    paste_c(apt, table, 5.0 * C, 6.15 * C)
-    paste_c(apt, bbox_crop(KT, 8, 10.7, 9, 13), 12.5 * C, 3.0 * C)   # 灶台(kitchen)
-    paste_c(apt, bbox_crop(KT, 2, 9, 3, 10.6), 13.5 * C, 2.75 * C)   # 料理台×2
-    paste_c(apt, bbox_crop(KT, 3, 9, 4, 10.6), 14.5 * C, 2.75 * C)
-    paste_c(apt, bbox_crop(KT, 9, 22, 10, 25), 15.4 * C, 2.95 * C)   # 冰箱
-    log('  客厅与厨房家具完成')
-
-    # 5) 四床(横置;bed1 顾西上 / bed2 沈东上 / bed3 陆西下 / bed4 白东下,四色各异)
-    beds = dict(
-        lightblue=clean_crop(BD, 0, 1858, 106, 1924, 1875, 1920, True),
-        sage=clean_crop(BD, 0, 1954, 106, 2020, 1971, 2016, True),
-        teal=clean_crop(BD, 0, 2050, 106, 2116, 2067, 2112, True),
-        yellow=clean_crop(BD, 144, 1987, 252, 2112, 2060, 2110),
-    )
-    paste_l(apt, beds['lightblue'], 494, 6.4 * C)
-    paste_l(apt, beds['teal'],      640, 6.4 * C)
-    paste_l(apt, beds['sage'],      494, 8.58 * C)
-    paste_l(apt, beds['yellow'],    633, 8.62 * C)
-    log('  卧室四床完成(走廊第 13 列全程无遮挡)')
+    # 4) 家具:按登记表整件落位(y 序落画,低者后画压高者)
+    integrity = []
+    for item in sorted(FURNITURE, key=lambda i: i['pos'][1] + i['size'][1]):
+        piece = cut_piece(root, item)
+        ew, eh = item['size']
+        px_, py_ = item['pos']
+        ok_size = piece.size == (ew, eh)
+        ok_fit = px_ >= 0 and py_ >= 0 and px_ + ew <= W and py_ + eh <= H
+        integrity.append((item['name'], piece.size, (ew, eh), ok_size and ok_fit))
+        apt.alpha_composite(piece, (px_, py_))
+    log('  家具整件落位完成(共 %d 件)' % len(FURNITURE))
 
     path = os.path.join(out_dir, 'apartment.png')
     apt.save(path)
-    return apt
+    return apt, integrity
 
 
 # -------------------------------- 自检 -------------------------------------
 
-def selfcheck(ch, ap):
+def selfcheck(root, ch, ap, integrity):
     fails = []
     def ok(cond, msg):
         log(('  ok : ' if cond else '  FAIL: ') + msg)
@@ -312,10 +332,9 @@ def selfcheck(ch, ap):
     ok(ap.size == (768, 432), f'尺寸恰为 768×432(实测 {ap.size[0]}×{ap.size[1]})')
     aa = ap.split()[3]
     ok(aa.getextrema()[0] == 255, '全幅不透明(公寓区无漏底)')
-    # 三门洞可走:门洞区域应与该房间地板图案逐像素一致,不得出现墙/描边像素
-    rbim = Image.open(os.path.join(_ROOT, '1_Interiors/48x48/Room_Builder_48x48.png')).convert('RGBA')
+    rbim = Image.open(os.path.join(root, '1_Interiors/48x48/Room_Builder_48x48.png')).convert('RGBA')
     def door_clear(gx, gy, floor_key, label):
-        got = ap.crop((gx * C, gy * C + C - 18, gx * C + C, (gy + 1) * C))  # 门洞下缘描边带位置
+        got = ap.crop((gx * C, gy * C + C - 18, gx * C + C, (gy + 1) * C))
         ref = cell(rbim, *FLOOR[floor_key]).crop((0, C - 18, C, C))
         ok(got.tobytes() == ref.tobytes(), f'门洞可走:{label}(该处为纯地板,无实墙)')
     door_clear(5, 8, 'living', '客厅下缘第 6 列')
@@ -323,27 +342,48 @@ def selfcheck(ch, ap):
     got = ap.crop((PART_GAP_COL * C, PART_ROW * C, (PART_GAP_COL + 1) * C, (PART_ROW + 1) * C))
     ref = cell(rbim, *FLOOR['bedroom'])
     ok(got.tobytes() == ref.tobytes(), '门洞可走:厨卧隔墙第 13 列(整格纯地板)')
+    # 走廊无家具:第 12 图列(世界 13 列)行 1-8 与地板逐字节一致(墙带行 0/描边带除外)
+    corr_ok = True
+    for gy in range(1, GRID_H):
+        seg_y1 = (gy + 1) * C - (18 if gy == GRID_H - 1 else 0)
+        got = ap.crop((PART_GAP_COL * C, gy * C, (PART_GAP_COL + 1) * C, seg_y1))
+        fk = 'kitchen' if gy <= 3 else 'bedroom'
+        ref = cell(rbim, *FLOOR[fk]).crop((0, 0, C, seg_y1 - gy * C))
+        if got.tobytes() != ref.tobytes():
+            corr_ok = False
+    ok(corr_ok, '第 13 列走廊(世界列)行 2-9 全程纯地板零家具')
+    # 整件完整性(补充指令三新增):逐件 bbox 尺寸 = 登记宽高(±0)且完整落于画幅内
+    all_ok = True
+    for name, got_sz, exp_sz, good in integrity:
+        if not good:
+            all_ok = False
+            log(f'       整件不符:{name} 实测 {got_sz} ≠ 登记 {exp_sz}')
+    ok(all_ok, f'整件完整性:{len(integrity)} 件家具 bbox 尺寸=登记宽高(±0)且未越幅')
     return fails
 
 
-_ROOT = None
+def print_game_registry():
+    """输出游戏侧硬编码登记(与 city-life-framework.html 内 FURN/SOLID 常量对照用)。"""
+    log('—— 游戏侧登记(对照 city-life-framework.html)——')
+    log('  FURN_TALL = ' + repr([(f['rect'], round(f['footY'], 3)) for f in GAME_FURN_TALL]))
+    log('  SOLID = ' + repr(sorted(GAME_SOLID_CELLS)))
+
 
 def main():
-    global _ROOT
     ap_ = argparse.ArgumentParser()
     ap_.add_argument('--zip')
     ap_.add_argument('--pack-dir')
     ap_.add_argument('--out', default=os.environ.get('CITYLIFE_OUT', './out'))
     args = ap_.parse_args()
     root = resolve_pack(args)
-    _ROOT = root
     os.makedirs(args.out, exist_ok=True)
     inventory(root)
     log('—— 机器捏人 ——')
     ch = build_characters(root, args.out)
     log('—— 机器拼房 ——')
-    ap = build_apartment(root, args.out)
-    fails = selfcheck(ch, ap)
+    ap, integrity = build_apartment(root, args.out)
+    fails = selfcheck(root, ch, ap, integrity)
+    print_game_registry()
     if fails:
         log(f'\n自检未过 {len(fails)} 项,产物不可交付')
         sys.exit(1)
