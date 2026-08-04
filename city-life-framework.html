@@ -368,7 +368,7 @@ h2.sec:first-child{ margin-top:0; }
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-        <span class="num dim" id="set-build">v21</span>
+        <span class="num dim" id="set-build">v22</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -1657,6 +1657,21 @@ const ASSET_BASE='assets';   // 可调：素材基址＝同源相对路径（成
 const PIX_ROOMS={living:1,kitchen:1,bedroom:1};   // 试点范围：公寓三间房由 apartment.png 整体接管（含门），其余房间照旧色块
 const APT={x:1,y:1,w:16,h:9};                     // apartment.png 覆盖的逻辑网格＝上面三间房的包围盒（单位：格）
 const PIX_IDX={a1:0,a2:1,a3:2,a4:3};              // characters.png 行序：每人两行（先 idle 行后 walk 行），每行 24 帧＝右/上/左/下各 6 帧
+// —— 补充指令三(拼装引擎返修):高件家具层级与实体格钳制,均与 tools/asset-pipeline/build_assets.py 登记表联动 ——
+const PIX_FURN_TALL=[[24,111,144,81,5.000],[240,38,96,102,3.917],[342,62,84,75,3.854],[135,184,114,111,7.146],[480,69,54,75,4.000],[528,69,48,75,4.000],[651,58,96,33,2.896]];   // 高件家具:apartment.png 内矩形(x,y,w,h,脚底世界y);与人物混合按脚底 y 排序重绘该矩形形成遮挡
+const PIX_SOLID=new Set(['1,1','1,2','1,3','1,4','2,1','2,2','2,3','2,4','3,1','3,2','3,3','3,4','3,6','4,1','4,3','4,4','4,5','4,6','4,7','5,1','5,5','5,6','5,7','6,1','6,2','6,3','7,1','7,2','7,3','7,6','8,1','8,2','8,3','9,1','9,2','9,3','10,1','11,1','11,2','11,3','11,5','11,6','11,8','12,1','12,2','12,3','12,5','13,1','14,1','14,2','14,5','14,6','14,8','15,1','15,2','15,5','16,1','16,2','16,5']);   // 实体格(世界格 'x,y'):桌面/灶台面/床枕头/墙带等,人物脚底不得落入显示
+function pixStandPos(v){
+  // 实体格钳制:仅改显示落点,SIM 坐标零改动(补充指令三);从脚底格找最近可站格(格心),扫描序固定保证确定性
+  const fx=v.x, fy=v.y+0.5;
+  if(!PIX_SOLID.has(Math.floor(fx)+','+Math.floor(fy))) return {x:v.x,y:v.y};
+  let best=null,bd=1e9;
+  for(let gy=APT.y;gy<APT.y+APT.h;gy++)for(let gx=APT.x;gx<APT.x+APT.w;gx++){
+    if(PIX_SOLID.has(gx+','+gy)) continue;
+    const d=(gx+0.5-fx)*(gx+0.5-fx)+(gy+0.5-fy)*(gy+0.5-fy);
+    if(d<bd-1e-9){bd=d;best={x:gx+0.5,y:gy};}
+  }
+  return best||{x:v.x,y:v.y};
+}
 const pix={on:true, apt:null, chars:null, ready:false, failed:false};   // 默认开；任一图失败→本局整体回退旧渲染
 function pixStatLine(){ const el=$('#set-pix-stat'); if(el) el.textContent=pix.failed?'素材未就位':(pix.ready?'已启用':'—'); }
 (function loadPixAssets(){
@@ -1802,11 +1817,24 @@ function draw(now){
   for(const r of Sim.ROOMS){
     if(r.w*s>52) chip(sx(r.x+r.w/2), sy(r.y)+16, r.label, '#aeb6c6', Math.max(9,Math.min(12, s*0.7)));
   }
-  // 小人
-  const list=state.world.agents.slice().sort((a,b)=>state.vis[a.id].y-state.vis[b.id].y);
-  for(const ag of list){
+  // 小人与高件家具:按脚底 y 统一排序绘制(补充指令三:靠下者后画形成正确遮挡;旧渲染路径不变)
+  const dispPos={};
+  for(const ag of state.world.agents){
     const v=state.vis[ag.id];
-    const px=sx(v.x), py=sy(v.y);
+    dispPos[ag.id]=(pixOn && Object.prototype.hasOwnProperty.call(PIX_IDX,ag.id)) ? pixStandPos(v) : {x:v.x,y:v.y};
+  }
+  const ents=state.world.agents.map(ag=>({kind:'a',ag,fy:dispPos[ag.id].y+0.5}));
+  if(pixOn) for(const f of PIX_FURN_TALL) ents.push({kind:'f',f,fy:f[4]});
+  ents.sort((a,b)=>a.fy-b.fy);
+  for(const en of ents){
+    if(en.kind==='f'){
+      const fr=en.f;
+      ctx.drawImage(pix.apt, fr[0],fr[1],fr[2],fr[3], sx(APT.x+fr[0]/48), sy(APT.y+fr[1]/48), fr[2]/48*s, fr[3]/48*s);
+      continue;
+    }
+    const ag=en.ag;
+    const v=state.vis[ag.id];
+    const px=sx(dispPos[ag.id].x), py=sy(dispPos[ag.id].y);
     const tag=ag.activity.type==='sleep'?ag.name+' 💤':ag.name;
     // 只认自有键：裸索引会沿原型链取值（篡改档过闸的 id 可为 'constructor' 等），非 a1–a4 一律落旧色块路径
     const ci=Object.prototype.hasOwnProperty.call(PIX_IDX,ag.id)?PIX_IDX[ag.id]:undefined;
@@ -1879,12 +1907,17 @@ cv.addEventListener('pointerup',e=>{
   for(const ag of state.world.agents){
     const v=state.vis[ag.id];
     // 像素模式下精灵约 2 格高、脚底贴格底：测距锚点上移到精灵视觉中心，点头部同样可选（最近人＋半径逻辑不变，旧渲染不受影响）
-    let cyv=sy(v.y);
+    // 测距基点与绘制同用钳制显示位(补充指令三:显示被钳制后可点性不退化)
+    let vx=v.x, vy=v.y;
+    if(pixTap && Object.prototype.hasOwnProperty.call(PIX_IDX,ag.id)){
+      const q=pixStandPos(v); vx=q.x; vy=q.y;
+    }
+    let cyv=sy(vy);
     if(pixTap && Object.prototype.hasOwnProperty.call(PIX_IDX,ag.id)){
       const fw=pix.chars.width/24, fh=pix.chars.height/8;
       cyv += state.view.s*0.5 - (fh/fw)*state.view.s/2;
     }
-    const d=Math.hypot(sx(v.x)-cxp, cyv-cyp);
+    const d=Math.hypot(sx(vx)-cxp, cyv-cyp);
     if(d<bd){bd=d;best=ag;}
   }
   if(best && bd<Math.max(18, state.view.s*0.9)){
