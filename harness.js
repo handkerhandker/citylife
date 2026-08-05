@@ -133,21 +133,21 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   ok(names.every(n=>mapText.indexOf(n)<0),'外围角色不进 ROOMS/ANCHORS');
   for(const k of ['work','clerk','trade','write']){
     const arr=tbl[k];
-    ok(Array.isArray(arr) && arr.length>=5 && arr.length<=7, '事件表 '+k+' 条数 '+(arr||[]).length+'（口径 5–7）');
-    const ks=new Set(arr.map(e=>e.k));
-    ok(ks.has('good')&&ks.has('bad'),'事件表 '+k+' 好坏俱全');
-    ok(arr.filter(e=>e.k==='flat').length===1,'事件表 '+k+' 恰好 1 条平淡档');
+    ok(Array.isArray(arr) && arr.length===7, '事件表 '+k+' 条数 '+(arr||[]).length+'（补充指令二口径：每人 7 条）');
+    const g1=arr.filter(e=>e.k==='good').length, b1=arr.filter(e=>e.k==='bad').length, f1=arr.filter(e=>e.k==='flat').length;
+    // 逐人好坏相等（补充指令二）：全城对半会让两人结构性偏逆、两人结构性偏顺，
+    // 30 天累积成境遇系统性分化，污染本单假说验收，故配平口径下沉到逐人
+    ok(g1===b1,'事件表 '+k+' 逐人好坏相等：'+g1+' 好 / '+b1+' 坏');
+    ok(f1===1,'事件表 '+k+' 恰好 1 条平淡档');
     // 铁律 3：外围角色是事件源不是人——事件条目只许有 k 与 text，不得携带独白/日程/画像等"人"的字段
     ok(arr.every(e=>typeof e.text==='string' && e.text && Object.keys(e).length===2),
        '事件表 '+k+' 每条仅 k+text 两字段（外围角色不得获得内心世界）');
   }
-  // 好坏配平（补充指令一）：6 条＝1 平＋5 好坏，5 为奇数故逐人对半不可能，落法为全城对半
   const all=['work','clerk','trade','write'].reduce((a,k)=>a.concat(tbl[k]),[]);
-  const g=all.filter(e=>e.k==='good').length, b=all.filter(e=>e.k==='bad').length, f=all.filter(e=>e.k==='flat').length;
-  ok(g===b,'全城好坏对半：'+g+' 好 / '+b+' 坏');
-  ok(f===4 && all.length===24,'四人各 6 条共 24 条，平淡档共 4 条：'+all.length+' 条 / '+f+' 平');
+  const f=all.filter(e=>e.k==='flat').length;
+  ok(all.length===28 && f===4,'全城 28 条含 4 平：'+all.length+' 条 / '+f+' 平');
   // 文案唯一：四表互不相交是 ②「四人同挂同一条」恒为 0 的结构前提
-  ok(new Set(all.map(e=>e.text)).size===24,'24 条文案互不重复（四表不相交）');
+  ok(new Set(all.map(e=>e.text)).size===28,'28 条文案互不重复（四表不相交）');
 }
 // --- 外围事件触发口径与处境状态（第 17 单） ---
 {
