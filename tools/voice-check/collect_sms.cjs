@@ -10,12 +10,15 @@ const APP=path.join(SP,'app_for_real.js');
 fs.writeFileSync(APP, src.match(/<script>([\s\S]*)<\/script>/)[1]);
 const {PURE, Sim}=require(APP);
 function grab(re,n){ const m=src.match(re); if(!m) throw new Error('抽取失败:'+n); return m[0]; }
-const mk=new Function('return (function(){'
+// 生产的 agentCard 读两个 DOM 层环境量：Sim（第 17 单起用 Sim.currentSit 取当天处境）与 state.world。
+// 如实供给同名环境量，被求值的仍是生产源码原文（详见 collect_diary.cjs 同处注释）。
+const vcState={world:null};
+const mk=new Function('Sim','state','return (function(){'
   +grab(/const AI_VOICE=\{[\s\S]*?\n\};/,'voice')+'\n'
   +grab(/function hungerWord\(h\)\{[^\n]*\}/,'hunger')+'\n'
   +grab(/const OPEN_KINDS=\[[\s\S]*?\nfunction styleAssign\(ag, hook\)\{[\s\S]*?\n\}/,'assign')+'\n'
   +grab(/function agentCard\(ag, hook\)\{[\s\S]*?\n\}/,'card')+'\nreturn {agentCard};})()');
-const {agentCard}=mk();
+const {agentCard}=mk(Sim, vcState);
 // enhanceMessage 的提示词表达式原文（形参 ag / msgLabel）
 const tpl=grab(/'你是都市生活模拟游戏里的角色，请完全入戏。[\s\S]*?"reply":"回的短信原文或空字符串"\}'/,'sms tpl');
 const build=new Function('ag','msgLabel','agentCard','return '+tpl.replace(/\(e\.msgLabel\|\|\(m\?m\.label:''\)\)/,'msgLabel'));
@@ -26,6 +29,7 @@ const cmd=process.argv[2];
 if(cmd==='init'){
   const w=Sim.makeWorld(20260803);
   for(let i=0;i<80;i++) Sim.step(w,10);
+  vcState.world=w;                       // agentCard 经 state.world 判定「当天」，取卡前先对齐世界
   const ag=w.agents.find(a=>a.id===ID);
   const prompt=build(ag, MSGS[0], function(a){return agentCard(a,'sms');});   // 先派活
   fs.writeFileSync(STATE, JSON.stringify({round:1, world:Sim.serialize(w,{}), gens:[]}));
@@ -34,6 +38,7 @@ if(cmd==='init'){
 } else if(cmd==='next'){
   const st=JSON.parse(fs.readFileSync(STATE,'utf8'));
   const w=Sim.hydrate(st.world).world;
+  vcState.world=w;                       // 同上：续轮同样先对齐
   const ag=w.agents.find(a=>a.id===ID);
   const rep=JSON.parse(process.argv[3]);
   const said=(typeof rep.reply==='string'&&rep.reply.trim())?rep.reply.trim():String(rep.inner||'').trim();
