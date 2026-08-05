@@ -416,6 +416,10 @@ const PURE = {
     const m=((t%1440)+1440)%1440;
     return String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0');
   },
+  // 第 19 单追加一：按时间排列的列表一律用本函数打时间戳——只印 HH:MM 会让跨天条目混叠
+  // （决策者实证：短信往来记录 04:40/05:40/06:30/03:30… 看似时间倒流，实为三个不同日子）。
+  // 格式对标既有先例：顶栏「D75 周四」与存档行「已存 · D75 12:30」，玩家已认这套 D 号词汇。
+  fmtStamp(t){ return 'D'+PURE.dayOf(t)+' '+PURE.fmtTime(t); },
   dayOf(t){ return Math.floor(t/1440)+1; },
   weekday(t){ return (PURE.dayOf(t)-1)%7; },           // 0=周一
   weekdayName(t){ return '一二三四五六日'[PURE.weekday(t)]; },
@@ -1257,7 +1261,7 @@ function logLine(e){
   const li=document.createElement('li');
   li.className=e.type||'act';
   if(e.lid) li.dataset.lid=e.lid;
-  li.innerHTML='<span class="lt num">'+PURE.fmtTime(e.t)+'</span><span class="ln">'+esc(e.name)+'</span>'
+  li.innerHTML='<span class="lt num">'+PURE.fmtStamp(e.t)+'</span><span class="ln">'+esc(e.name)+'</span>'
     +esc(e.text)+(e.thought?' <span class="lth">— '+(e.llm?'✨ ':'')+esc(e.thought)+'</span>':'');
   return li;
 }
@@ -1296,7 +1300,7 @@ function drainLog(){
       while(ph.children.length>14) ph.removeChild(ph.firstChild);
     }
     const mini=document.createElement('li');
-    mini.textContent=PURE.fmtTime(e.t)+' '+e.name+' '+e.text;
+    mini.textContent=PURE.fmtStamp(e.t)+' '+e.name+' '+e.text;
     ov.appendChild(mini);
     while(list.children.length>(state.logStick?200:400)) list.removeChild(list.firstChild);
     while(side.children.length>120) side.removeChild(side.firstChild);
@@ -1351,7 +1355,7 @@ $('#roles-grid').addEventListener('click', e=>{
 function openAgentDialog(id){
   const ag=state.world.agents.find(a=>a.id===id); if(!ag) return;
   const recent=ag.personalLog.slice(-5).reverse().map(e=>
-    '<li><span class="lt num">'+PURE.fmtTime(e.t)+'</span>'+esc(e.text)
+    '<li><span class="lt num">'+PURE.fmtStamp(e.t)+'</span>'+esc(e.text)
     +(e.thought?' <span class="lth">— '+esc(e.thought)+'</span>':'')+'</li>').join('')||'<li class="faint">还没有记录。</li>';
   openDialog(
     '<div class="dlg-head"><span class="grab"></span>'
@@ -1468,7 +1472,7 @@ function refreshSaveLine(){
   const el=$('#sv-stat'); if(!el) return;
   const txt = saveMode==='noStore' ? '本环境不可用'
     : saveMode==='ephemeral' ? '种子试玩中，不写档'
-    : lastSaveInfo ? '已存 · D'+PURE.dayOf(lastSaveInfo.t)+' '+PURE.fmtTime(lastSaveInfo.t)+' · '+fmtAgo(Date.now()-lastSaveInfo.at)+'前'
+    : lastSaveInfo ? '已存 · '+PURE.fmtStamp(lastSaveInfo.t)+' · '+fmtAgo(Date.now()-lastSaveInfo.at)+'前'
     : '未存档';
   if(el.textContent!==txt) el.textContent=txt;
 }
@@ -1644,9 +1648,20 @@ function styleAssign(ag, hook){
 // 「欸你看见…没」；v28 又直接退回原句），故本闸只看开场是不是拿语气词起手，
 // 不管后面接的是哪个具体短语——换词、换动词、换语气词一律照样拦。
 // ZHAO_EVERY 配额仍在，本闸是配额之外的兜底；至多重生成一次，失败即接受，受 AI_TIMEOUT 约束。
-// 可调：语气词起手表。条目可为一字或两字——「哈」单字会误伤哈尔滨/哈欠/哈密瓜一类实词，
-// 故只收「哈哈」；其余各字词首除语气词外无常用实词，单字即可判。
-const LEAD_INTERJ=['欸','诶','哎','唉','呀','哟','嘿','嗨','咦','哦','噢','喔','嗯','啊','呃','哈哈'];
+// —— 第 19 单追加二：补上「哈」这条缝（决策者实证，v29 线上）——
+// 沈小满两条回信「哈？买房？…」「哈，这话说得跟我妈似的…」从闸下钻过去了。
+// 病根是第 18 单自己登记在案的取舍：「哈」单字会误伤哈尔滨/哈欠/哈密瓜一类实词，故当时只收「哈哈」。
+// 治法仍只看结构、绝不改回禁词表（第 13 单与 v28 已两次实证禁词表可换词绕过）：
+// 把这类「既是语气词、又能作实词词首」的字单列一表，判据＝**看它后面跟的是什么**——
+// 跟标点或到句末（哈？／哈，／哈！／哈。／全句就一个哈）＝语气词，拦；
+// 跟汉字（哈尔滨／哈欠／哈密瓜）＝实词，放行。判的是字后的结构，不是字本身，也不是后面接的哪个词。
+// 可调：语气词起手表（无歧义者，单字即可判；条目可为一字或多字）。
+const LEAD_INTERJ=['欸','诶','哎','唉','呀','哟','嘿','嗨','咦','哦','噢','喔','嗯','啊','呃','哈哈','哈喽'];
+// 可调：歧义单字表——单字既是语气词又能作实词词首，故只在其后为标点或句末时才判为语气词。
+// 现仅「哈」一条：通查上表 16 条既有条目，其余各字词首除语气词外无常用实词，无同类缝隙可补。
+const LEAD_INTERJ_AMB=['哈'];
+// 可调：判「语气词收尾」的结构闸——标点、空白、或到句末（charAt 越界返回空串）。
+const LEAD_STOP=/[\s，。！？、；：,.!?;:~～…—－\-"'“”‘’「」『』（）()【】\[\]]/;
 const LEAD_SCAN=10;   // 可调：只看开场前 10 个字符（更靠后的语气词属句中用法，不拦，人味留着）
 // 先剥掉开头的引号／括号／空白（模型常把整句包在引号里），再看窗口内开头是不是语气词。
 const LEAD_TRIM=/^[\s"'“”‘’「」『』（(【\[—…·、,，.。!！?？~～\-]+/;
@@ -1654,6 +1669,12 @@ function leadsWithInterj(s){
   const t=String(s==null?'':s).replace(LEAD_TRIM,'').slice(0,LEAD_SCAN);
   if(!t) return false;
   for(let i=0;i<LEAD_INTERJ.length;i++) if(t.indexOf(LEAD_INTERJ[i])===0) return true;
+  for(let i=0;i<LEAD_INTERJ_AMB.length;i++){
+    const c=LEAD_INTERJ_AMB[i];
+    if(t.indexOf(c)!==0) continue;
+    const nx=t.charAt(c.length);                       // 越界＝句末，charAt 返回空串
+    if(nx==='' || LEAD_STOP.test(nx)) return true;     // 哈？／哈，／哈 ／哈｜句末 → 语气词，拦
+  }                                                    // 哈尔滨／哈欠／哈密瓜 → 实词，放行
   return false;
 }
 function chatLeadBad(d){   // 对白：A、B 各自的第一句都查（沈小满可能站在任一侧）
@@ -1668,7 +1689,7 @@ function reOpenKind(ag, hook){
   return pool[i];
 }
 function redoLead(who, kind){
-  return who+'改用【'+kind+'】这一类起手，第一句不许拿语气词开头（欸／诶／哎／呀／哟／嘿 这类一律不行），语气词要用就挪到句子中间。';
+  return who+'改用【'+kind+'】这一类起手，第一句不许拿语气词开头（欸／诶／哎／呀／哟／嘿／哈 这类一律不行），语气词要用就挪到句子中间。';
 }
 // 短期记性（第 13 单）：记下该角色最近一条 ✨ 发言摘录（短信回复/对白/日记就近取最新），下次调用注入以避连招。
 // lastUtterance 属 DOM 层 AI 模块自有状态，挂 agent 随 serialize 全量拷贝入档；旧档无此字段→读取处 ||'' 兜底，绝不判坏档。
