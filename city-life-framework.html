@@ -368,7 +368,7 @@ h2.sec:first-child{ margin-top:0; }
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-        <span class="num dim" id="set-build">v28</span>
+        <span class="num dim" id="set-build">v29</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -596,6 +596,29 @@ const CHAT_LINES=[
   ['你们公司最近忙吗？','别提了，比上个月还卷。'],
   ['我攒的钱又没到目标。','慢慢来，别学我月光。'],
 ];
+// —— 第 18 单·病症三：闲聊话题由代码派定（不再交给模型自选）——
+// 缘由（决策者实证，v28 线上）：七段闲聊全部围着冰箱转——酸奶／蛋炒饭／冰箱贴／速冻饺子／
+// 第三格鸡蛋／半盒奶；同一盒酸奶还跨三天反复过期（D26「刚扔了空瓶」→ D27「过期两天了」→
+// 当晚「还喝不喝」），已构成事实矛盾。机理：第 13 单代码只派「怎么开口」不派「聊什么」，
+// 话题归模型自选，模型必然收敛到公寓里最典型的那件物件。故话题也由代码派。
+// 走文风口径：类目写到「地点／事由」粒度即止，不写到具体物件，留足模型发挥空间。
+const TOPIC_POOL=[
+  '厨房与吃食','阳台与晾晒','楼道与门口','楼下街面（小店／摊子／路口）',
+  '天气与季节','各自的工作','钱与开销','作息与睡眠','邻居与楼里的人',
+];
+// 可调：全城最近 N 次派过的类不再派（撞上则顺延，照 styleAssign 撞类顺延先例）。
+// 必须 < TOPIC_POOL.length，否则无类可派；取 4 时每次至少留 5 个候选。
+const TOPIC_RECENT=4;
+// 记账挂世界（全城一本账，照 w.saidDay 先例）：w.chatTopics 存最近派过的下标，随 serialize 入档；
+// 旧档无此字段 → 从空账起，绝不判坏档。每次闲聊恰好消耗 1 次 rng（顺延为纯计算，不再抽）。
+function pickTopic(w){
+  const rec = Array.isArray(w.chatTopics) ? w.chatTopics : (w.chatTopics=[]);
+  let i=Math.floor(w.rng()*TOPIC_POOL.length);
+  for(let n=0; n<TOPIC_POOL.length && rec.indexOf(i)>=0; n++) i=(i+1)%TOPIC_POOL.length;
+  rec.push(i);
+  while(rec.length>TOPIC_RECENT) rec.shift();
+  return TOPIC_POOL[i];
+}
 const TEMPO_DEFAULT={durMul:1, durJit:2, mutterGap:6}; // 兜底：旧档/陌生 id 用（可调）
 function tempoNum(v,dft,lo,hi){ v=+v; return isFinite(v)?Math.min(hi,Math.max(lo,v)):dft; }
 function tempoDur(w,ag,base){
@@ -823,7 +846,10 @@ function decide(w, ag){
     const S=w.stats; (S.act[ag.id]=S.act[ag.id]||{})['chat']=(S.act[ag.id]['chat']||0)+1; (S.act[mate.id]=S.act[mate.id]||{})['chat']=(S.act[mate.id]['chat']||0)+1;
     const pk=[ag.id,mate.id].sort().join('+'); w.stats.pair[pk]=(w.stats.pair[pk]||0)+1;
     ag.relNotes++; mate.relNotes++;
-    pushLog(w,{type:'chat',agent:ag.id,name:ag.name,with:mate.id,
+    // 第 18 单·病症三：话题由代码派定并写进日志条目，AI 挂点（enhanceChat）照此拼提示词。
+    // 恰好消耗 1 次 rng——本条会位移 rng 流、sim30 指纹必变，任务书已授权并要求复报新旧值。
+    const topic=pickTopic(w);
+    pushLog(w,{type:'chat',agent:ag.id,name:ag.name,with:mate.id,topic,
       text:'和'+mate.name+'聊了几句',thought:'「'+line[0]+'」「'+line[1]+'」'});
     return;
   }
@@ -939,7 +965,7 @@ function hydrate(str){
   };
   return {world:w, meta:d.meta||null};
 }
-const Sim={makeWorld, step, sendMessage, sendCustomMessage, decide, MSGS, ANCHORS, ROOMS, TILE, MAPW, MAPH, STREET_Y, serialize, hydrate, SAVE_V, PEER_ROLE, PEER_EVENTS, SIT_TTL, currentSit};
+const Sim={makeWorld, step, sendMessage, sendCustomMessage, decide, MSGS, ANCHORS, ROOMS, TILE, MAPW, MAPH, STREET_Y, serialize, hydrate, SAVE_V, PEER_ROLE, PEER_EVENTS, SIT_TTL, currentSit, TOPIC_POOL, TOPIC_RECENT, pickTopic};
 /*SIM-END*/
 
 if(typeof document==='undefined'){ module.exports={PURE, Sim}; return; }
@@ -1545,11 +1571,28 @@ const AI_VOICE={
   a3:'克制精准近公文，惜字如金，标点规范，零表情。你的招牌起手式是报数（数字/百分比/概率措辞起手）。克制精准的性格底色不设限——限的是套路，不是人味。',
   a4:'书面完整句，用词讲究偶尔文气，自嘲式幽默，不用网络缩写，节奏慢。你的招牌起手式是文气意象起手（景物/器物入题那套）。书面自嘲的性格底色不设限——限的是套路，不是人味。',
 };
+// —— 第 18 单·病症一：处境状态上卡只给档位标签，不给事件原文 ——
+// 实证（决策者截图，v28 线上）：顾云帆日记「组长在群里夸我，我差点以为点错窗口了。」、
+// 陆知秋日记「另外，客户那通电话，我挂了之后想了很久。」——两条都是 PEER_EVENTS 原条目被逐字搬进日记，
+// 第 17 单铁律 1（这是底色不是内容）当场破功。机理已证实：卡上除这条事件文案外再无当天专属的具体信息，
+// 信息越稀缺越会被复述，故加强禁令措辞或降低注入强度都治不好——模型没有别的具体东西可说。
+// 治法＝把话语权从模型手里收回代码：卡上改只写档位标签，ag.sit.text 一律不上卡。
+// 模型将不知道今天发生了什么，只知道该用什么语气，从结构上无从复述。
+// ag.sit.text 仍留在世界状态里（后续日报／剪辑要用），只是不喂 AI。harness 逐条正则扫 28 条事件文案卡死。
+const SIT_MOOD={good:'今天挺顺', bad:'今天不太顺', flat:'今天平平淡淡'};   // 可调：处境档位 → 上卡的心境标签（顺／逆／平淡）
 // 代码派活：开场四类轮转 + 招牌/明喻配额发放。逐人记账挂 agent（aiTurn 计数、lastOpenKind 上次派的类），
 // 随 serialize 入档；旧档缺省 → aiTurn 从 0 起、lastOpenKind 空，绝不判坏档（照 lastUtterance 先例）。
 // 轮转规则：固定序按 aiTurn 取，撞上次派的类则顺延一位 → 保证相邻不同类、连续四次覆盖满四类。
 // 配额规则：每 5 次发 1 次招牌许可、每 3 次发 1 次明喻许可（错开落点，避免同一次既招牌又明喻）。
 const OPEN_KINDS=['直接说事','抱怨吐槽','直接问对方','接对方上次的话往下聊'];
+// 第 18 单·病症四：日记专用开场类目池。缘由（机理已由代码证实，非假说）：上表四类里
+// 「直接问对方」「接对方上次的话往下聊」本身就是对话指令，第 17 单起被原样派给日记挂点，
+// 等于代码在教模型把日记写成对话体——决策者实证的两段（沈小满「你明早去公司吗？帮我带…呗」、
+// 陆知秋「你刚才说散步到第三个路口才想起没带钥匙」）正是这两类的产物；后者复述的那句
+// 是 STROLL_THOUGHTS 模板独白原文，经「今日片段」上卡后被「接对方上次的话」误读成了别人说的话。
+// 故日记走本池：四类全是「写给自己」的起手，一个都不带第二人称／提问／承接他人话语。
+// 数量与 OPEN_KINDS 同为 4，保住日记提示词「四段必须风格迥异」赖以成立的四人四类分配前提。
+const DIARY_OPEN_KINDS=['直接说事','抱怨吐槽','从今天的一个具体画面写起','从此刻身上的感觉写起'];
 const ZHAO_EVERY=5, SIMILE_EVERY=3;   // 可调：招牌/明喻许可的发放周期（次）
 // 逐人相位偏移：四人 aiTurn 常同步推进（日记为四人一车），无偏移会让同一批四人派到同一类，
 // 与日记提示词「四段必须风格迥异」相冲。按 id 字符和取偏移，确定性且对陌生 id 也成立。
@@ -1560,30 +1603,72 @@ function styleOffset(ag){
 }
 function styleAssign(ag, hook){
   // hook: 'sms' 回信（情境天然是承接来信，不派轮转，只管两项配额）｜'chat' 对白｜'diary' 日记
+  // 第 18 单·病症四：日记挂点单独收紧——池换 DIARY_OPEN_KINDS，且不发招牌许可。
+  // 招牌是「起手式」＝开口跟人说话的套路，日记不是开口；且 a2 的招牌（感官招呼「拉对方一起闻/听/看」）
+  // 本身就是第二人称构造，与本单「日记不得出现第二人称」硬条款直接冲突。照本函数既有先例
+  // （招牌与派定类目互斥，「否则两条指令打架」），凡会打架的一律由代码提前掐掉，不留给模型自行调和。
+  const diary=(hook==='diary');
+  const pool=diary?DIARY_OPEN_KINDS:OPEN_KINDS;
   const n=(isFinite(ag.aiTurn)?ag.aiTurn:0)+1;
   ag.aiTurn=n;
-  const zhao=(n%ZHAO_EVERY===0), simile=(n%SIMILE_EVERY===0 && !zhao);
+  const zhao=(!diary && n%ZHAO_EVERY===0), simile=(n%SIMILE_EVERY===0 && !zhao);
   let line;
   if(hook==='sms'){
     line='｜本次开场：你是在回别人发来的短信，怎么开口随情境，但不许沿用你上次的开法。';
   }else if(zhao){
     // 招牌式本身就是一种开场，与派定类目天然互斥：轮到招牌的这一次不派类目，
     // 否则两条指令打架（实测有角色因此弃用派定类目改走招牌）。轮转指针照记，下一次接着走。
-    let i=(n+styleOffset(ag))%OPEN_KINDS.length;
-    if(OPEN_KINDS[i]===ag.lastOpenKind) i=(i+1)%OPEN_KINDS.length;
-    ag.lastOpenKind=OPEN_KINDS[i];
+    let i=(n+styleOffset(ag))%pool.length;
+    if(pool[i]===ag.lastOpenKind) i=(i+1)%pool.length;
+    ag.lastOpenKind=pool[i];
     line='｜本次开场：轮到你用招牌起手式了，这一次不限类目。';
   }else{
-    let i=(n+styleOffset(ag))%OPEN_KINDS.length;
-    if(OPEN_KINDS[i]===ag.lastOpenKind) i=(i+1)%OPEN_KINDS.length;
-    const kind=OPEN_KINDS[i];
+    let i=(n+styleOffset(ag))%pool.length;
+    if(pool[i]===ag.lastOpenKind) i=(i+1)%pool.length;
+    const kind=pool[i];
     ag.lastOpenKind=kind;
-    line='｜本次开场必须用【'+kind+'】这一类（四类是：直接说事／抱怨吐槽／直接问对方／接对方上次的话往下聊）。'
+    // 两个池当前都是 4 类，故「四类」二字写死；日后改池长度须同步改此处措辞（harness 锁两池均为 4 类）
+    line='｜本次开场必须用【'+kind+'】这一类（四类是：'+pool.join('／')+'）。'
       +'若本次情境实在套不上这一类，可退回【直接说事】，但绝不许沿用你上次的开法。';
   }
-  line+=zhao?'本次允许用一次你的招牌起手式。':'本次不要用你的招牌起手式——这一条没有例外，哪怕它最顺口。';
+  line+=zhao?'本次允许用一次你的招牌起手式。'
+    :(diary?'本次不要用你的招牌起手式——招牌起手式是开口跟人说话的套路，日记是写给自己的。'
+           :'本次不要用你的招牌起手式——这一条没有例外，哪怕它最顺口。');
   line+=simile?'本次至多用一处明喻（…似的／…一样／像…）。':'本次不要用明喻句式。';
   return line;
+}
+// —— 第 18 单·病症二：招牌起手式兜底闸（方案乙：生成后结构检查 ＋ 至多重生成一次）——
+// 实证（决策者截图，v28 线上）：沈小满连续多段以「欸」起手——「欸你说这都几点了」
+// 「欸你阳台那盆薄荷」「欸你闻见没」，末句正是第 13 单点过名的原句。
+// 判据改「结构」不改「禁词」：禁词表已被两次实证可绕过（第 13 单点名「你闻见没」→ 模型换成
+// 「欸你看见…没」；v28 又直接退回原句），故本闸只看开场是不是拿语气词起手，
+// 不管后面接的是哪个具体短语——换词、换动词、换语气词一律照样拦。
+// ZHAO_EVERY 配额仍在，本闸是配额之外的兜底；至多重生成一次，失败即接受，受 AI_TIMEOUT 约束。
+// 可调：语气词起手表。条目可为一字或两字——「哈」单字会误伤哈尔滨/哈欠/哈密瓜一类实词，
+// 故只收「哈哈」；其余各字词首除语气词外无常用实词，单字即可判。
+const LEAD_INTERJ=['欸','诶','哎','唉','呀','哟','嘿','嗨','咦','哦','噢','喔','嗯','啊','呃','哈哈'];
+const LEAD_SCAN=10;   // 可调：只看开场前 10 个字符（更靠后的语气词属句中用法，不拦，人味留着）
+// 先剥掉开头的引号／括号／空白（模型常把整句包在引号里），再看窗口内开头是不是语气词。
+const LEAD_TRIM=/^[\s"'“”‘’「」『』（(【\[—…·、,，.。!！?？~～\-]+/;
+function leadsWithInterj(s){
+  const t=String(s==null?'':s).replace(LEAD_TRIM,'').slice(0,LEAD_SCAN);
+  if(!t) return false;
+  for(let i=0;i<LEAD_INTERJ.length;i++) if(t.indexOf(LEAD_INTERJ[i])===0) return true;
+  return false;
+}
+function chatLeadBad(d){   // 对白：A、B 各自的第一句都查（沈小满可能站在任一侧）
+  return leadsWithInterj(d[0]) || (d.length>1 && leadsWithInterj(d[1]));
+}
+// 重生成时由代码指定另一类开场（走现有类目池，日记走日记池）——不把「换个开法」留给模型自选。
+function reOpenKind(ag, hook){
+  const pool=(hook==='diary')?DIARY_OPEN_KINDS:OPEN_KINDS;
+  let i=pool.indexOf(ag&&ag.lastOpenKind);
+  i=(i<0?0:(i+1)%pool.length);
+  if(ag) ag.lastOpenKind=pool[i];
+  return pool[i];
+}
+function redoLead(who, kind){
+  return who+'改用【'+kind+'】这一类起手，第一句不许拿语气词开头（欸／诶／哎／呀／哟／嘿 这类一律不行），语气词要用就挪到句子中间。';
 }
 // 短期记性（第 13 单）：记下该角色最近一条 ✨ 发言摘录（短信回复/对白/日记就近取最新），下次调用注入以避连招。
 // lastUtterance 属 DOM 层 AI 模块自有状态，挂 agent 随 serialize 全量拷贝入档；旧档无此字段→读取处 ||'' 兜底，绝不判坏档。
@@ -1597,12 +1682,15 @@ function agentCard(ag, hook){
   const recent=ag.personalLog.slice(-3).map(e=>e.text).join('；')||'（今天刚开始）';
   const last=String(ag.lastUtterance||'').slice(0,80);   // 旧档/开局缺字段→空串，不注入
   // 第 17 单·处境状态：唯一去处就是这一行；时效过了或从未挂过则整行省略（不留空字段）。
-  // 铁律——这是底色不是内容：只许影响语气和挑什么说，不许被复述。措辞写死在此，勿改成陈述句。
+  // 第 18 单·病症一改法：这一行只写档位标签，事件原文（sit.text）一律不上卡。
+  // 铁律——这是底色不是内容：第 17 单靠禁令措辞守，实证守不住（模型把事件逐字搬进日记）；
+  // 现在由代码收走话语权——模型压根拿不到事件文案，从结构上无从复述。档位不明（篡改档）则整行省略。
   const sit=Sim.currentSit(state.world, ag);
+  const mood=sit?(SIT_MOOD[sit.k]||''):'';
   return ag.name+'（'+ag.job+'）｜特质:'+ag.traits.join('/')+'｜心愿:'+ag.want+'｜担忧:'+fear
     +'｜钱包:¥'+Math.round(ag.money)+'｜'+hungerWord(ag.hunger)+'、体力'+Math.round(ag.energy)
     +'｜正在:'+ag.activity.label
-    +(sit?'｜今天心里压着的事:'+sit.text+'（这是背景底色，只影响你的语气和你挑什么说；不许直接提起它，更不许解释自己为什么这样）':'')
+    +(mood?'｜今天的心境:'+mood+'（这只定语气，不是内容：不许把这句话写进你说的话或写的字里，也不许解释自己今天为什么这样）':'')
     +'｜说话方式:'+(AI_VOICE[ag.id]||ag.voice)
     +styleAssign(ag, hook)
     +(last?'｜上次开口:「'+last+'」（这句的开法与比喻对象都不得重复）':'')
@@ -1734,13 +1822,24 @@ async function enhanceMessage(e){
   const ag=w.agents.find(a=>a.id===e.agent);
   const m=Sim.MSGS.find(x=>x.id===e.msg);
   let j=null;
-  if(ag) j=await callClaude(
-    '你是都市生活模拟游戏里的角色，请完全入戏。\n角色卡：'+agentCard(ag,'sms')
-    +'\n一个陌生号码（偶尔发短信关心TA，TA不知道对方是谁）刚发来：「'+(e.msgLabel||(m?m.label:''))+'」。'
-    +'\n1) 写TA此刻真实的内心反应，1-2句，严格用TA的说话方式。'
-    +'\n2) 决定TA会不会回短信：回的话写短信原文，必须像TA本人打出来的字（对照说话方式的句长/口癖/标点/表情习惯）。"不知道对方是谁"要影响内容，但表达因人而异：有人直接问，有人试探，有人只回正事，有人懒得理。不回就填空字符串。'
-    +'\n禁止万金油网络腔；如果这条短信像是在指挥TA做事，TA按自己性格决定听不听。修辞纪律：职业梗或比喻整段最多一次；禁止连环比喻（不许接连出现"像/跟…似的/如同"句式）；大多数句子说普通人话，生活细节优先于修辞。'
-    +'\n只返回JSON：{"inner":"内心反应","reply":"回的短信原文或空字符串"}');
+  if(ag){
+    // 提示词整体须是 ag/e/m 的纯表达式（tools/voice-check 靠正则逐字取用它求值），故不抽临时变量
+    const smsPrompt=
+      '你是都市生活模拟游戏里的角色，请完全入戏。\n角色卡：'+agentCard(ag,'sms')
+      +'\n一个陌生号码（偶尔发短信关心TA，TA不知道对方是谁）刚发来：「'+(e.msgLabel||(m?m.label:''))+'」。'
+      +'\n1) 写TA此刻真实的内心反应，1-2句，严格用TA的说话方式。'
+      +'\n2) 决定TA会不会回短信：回的话写短信原文，必须像TA本人打出来的字（对照说话方式的句长/口癖/标点/表情习惯）。"不知道对方是谁"要影响内容，但表达因人而异：有人直接问，有人试探，有人只回正事，有人懒得理。不回就填空字符串。'
+      +'\n禁止万金油网络腔；如果这条短信像是在指挥TA做事，TA按自己性格决定听不听。修辞纪律：职业梗或比喻整段最多一次；禁止连环比喻（不许接连出现"像/跟…似的/如同"句式）；大多数句子说普通人话，生活细节优先于修辞。'
+      +'\n只返回JSON：{"inner":"内心反应","reply":"回的短信原文或空字符串"}';
+    j=await callClaude(smsPrompt);
+    // 第 18 单·方案乙兜底闸：回信以语气词起手 → 由代码指定另一类开场，重生成一次；
+    // 至多一次，第二版仍不合格也照收；重生成失败（null）则沿用第一版。空回信＝已读不回，天然不触发。
+    if(j && typeof j.reply==='string' && leadsWithInterj(j.reply)){
+      const j2=await callClaude(smsPrompt
+        +'\n（重写）上一版回信开头用了语气词起手，不合格。这一版：'+redoLead(ag.name, reOpenKind(ag,'sms')));
+      if(j2) j=j2;
+    }
+  }
   const inner=j&&(typeof j.inner==='string'?j.inner:(typeof j.reaction==='string'?j.reaction:''));
   if(inner && inner.trim()){
     e.thought=inner.trim(); e.llm=true;
@@ -1763,11 +1862,25 @@ async function enhanceChat(e){
   let j=null;
   if(a&&b){
     const loc=Sim.ANCHORS[a.anchor];
-    j=await callClaude(
+    // 第 18 单·病症三：话题由 SIM 派定（e.topic，见 pickTopic），模型只能在该类里发挥；
+    // 旧档遗留的 chat 条目无 topic → 整句省略，回落 v28 行为，绝不判坏档。
+    // 三元式直接写在拼接里（不抽临时变量）：整条提示词须是 loc/e/a/b 的纯表达式，
+    // 门禁与 tools/voice-check 靠正则逐字取用它求值，抽变量会让抽出来的表达式引用外部量而失效。
+    const chatPrompt=
       '都市生活模拟：两位合租室友在'+(loc?loc.label:'路上')+'偶遇闲聊。'
       +'\nA '+agentCard(a,'chat')+'\nB '+agentCard(b,'chat')
+      +(e.topic?('\n本次话题由系统指定：【'+e.topic+'】。两人只在这一类里聊，不许跑到别的类去；具体聊哪件小事、从什么细节切入，由你们自己发挥。'):'')
       +'\n写一段2-4句的自然对话（口语、具体、有生活毛边），每句话要能只凭口癖认出是谁说的（严格对照两人各自的说话方式），禁止两人一个腔调。修辞纪律：职业梗或比喻整段最多一次；禁止连环比喻（不许接连出现"像/跟…似的/如同"句式）；大多数句子说普通人话，生活细节优先于修辞。话题避开两人"最近"里已出现过的内容，聊当下场景或时段里的新鲜小事。再各写一条TA聊完记在心里的小事（不必相同，允许在意的点不一样）。'
-      +'\n只返回JSON：{"dialogue":["A的话","B的话","..."],"a_mem":"...","b_mem":"..."}');
+      +'\n只返回JSON：{"dialogue":["A的话","B的话","..."],"a_mem":"...","b_mem":"..."}';
+    j=await callClaude(chatPrompt);
+    // 第 18 单·方案乙兜底闸：任一方第一句以语气词起手 → 由代码给两人各指定另一类开场，重生成一次。
+    // 至多一次；第二版仍不合格也照收；绝不阻塞日志墙——模板句在 SIM 落条目时早已上墙，这里只是迟到补写。
+    if(j && Array.isArray(j.dialogue) && j.dialogue.length && chatLeadBad(j.dialogue)){
+      const j2=await callClaude(chatPrompt
+        +'\n（重写）上一版开头用了语气词起手，不合格。这一版：'
+        +redoLead(a.name, reOpenKind(a,'chat'))+redoLead(b.name, reOpenKind(b,'chat')));
+      if(j2 && Array.isArray(j2.dialogue) && j2.dialogue.length) j=j2;
+    }
   }
   if(j && Array.isArray(j.dialogue) && j.dialogue.length){
     e.thought=j.dialogue.map(s=>'「'+String(s)+'」').join(''); e.llm=true;
@@ -1794,9 +1907,25 @@ async function runReflection(){
     const today=ag.personalLog.slice(-4).map(e=>e.text+(e.thought?'（'+e.thought+'）':'')).join('；');
     return ag.id+' = '+agentCard(ag,'diary')+'｜今日片段:'+(today||'平平无奇的一天');
   }).join('\n');
-  const j=await callClaude(
-    '都市生活模拟《云港小事》第'+day+'天深夜，四位合租住户各写一段睡前日记：2-3句，第一人称，允许小情绪和具体细节，禁止总结腔。修辞纪律：职业梗或比喻整段最多一次；禁止连环比喻（不许接连出现"像/跟…似的/如同"句式）；大多数句子说普通人话，生活细节优先于修辞。四段必须风格迥异，逐一对照各自的说话方式；写完自查：盖住名字仍能分清是谁写的，才算合格。\n'
-    +cards+'\n只返回JSON：{"a1":"...","a2":"...","a3":"...","a4":"..."}', true, true);
+  // 第 18 单·病症四：日记体铁律五条写死在日记挂点（这里是唯一的日记提示词，收紧只落这一处）。
+  // 与代码侧两道收口配套：①styleAssign 的 diary 分支已换 DIARY_OPEN_KINDS 并不发招牌许可，
+  // 故这五条不会与派活指令打架；②「今日片段」里的模板独白是自己的心里话，第 4 条专门点破，
+  // 因为决策者实证的最重一段（陆知秋把 STROLL 模板独白当成别人说的话）正是栽在这里。
+  const diaryPrompt=
+    '都市生活模拟《云港小事》第'+day+'天深夜，四位合租住户各写一段睡前日记：2-3句，第一人称，允许小情绪和具体细节，禁止总结腔。日记体铁律（五条，写完逐条自查，违反任何一条即为不合格）：①这段字只写给自己看，不是说给任何人听；②通篇不得出现第二人称（你／你们／您／咱），也不得称呼任何人；③不得提问，全段不出现问号；④不得复述别人说过的话，也不得把角色卡"今日片段""最近""上次开口"里的句子当成别人对你说的话——那些全是你自己心里的话和自己做过的事；⑤不得出现对白结构（引号包住的整句对话、"我说…TA说…"、破折号领起的话轮）。修辞纪律：职业梗或比喻整段最多一次；禁止连环比喻（不许接连出现"像/跟…似的/如同"句式）；大多数句子说普通人话，生活细节优先于修辞。四段必须风格迥异，逐一对照各自的说话方式；写完自查：盖住名字仍能分清是谁写的，才算合格。\n'
+    +cards+'\n只返回JSON：{"a1":"...","a2":"...","a3":"...","a4":"..."}';
+  const j=await callClaude(diaryPrompt, true, true);
+  // 第 18 单·方案乙兜底闸：谁以语气词起手，就由代码给谁指定另一类开场，整批重生成一次。
+  // 至多一次；只替换不合格的那几段，合格的沿用第一版；第二版仍不合格也照收。
+  if(j){
+    const bad=w.agents.filter(ag=>typeof j[ag.id]==='string' && leadsWithInterj(j[ag.id]));
+    if(bad.length){
+      const j2=await callClaude(diaryPrompt
+        +'\n（重写）上一版里 '+bad.map(ag=>ag.name).join('、')+' 的开头用了语气词起手，不合格。请照上面的规矩整批重写四段，其中：'
+        +bad.map(ag=>redoLead(ag.name, reOpenKind(ag,'diary'))).join(''), true, true);
+      if(j2) for(const ag of bad){ if(typeof j2[ag.id]==='string' && j2[ag.id].trim()) j[ag.id]=j2[ag.id]; }
+    }
+  }
   for(const ag of w.agents){
     const e=entries[ag.id];
     const txt=(j && typeof j[ag.id]==='string') ? j[ag.id].trim() : '';

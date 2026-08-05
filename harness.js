@@ -210,5 +210,159 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   for(let i=0;i<300;i++) Sim.step(r.world,10);
   ok(isFinite(r.world.t) && r.world.agents.every(a=>isFinite(a.hunger)),'旧档续跑 300 拍无异常');
 }
+// --- 闲聊话题派活（第 18 单·病症三） ---
+{
+  const POOL=Sim.TOPIC_POOL, N=Sim.TOPIC_RECENT;
+  ok(Array.isArray(POOL) && POOL.length>=7 && POOL.length<=9,'TOPIC_POOL 7–9 类：'+(POOL||[]).length+' 类');
+  ok(POOL.every(t=>typeof t==='string' && t.length>0),'TOPIC_POOL 每类均为非空字符串');
+  ok(new Set(POOL).size===POOL.length,'TOPIC_POOL 无重复类目');
+  ok(isFinite(N) && N>=1 && N<POOL.length,'TOPIC_RECENT='+N+' 落在 1..池长-1（否则无类可派）');
+  // 频次过滤：全城最近 N 次派过的类不再派
+  {
+    const w=Sim.makeWorld(99);
+    const seq=[]; for(let i=0;i<400;i++) seq.push(Sim.pickTopic(w));
+    let near=0;
+    for(let i=0;i<seq.length;i++) for(let k=1;k<=N && i-k>=0;k++) if(seq[i]===seq[i-k]) near++;
+    ok(near===0,'最近 '+N+' 次用过的类不再派（近距复读 '+near+' 次）');
+    ok(new Set(seq).size===POOL.length,'400 次派活覆盖全部 '+POOL.length+' 类：'+new Set(seq).size);
+    ok(w.chatTopics.length===N,'记账窗口恒为 TOPIC_RECENT 长：'+w.chatTopics.length);
+  }
+  // 每条闲聊日志都带话题，且没有一类霸屏
+  {
+    const w=Sim.makeWorld(2027);
+    for(let i=0;i<30*144;i++) Sim.step(w,10);
+    const chats=w.log.filter(e=>e.type==='chat' && e.with);
+    ok(chats.length>0 && chats.every(e=>POOL.indexOf(e.topic)>=0),'闲聊条目一律携带池内话题（'+chats.length+' 条）');
+    const cnt={}; chats.forEach(e=>{ cnt[e.topic]=(cnt[e.topic]||0)+1; });
+    const top=Math.max(...Object.values(cnt));
+    ok(top<=Math.ceil(chats.length/POOL.length)+2,'无话题霸屏：最多一类 '+top+' 次 / 共 '+chats.length+' 次');
+    // 旧档（无 chatTopics）兼容
+    const d=JSON.parse(Sim.serialize(w,null));
+    ok(Array.isArray(d.world.chatTopics),'chatTopics 随存档序列化');
+    delete d.world.chatTopics;
+    const r=Sim.hydrate(JSON.stringify(d));
+    ok(!!r,'旧档（无 chatTopics）可反序列化');
+    for(let i=0;i<600;i++) Sim.step(r.world,10);
+    ok(isFinite(r.world.t) && r.world.agents.every(a=>isFinite(a.hunger)),'旧档续跑 600 拍无异常');
+    // 篡改档：chatTopics 为畸形值不得抛错
+    const bad=JSON.parse(Sim.serialize(w,null)); bad.world.chatTopics='x';
+    const rb=Sim.hydrate(JSON.stringify(bad));
+    for(let i=0;i<50;i++) Sim.step(rb.world,10);
+    ok(Array.isArray(rb.world.chatTopics),'篡改档 chatTopics 非数组 → 就地重建，不抛错');
+  }
+}
+// --- AI 文案层：DOM 层源码抽取求值（第 18 单；照 tools/voice-check 先例，被验的是生产源码原文） ---
+{
+  const fs=require('fs'), path=require('path');
+  const src=fs.readFileSync(path.resolve(__dirname,'city-life-framework.html'),'utf8');
+  const grab=(re,name)=>{ const m=src.match(re); if(!m){ ok(false,'源码抽取失败:'+name); return '""'; } return m[0]; };
+  const vcState={world:null};
+  const mk=new Function('Sim','state','return (function(){'
+    +grab(/const AI_VOICE=\{[\s\S]*?\n\};/,'AI_VOICE')+'\n'
+    +grab(/const SIT_MOOD=\{[\s\S]*?\};/,'SIT_MOOD')+'\n'
+    +grab(/function hungerWord\(h\)\{[^\n]*\}/,'hungerWord')+'\n'
+    +grab(/const OPEN_KINDS=\[[\s\S]*?\nfunction styleAssign\(ag, hook\)\{[\s\S]*?\n\}/,'styleAssign')+'\n'
+    +grab(/const LEAD_INTERJ=\[[\s\S]*?\nfunction redoLead\(who, kind\)\{[\s\S]*?\n\}/,'方案乙闸')+'\n'
+    +grab(/function agentCard\(ag, hook\)\{[\s\S]*?\n\}/,'agentCard')
+    +'\nreturn {agentCard, styleAssign, SIT_MOOD, OPEN_KINDS, DIARY_OPEN_KINDS, leadsWithInterj, chatLeadBad, reOpenKind, redoLead};})()');
+  const V=mk(Sim, vcState);
+  const w=Sim.makeWorld(31337);
+  for(let i=0;i<200;i++) Sim.step(w,10);
+  vcState.world=w;                                  // agentCard 经 state.world 取当天处境，取卡前对齐
+
+  // 病症一：卡上不得出现任何 PEER_EVENTS 事件原文（逐条正则扫，28 条全查）
+  {
+    const all=[];
+    for(const k in Sim.PEER_EVENTS) Sim.PEER_EVENTS[k].forEach(e=>all.push(e));
+    ok(all.length===28,'待扫事件文案 28 条：'+all.length);
+    const esc=s=>s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+    let leak=0, moodMiss=0, cards=0;
+    for(const ev of all){
+      for(const ag of w.agents){
+        ag.sit={k:ev.k, from:'X', text:ev.text, i:0, until:w.t+600};
+        for(const hook of ['sms','chat','diary']){
+          const card=V.agentCard(ag, hook); cards++;
+          for(const other of all) if(new RegExp(esc(other.text)).test(card)) leak++;
+          if(card.indexOf(V.SIT_MOOD[ev.k])<0) moodMiss++;
+        }
+      }
+    }
+    ok(leak===0,'角色卡零事件原文泄漏（'+cards+' 张卡 × 28 条正则，泄漏 '+leak+' 处）');
+    ok(moodMiss===0,'角色卡照挂档位标签（缺失 '+moodMiss+' 张）');
+    const ag=w.agents[0];
+    ag.sit={k:'bad', from:'X', text:'CR 被组长打回，评语写了三行', i:0, until:w.t};   // 已过期
+    ok(V.agentCard(ag,'diary').indexOf('今天的心境')<0,'处境过期 → 心境整行省略');
+    delete ag.sit;
+    ok(V.agentCard(ag,'diary').indexOf('今天的心境')<0,'从未挂过 → 心境整行省略');
+    ag.sit={k:'不存在的档', from:'X', text:'x', i:0, until:w.t+600};
+    ok(V.agentCard(ag,'diary').indexOf('今天的心境')<0,'篡改档档位不明 → 心境整行省略，不注入空标签');
+    delete ag.sit;
+    ok(['good','bad','flat'].every(k=>typeof V.SIT_MOOD[k]==='string' && V.SIT_MOOD[k]),'SIT_MOOD 三档标签齐备：'+['good','bad','flat'].map(k=>V.SIT_MOOD[k]).join('/'));
+  }
+  // 病症二：语气词起手闸
+  {
+    const bad=['欸你说这都几点了','欸你阳台那盆薄荷','欸你闻见没','诶你看见没','哎呀我跟你说',
+               '「欸，你看这个」','  嘿，今天挺顺','哦，忘了说','啊，又是这样','唉，算了'];
+    const good=['你闻见没','跑通了，收工。','3% 的概率而已。','今天欸了一声，没人理。',
+                '窗台上的灰又厚了一层。','阳台那盆薄荷长疯了','','哈尔滨的雪。'];
+    ok(bad.every(s=>V.leadsWithInterj(s)),'语气词起手全数拦下（'+bad.length+' 条）');
+    ok(good.every(s=>!V.leadsWithInterj(s)),'正常开场零误伤（'+good.length+' 条）');
+    ok(!V.leadsWithInterj(null) && !V.leadsWithInterj(undefined),'空输入不抛错、不误判');
+    ok(V.chatLeadBad(['欸你说','嗯嗯']) && V.chatLeadBad(['跑通了','欸你闻见没']),'对白 A/B 两侧第一句都查');
+    ok(!V.chatLeadBad(['跑通了','窗台上的灰又厚了']),'对白双方均正常开场则放行');
+    const ag=w.agents[1];
+    for(const hook of ['chat','diary']){
+      const pool=(hook==='diary')?V.DIARY_OPEN_KINDS:V.OPEN_KINDS;
+      ag.lastOpenKind=pool[0];
+      const k=V.reOpenKind(ag,hook);
+      ok(pool.indexOf(k)>=0 && k!==pool[0],hook+' 重生成由代码改派另一类：'+pool[0]+' → '+k);
+    }
+    ag.lastOpenKind='不在池里的类';
+    ok(V.OPEN_KINDS.indexOf(V.reOpenKind(ag,'chat'))>=0,'lastOpenKind 不在池内时仍派出合法类目');
+    ok(V.redoLead('沈小满','直接说事').indexOf('沈小满')===0,'重生成指令点名到人');
+  }
+  // 病症四：日记挂点与对白挂点分家
+  {
+    ok(V.DIARY_OPEN_KINDS.length===4 && V.OPEN_KINDS.length===4,'两池均为 4 类（styleAssign 措辞写死「四类」）');
+    ok(V.DIARY_OPEN_KINDS.every(k=>k.indexOf('对方')<0),'日记池零对话类目：'+V.DIARY_OPEN_KINDS.join('／'));
+    ok(V.DIARY_OPEN_KINDS.indexOf('直接问对方')<0 && V.DIARY_OPEN_KINDS.indexOf('接对方上次的话往下聊')<0,'日记池已剔除「直接问对方」「接对方上次的话往下聊」');
+    ok(V.OPEN_KINDS.indexOf('直接问对方')>=0 && V.OPEN_KINDS.indexOf('接对方上次的话往下聊')>=0,'对白池四类零改动（回归）');
+    let dBadKind=0, dZhao=0, cKinds=new Set(), cZhao=0;
+    for(let n=0;n<40;n++) for(const ag of w.agents){
+      const d=V.styleAssign(ag,'diary');
+      if(d.indexOf('直接问对方')>=0 || d.indexOf('接对方上次的话往下聊')>=0) dBadKind++;
+      if(d.indexOf('轮到你用招牌起手式了')>=0 || d.indexOf('本次允许用一次你的招牌起手式')>=0) dZhao++;
+      const c=V.styleAssign(ag,'chat');
+      V.OPEN_KINDS.forEach(k=>{ if(c.indexOf('【'+k+'】')>=0) cKinds.add(k); });
+      if(c.indexOf('轮到你用招牌起手式了')>=0) cZhao++;
+    }
+    ok(dBadKind===0,'日记挂点 160 次派活零对话类目（越界 '+dBadKind+' 次）');
+    ok(dZhao===0,'日记挂点零招牌许可（发出 '+dZhao+' 次）');
+    ok(cKinds.size===4,'对白挂点仍走满四类（'+cKinds.size+' 类，回归）');
+    ok(cZhao>0,'对白挂点招牌配额仍在发放（'+cZhao+' 次，回归）');
+    const card=V.agentCard(w.agents[0],'diary');
+    ok(card.indexOf('日记是写给自己的')>=0,'日记卡写明招牌不适用的理由');
+  }
+  // 病症四：日记提示词五条铁律（逐字取生产 runReflection 表达式求值）
+  {
+    const tpl=grab(/'都市生活模拟《云港小事》第'\+day\+'天深夜[\s\S]*?"a4":"\.\.\."\}'/,'日记提示词');
+    const p=new Function('day','cards','return '+tpl)(1,'CARDS');
+    const musts=['只写给自己看','不得出现第二人称','不得提问','不得复述别人说过的话','不得出现对白结构'];
+    const miss=musts.filter(s=>p.indexOf(s)<0);
+    ok(miss.length===0,'日记提示词五条铁律齐备'+(miss.length?('：缺 '+miss.join('、')):''));
+    ok(p.indexOf('今日片段')>=0 && p.indexOf('那些全是你自己心里的话')>=0,'日记提示词点破「今日片段是自己的心里话」');
+  }
+  // 病症三：对白提示词注入派定话题（逐字取生产 enhanceChat 表达式求值）
+  {
+    const tpl=grab(/'都市生活模拟：两位合租室友在'\+\(loc\?loc\.label:'路上'\)[\s\S]*?"b_mem":"\.\.\."\}'/,'对白提示词');
+    const build=new Function('loc','e','agentCard','a','b','return '+tpl);
+    const A=w.agents[0], B=w.agents[1], card=(x,h)=>V.agentCard(x,h);
+    const withT=build({label:'客厅'}, {topic:'阳台与晾晒'}, card, A, B);
+    ok(withT.indexOf('本次话题由系统指定：【阳台与晾晒】')>=0,'对白提示词写入代码派定的话题');
+    ok(withT.indexOf('不许跑到别的类去')>=0,'对白提示词把话题定为硬边界');
+    const noT=build({label:'客厅'}, {}, card, A, B);
+    ok(noT.indexOf('本次话题由系统指定')<0,'旧档条目无 topic → 整句省略，回落 v28 行为');
+  }
+}
 console.log(fails? ('\n'+fails+' FAILURES') : '\nALL PASS');
 process.exit(fails?1:0);
