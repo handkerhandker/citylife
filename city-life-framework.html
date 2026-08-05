@@ -196,6 +196,29 @@ h2.sec:first-child{ margin-top:0; }
 .log-ul li.player .ln{ color:var(--blue); }
 .log-ul li.diary .ln{ color:var(--gold); }
 #log-jump{ position:sticky; bottom:calc(var(--sp3) + var(--sa-b)); display:block; margin-left:auto; }
+
+/* ---- 每日剪辑（第 21 单）：一天一张卡，倒序，可一路往回翻 ---- */
+#clip-list{ display:flex; flex-direction:column; gap:var(--sp3); }
+.clip{ background:var(--bg1); border:2px solid var(--line); border-radius:var(--r);
+  padding:var(--sp3); min-width:0; overflow:hidden; }
+.clip-hd{ display:flex; align-items:center; gap:var(--sp2); flex-wrap:wrap; min-width:0; }
+.clip-day{ color:var(--gold); font-weight:600; flex:0 0 auto; }
+.clip-who{ font-weight:700; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.clip-hd .clip-score{ margin-left:auto; }
+.clip-items{ list-style:none; margin:var(--sp2) 0 0; padding:0; }
+.clip-items li{ display:flex; gap:.5em; align-items:baseline; padding:.28em 0; font-size:.82rem;
+  border-bottom:1px dashed color-mix(in srgb, var(--line) 60%, transparent);
+  overflow-wrap:anywhere; -webkit-user-select:text; user-select:text; }
+.clip-items li:last-child{ border-bottom:none; }
+.clip-k{ flex:0 0 auto; color:var(--gold); min-width:2.4em; text-align:right; font-size:.76rem; }
+.clip-items li.t-b .clip-k{ color:var(--ink-dim); }
+.clip-items li.t-c .clip-k{ color:var(--ink-faint); }
+/* 折减标记随正文流走，不另占 flex 位——独立成项时窄屏会被挤进折行文字中间（实测手机竖屏） */
+.clip-cut{ font-size:.68rem; color:var(--ink-faint); white-space:nowrap; }
+h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
+  margin:var(--sp3) 0 var(--sp1); font-weight:600; }
+.clip-foot{ margin:var(--sp2) 0 0; font-size:.72rem; color:var(--ink-faint); overflow-wrap:anywhere; }
+.clip-empty{ color:var(--ink-faint); font-size:.82rem; margin:var(--sp2) 0 0; }
 .ph-input{ background:var(--bg2); border:2px solid var(--line); border-radius:var(--r);
   color:var(--ink); padding:.45em .6em; font-size:16px; min-width:0; font-family:inherit;
   -webkit-user-select:text; user-select:text; }
@@ -259,6 +282,7 @@ h2.sec:first-child{ margin-top:0; }
     <button class="tab" data-tab="live"    data-fx><span class="tab-ico">◈</span><span class="tab-label">现场</span></button>
     <button class="tab" data-tab="roles"   data-fx><span class="tab-ico">👥</span><span class="tab-label">角色</span></button>
     <button class="tab" data-tab="log"     data-fx><span class="tab-ico">☰</span><span class="tab-label">日志</span></button>
+    <button class="tab" data-tab="clip"    data-fx><span class="tab-ico">✂</span><span class="tab-label">剪辑</span></button>
     <button class="tab" data-tab="phone"   data-fx><span class="tab-ico">📱</span><span class="tab-label">短信</span></button>
     <button class="tab" data-tab="settings"data-fx><span class="tab-ico">⚙</span><span class="tab-label">设置</span></button>
   </nav>
@@ -287,6 +311,12 @@ h2.sec:first-child{ margin-top:0; }
       <p class="faint" style="font-size:.74rem;margin:.2rem 0 .6rem">※ 当前为决策桩：行动由规则效用选择，独白为模板。此处即未来 LLM 的挂点，界面协议不变。</p>
       <ul class="log-ul" id="log-list"></ul>
       <button class="btn small gold" id="log-jump" data-fx hidden>↓ 回到最新</button>
+    </section>
+
+    <section class="screen" id="scr-clip">
+      <h2 class="sec">每日剪辑 · 一天挑一个人</h2>
+      <p class="faint" style="font-size:.74rem;margin:.2rem 0 .6rem">每天凌晨 4 点结算前一天，挑出「谁今天最不像平常的自己」——落差最大的那位。落差项按各人自己的往日均值算；全城当天都一样的（发薪、交租）算城市的事，要打折。下面引的日志原文一字未改，都是城市日志里的原句。</p>
+      <div id="clip-list"></div>
     </section>
 
     <section class="screen" id="scr-phone">
@@ -368,7 +398,7 @@ h2.sec:first-child{ margin-top:0; }
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-        <span class="num dim" id="set-build">v31</span>
+        <span class="num dim" id="set-build">v32</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -872,6 +902,421 @@ function decide(w, ag){
   setActivity(w,ag,spot,'idle','在家待着',tempoDur(w,ag,30),pickV(w,IDLE_THOUGHTS,ag,'li'),null);
 }
 
+/*CLIP-START*/
+/* ===== 第 21 单·每日剪辑（选材验证版）=====================================
+   一天过完，从当天已经发生的数据里挑出「谁今天最不像平常的自己」（＝落差最大者）。
+   本单只做「挑」不做「写」：全部文案为下方固定模板，本块零 LLM 调用点、零拟人化旁白。
+   三条硬口径写死在实现里：
+   ① 只读当天已经发生的数据 —— 逐拍采样 ＋ 日切时扫一遍当窗日志，不预支未来；
+   ② 全程零 w.rng() 消耗 —— 故 rng 流零位移、sim30 指纹逐字节不变（门禁两道断言锁死：
+      源码原文零 rng 引用 ＋ 日切那一拍的 rng 消耗数与「不结算」对照组相等）；
+   ③ 不写 w.stats、不改任何住户字段 —— 只写 w.clips / w.clipDay / w.clipBase 三个新字段。
+   参谋点名的坑（**落差最大 ≠ 最有戏**）由三道口径防住，缘由见 docs/交付/第21单-每日剪辑一期.md：
+   甲乙丙三级权重 ＋ 丙级（纯行为频次）当日合计封顶 ＋ 城市事件共性折减。
+*/
+// —— 可调常量区（保守初值，集中存放）——
+// 日切点：取凌晨 4 点。缘由（30 天双种子实测，见交付件二.2）：全城最晚就寝落在日切后
+// 1250 分钟＝次日 00:50，最早起床落在日切后 130 分钟＝06:10；4 点是唯一能把
+// 「夜里几点睡」整段留在当天、又不把「早上几点起」切走的空档。改此值须复测这两个数。
+const CLIP_CUT=4*60;
+const CLIP_KEEP=60;          // 可调：保留最近 N 天剪辑（随存档；超出从头裁）
+const CLIP_QUOTE_MAX=5;      // 可调：每条剪辑至多引用几条原始日志条目
+const CLIP_BASE_MIN=3;       // 可调：基线满几天才启用「比自己平常」类判据（不足则只走绝对判据）
+const CLIP_COMMON_N=3;       // 可调：同一偏离项当天有 ≥N 人同时命中即判为城市事件（非个人落差）
+const CLIP_COMMON_MUL=0.25;  // 可调：城市事件的权重折减系数（不归零：工资 200–450，幅度仍有个体差）
+const CLIP_FREQ_CAP=0.4;     // 可调：丙级（纯行为频次）当日合计权重封顶
+// 常态化折除线：某个绝对判据在此人身上的历史命中率 ≥ 此值，就不再算他的落差。
+// 缘由（实测取证，见交付件三.5）：判据是「谁今天**最不像平常的自己**」，不是「谁今天状态最差」。
+// 沈小满工资 300、大方、餐餐 ¥20，钱包**天天**见底、外向**天天**跟三个人都聊——
+// 不设此线时她 30 天里被挑中 22/20 次（双种子），白一鸣一次没上过榜，正是任务书点名的「霸榜＝判据偏了」。
+// 绝对判据描述的是**长期状态**，长期状态恰恰是「平常的自己」，故必须逐人折除。
+// z 分类判据（大额进出／晚睡／闲聊密／频次）天然相对自身，不受本线管辖。
+const CLIP_HABIT=0.5;
+const CLIP_ABS=['sit_bad','sit_good','sit_flat','money_broke','money_debt','money_flatpay',
+                'social_all','hunger_peak','worn_out'];   // 受常态化折除管辖的绝对判据
+const CLIP_BROKE=60;         // 可调：钱包见底线（¥）
+// 生存两条线取的是**绝对极值**，实测（见交付件三.6）在现有代谢下打不着：清醒时饥饿被
+// 各人 eatAt 顶死（全城实测峰值 78），清醒时体力被 napAt 托住（全城实测谷值 14.5）——
+// decide() 一过阈值就去吃／去睡。故两条绝对线保留为「真出事时的兜底」，
+// 日常靠下面的相对判据（hunger_high / worn_low）出活：「见底」本就该按各人自己的底来算。
+const CLIP_STARVE=88;        // 可调：饥饿见顶线（0–100，绝对兜底）
+const CLIP_DRAINED=12;       // 可调：清醒时体力见底线（0–100，绝对兜底）
+// 逐指标噪声底：sd 下限＋最小可报偏差。缺了这道，作息恒定的人晚睡 10 分钟会被算成无穷大落差。
+// hHi/eLo 的 abs 取 5：实测逐人清醒极值的全程跨度只有 8–10 点（被 eatAt/napAt 夹住），
+// 取 12 会把整类判据卡死；取 5 约等于「半档」，仍远大于单拍漂移（1.05–1.2）。
+const CLIP_NOISE={
+  bed:{sd:15,abs:40}, wake:{sd:15,abs:40}, mNet:{sd:20,abs:120},
+  hHi:{sd:2.5,abs:5}, eLo:{sd:2.5,abs:5},  eat:{sd:0.5,abs:1},
+  chatN:{sd:0.8,abs:1.5}, mates:{sd:0.5,abs:1}, freq:{sd:0.8,abs:2}, sitHit:{sd:0.2,abs:0.5},
+};
+// 偏离项权重登记表（宪法第 8 条硬名单；新增偏离项须回写交接说明）。
+// 级别：a＝任务书点名的「有戏的偏离」；b＝同类但戏剧性明显低的弱信号；c＝纯行为频次。
+// 权重口径（任务书硬约束：有戏的偏离须**显著高于**纯行为频次偏离）：
+//   甲 1.2–3.0 ｜ 乙 0.6–1.0（弱信号与附加项）｜ 丙 每条 0.2 且当日合计封顶 CLIP_FREQ_CAP＝0.4。
+//   故甲级最低 1.2 ＝ 丙级单条的 6 倍、丙级封顶的 3 倍；甲级最高 3.0 ＝ 丙级封顶的 7.5 倍。
+//   即：任凭一个人当天在所有活动上同时刷出频次异常，也压不过任何一条有戏的偏离。
+//   money_debt 归乙级：它是 money_broke 的附加项（「已经是负数了」），不单独成立。
+const CLIP_W={
+  sit_bad:3.0, sit_first:1.5, sit_good:1.4, sit_flat:0.6, sit_none:1.0,
+  money_broke:2.6, money_debt:0.8, money_swing:1.8, money_flatpay:2.4,
+  social_mute:2.2, social_all:2.4, social_burst:1.2,
+  sleep_late:2.0, sleep_early:1.3, wake_early:1.8, wake_late:1.4,
+  hunger_nomeal:2.6, hunger_peak:2.0, hunger_high:1.5, worn_out:2.2, worn_low:1.6,
+  freq:0.2,
+};
+const CLIP_TIER={sit_flat:'b', sit_none:'b', money_debt:'b', freq:'c'};   // 未列者一律甲级
+// 日志正文 → 类目。取的是 decide() 实际写出的字串（harness 有覆盖率断言：30 天里
+// 每条 act 条目都必须归到某一类，谁改了 logText 那条断言即红）。
+const CLIP_LOGCAT=[
+  ['eat',   ['做了顿简餐','解决了一餐','买了份小吃']],
+  ['work',  ['到岗开始工作','回到工位','工作中']],
+  ['nap',   ['回卧室小憩']],
+  ['stroll',['出门散步','街市逛逛']],
+  ['sleep', ['回卧室睡觉']],
+  ['money', ['交了房租']],
+];
+const CLIP_CATNAME={eat:'吃饭', work:'上班', nap:'小憩', stroll:'散步', sleep:'睡觉', chat:'闲聊'};
+// 丙级只数这几类。刻意不含 chat：闲聊次数已由甲级 social_burst 按同一个数出活，
+// 两级同时命中会在同一张卡上把同一句话印两遍（实测 D10 「闲聊 4 次，平常 2 次」印了两行）。
+// 也不含 idle：在家待着 logText 恒为 null、不上墙，本层「只数上了墙的事」故无从计数。
+const CLIP_FREQ_CATS=['eat','work','nap','stroll'];
+const CLIP_QCAT={sit:'work', money:'money', social:'chat', sleep:'sleep', wake:'sleep', hunger:'eat', worn:'nap', freq:''};
+
+function clipDayOf(t){ return PURE.dayOf(t-CLIP_CUT); }     // 剪辑日：窗口＝[D 日 04:00, D+1 日 04:00)
+function clipT0(cd){ return (cd-1)*1440+CLIP_CUT; }
+function clipHead(id){ return String(id||'').split(':')[0].split('_')[0]; }
+function clipTier(id){ return CLIP_TIER[String(id||'').split(':')[0]] || 'a'; }
+function clipWeight(id){ const v=CLIP_W[String(id||'').split(':')[0]]; return isFinite(v)?v:0; }
+function clipQCat(id){ id=String(id||''); return id.indexOf('freq:')===0 ? id.slice(5) : (CLIP_QCAT[clipHead(id)]||''); }
+function clipCat(e){
+  if(!e || typeof e!=='object') return '';
+  if(e.type==='chat') return 'chat';
+  if(e.type==='player') return 'sms';
+  if(e.type==='diary') return 'diary';
+  const tx=String(e.text||'');
+  for(let i=0;i<CLIP_LOGCAT.length;i++){
+    const keys=CLIP_LOGCAT[i][1];
+    for(let j=0;j<keys.length;j++) if(tx.indexOf(keys[j])>=0) return CLIP_LOGCAT[i][0];
+  }
+  return e.type==='sys' ? 'sys' : '';
+}
+
+// —— 基线：逐人逐指标的「开局至今累计均值＋标准差」（不含当天）——
+// 选型理由（交付件三.3）：本作没有会漂移的长期趋势，滚动窗只会让估计更抖；
+// 累计均值用满全部历史，最稳，且只需存 n/s/q 三个数，存档不随天数膨胀。
+// 周期性（周五发薪、每月 2 号交租、周日街市）不靠基线消化，交给共性折减处理。
+function clipRec(b,key){
+  const r=b&&b[key];
+  return (r && typeof r==='object' && isFinite(r.n) && r.n>0 && isFinite(r.s) && isFinite(r.q)) ? r : null;
+}
+function clipAdd(b,key,v){
+  if(!isFinite(v)) return;
+  let r=clipRec(b,key); if(!r) r=b[key]={n:0,s:0,q:0};
+  r.n++; r.s+=v; r.q+=v*v;
+}
+function clipMean(b,key){ const r=clipRec(b,key); return r?r.s/r.n:NaN; }
+function clipDays(b){ const r=clipRec(b,'days'); return r?r.n:0; }
+// 常态化折除：这条绝对判据在此人身上是不是「平常就这样」。基线不足时一律不折除（开局按绝对判据挑）。
+function clipHabitual(b,id){
+  const r=clipRec(b,'hit:'+id);
+  return !!(r && r.n>=CLIP_BASE_MIN && r.s/r.n>=CLIP_HABIT);
+}
+// 「比自己平常」类判据；基线不足 CLIP_BASE_MIN 天一律返回 null（此时只有绝对判据能命中）
+function clipDev(b,key,v){
+  const r=clipRec(b,key);
+  if(!r || r.n<CLIP_BASE_MIN || !isFinite(v)) return null;
+  const f=CLIP_NOISE[String(key).split(':')[0]] || CLIP_NOISE.freq;
+  const m=r.s/r.n;
+  const sd=Math.max(Math.sqrt(Math.max(0, r.q/r.n - m*m)), f.sd);
+  const d=v-m;
+  if(Math.abs(d)<f.abs) return null;
+  return {m:m, d:d, z:d/sd, n:r.n};
+}
+
+// —— 日表：每窗一张，逐拍采样，只写自己的字段 ——
+function clipRow(w,ag){
+  // hHi=-1 / eLo=101 是「本窗还没采到清醒样本」的哨兵值（0–100 之外），日切建表时四人都在睡，
+  // 直接拿当时的饥饿体力当初值就等于混进了睡眠样本。
+  return {m0:ag.money, m1:ag.money, mLo:ag.money, mLoT:w.t, mSw:0, mSwT:w.t,
+          hHi:-1, hHiT:w.t, eLo:101, eLoT:w.t,
+          bed:0, wake:0, sitK:'', sitTx:'', sitFrom:'', sitT:0,
+          sl:(ag.activity&&ag.activity.type==='sleep')?1:0};
+}
+function clipSheet(w,cd){
+  const a={};
+  for(const ag of w.agents) a[ag.id]=clipRow(w,ag);
+  // full＝这张日表是从日切整点起算的完整一窗。开局首日（08:00 开城）与存档中途接上的那一窗
+  // 都不完整：照样出剪辑（标注不完整），但**不计入基线**，免得半截数据把均值带偏。
+  return {d:cd, full:(PURE.minuteOfDay(w.t)===CLIP_CUT)?1:0, a:a};
+}
+function clipSample(w,sh){
+  const t0=clipT0(sh.d), t1=t0+1440;
+  for(const ag of w.agents){
+    const r=sh.a[ag.id]; if(!r) continue;
+    const asleep=(ag.activity && ag.activity.type==='sleep')?1:0;
+    const d=ag.money-r.m1;
+    if(Math.abs(d)>Math.abs(r.mSw)){ r.mSw=d; r.mSwT=w.t; }
+    r.m1=ag.money;
+    if(ag.money<r.mLo){ r.mLo=ag.money; r.mLoT=w.t; }
+    // 饥饿峰值与体力谷值都**只取清醒时**：任务书的两条是「饿着没吃饭」「体力见底还在硬撑」，
+    // 说的都是醒着的时候。睡着时饥饿照涨（0.35/拍），不掐掉的话陆知秋每天早上 07:00
+    // 都会以「饥饿 94」入选——那是代谢曲线，不是他今天有什么不一样（实测取证见交付件三.6）。
+    if(!asleep && ag.hunger>r.hHi){ r.hHi=ag.hunger; r.hHiT=w.t; }
+    if(!asleep && ag.energy<r.eLo){ r.eLo=ag.energy; r.eLoT=w.t; }
+    if(asleep!==r.sl){                                   // 本窗第一次入睡／第一次醒来
+      if(asleep){ if(!r.bed) r.bed=w.t; } else { if(!r.wake) r.wake=w.t; }
+      r.sl=asleep;
+    }
+    // 处境：只认「挂载时刻落在本窗内」的那一条（挂载时刻＝until−SIT_TTL，decide 零改动即可反推）
+    const s=ag.sit;
+    if(s && typeof s==='object' && isFinite(s.until)){
+      const at=s.until-SIT_TTL;
+      if(at>=t0 && at<t1 && r.sitT!==at){
+        r.sitK=(s.k==='good'||s.k==='bad'||s.k==='flat')?s.k:'';
+        r.sitTx=(typeof s.text==='string')?s.text:'';
+        r.sitFrom=(typeof s.from==='string')?s.from:'';
+        r.sitT=at;
+      }
+    }
+  }
+}
+
+// —— 结算：算落差 → 挑人 → 摘原文 → 落一条剪辑 → 把今天并进基线 ——
+// 剪辑卡上的一切时刻一律走 PURE.fmtStamp（第 19 单追加一立的全站口径）。
+// 本页尤其需要它：夜猫子 00:30 才睡下，那是「D12 这一天」的就寝，戳成「D13 00:30」
+// 才不会跟当天白天的条目混叠——正是第 19 单那条反向断言要防的事，故不申请豁免。
+function clipFmtT(t){ return PURE.fmtStamp(t); }
+function clipSigned(v){ v=Math.round(v); return (v>0?'+¥':(v<0?'−¥':'¥'))+Math.abs(v); }
+function clipRound(v,p){ const k=Math.pow(10,p||0); return Math.round(v*k)/k; }
+
+function clipMake(w,sh,ent,ag,sum,base){
+  const out=[], r=sh.a[ag.id], cd=sh.d;
+  const push=(id,v,at)=>{ out.push({id:id, v:v||{}, at:isFinite(at)?at:0}); };
+  // 「什么都没发生」类偏离（零对话／一天没吃／处境空白）本身没有对应条目可引，
+  // 时间锚点取当窗正午，让摘原文那步退到「当天中段他在干什么」，而不是空手而归。
+  const NOON=clipT0(cd)+720;
+  // 甲/乙 · 处境（第 17 单 ag.sit 的预留去处：事件原文不喂 AI，本页是它唯一的现身处）
+  if(r.sitK){
+    const v={from:r.sitFrom||'那边', tx:r.sitTx};
+    if(r.sitK==='bad') push('sit_bad',v,r.sitT);
+    else if(r.sitK==='good') push('sit_good',v,r.sitT);
+    else push('sit_flat',v,r.sitT);
+    const hit=clipRec(base,'sitHit');
+    if(hit && hit.n>=1 && hit.s===0) push('sit_first',{},r.sitT);
+  }else{
+    const hit=clipRec(base,'sitHit');
+    if(hit && hit.n>=CLIP_BASE_MIN && hit.s/hit.n>=0.8) push('sit_none',{n:hit.n,k:hit.s},NOON);
+  }
+  // 甲 · 钱包
+  if(r.mLo<CLIP_BROKE){
+    push('money_broke',{lo:Math.round(r.mLo), k:CLIP_BROKE, at:clipFmtT(r.mLoT)},r.mLoT);
+    if(r.mLo<0) push('money_debt',{lo:Math.round(r.mLo)},r.mLoT);
+  }
+  const dev=clipDev(base,'mNet',sum.mNet);
+  if(dev && Math.abs(dev.z)>=2) push('money_swing',{d:Math.round(sum.mNet), m:Math.round(dev.m), n:dev.n},r.mSwT);
+  if(sum.wd===4 && sum.mNet<=0) push('money_flatpay',{d:Math.round(sum.mNet)},r.mSwT);
+  // 甲 · 社交
+  if(sum.mates===0){
+    const mb=clipRec(base,'mates');
+    if(mb && mb.n>=CLIP_BASE_MIN && mb.s/mb.n>=0.6) push('social_mute',{n:mb.n, m:clipRound(mb.s/mb.n,1)},NOON);
+  }
+  if(sum.mates>=w.agents.length-1 && w.agents.length>=3) push('social_all',{names:sum.mateNames.join('、')},sum.chatT);
+  const cd2=clipDev(base,'chatN',sum.chatN);
+  if(cd2 && cd2.z>=2) push('social_burst',{n:sum.chatN, m:clipRound(cd2.m,1)},sum.chatT);
+  // 甲 · 作息（bed 记绝对时刻，跨零点的就寝仍留在当天窗口内，故与「平常」可比）
+  if(r.bed){
+    const bd=clipDev(base,'bed',r.bed-clipT0(cd));
+    if(bd && bd.z>=1.5) push('sleep_late',{s:clipFmtT(r.bed), d:Math.round(bd.d)},r.bed);
+    else if(bd && bd.z<=-1.5) push('sleep_early',{s:clipFmtT(r.bed), d:Math.round(-bd.d)},r.bed);
+  }
+  if(r.wake){
+    const wk=clipDev(base,'wake',r.wake-clipT0(cd));
+    if(wk && wk.z<=-1.5) push('wake_early',{s:clipFmtT(r.wake), d:Math.round(-wk.d)},r.wake);
+    else if(wk && wk.z>=1.5) push('wake_late',{s:clipFmtT(r.wake), d:Math.round(wk.d)},r.wake);
+  }
+  // 甲 · 生存
+  if(sum.eat===0){
+    const eb=clipRec(base,'eat');
+    if(eb && eb.n>=CLIP_BASE_MIN && eb.s/eb.n>=1) push('hunger_nomeal',{n:eb.n, m:clipRound(eb.s/eb.n,1)},NOON);
+  }
+  if(r.hHi>=0){
+    if(r.hHi>=CLIP_STARVE) push('hunger_peak',{h:Math.round(r.hHi), k:CLIP_STARVE, at:clipFmtT(r.hHiT)},r.hHiT);
+    else{ const hd=clipDev(base,'hHi',r.hHi); if(hd && hd.z>=1.5) push('hunger_high',{h:Math.round(r.hHi), m:Math.round(hd.m), at:clipFmtT(r.hHiT)},r.hHiT); }
+  }
+  if(r.eLo<=100){
+    if(r.eLo<=CLIP_DRAINED) push('worn_out',{e:Math.round(r.eLo), k:CLIP_DRAINED, at:clipFmtT(r.eLoT)},r.eLoT);
+    else{ const ed=clipDev(base,'eLo',r.eLo); if(ed && ed.z<=-1.5) push('worn_low',{e:Math.round(r.eLo), m:Math.round(ed.m), at:clipFmtT(r.eLoT)},r.eLoT); }
+  }
+  // 丙 · 纯行为频次（本级当日合计封顶，见 clipClose）
+  for(const c of CLIP_FREQ_CATS){
+    const n=sum.cat[c]||0;
+    const fd=clipDev(base,'freq:'+c,n);
+    if(fd && Math.abs(fd.z)>=2) push('freq:'+c,{n:n, m:clipRound(fd.m,1)},sum.catT[c]||0);
+  }
+  return out;
+}
+
+function clipItemText(it){
+  const id=(it&&it.id)||'', v=(it&&it.v)||{};
+  switch(id){
+    case 'sit_bad':   return '处境 · 逆：'+v.from+'那边——「'+v.tx+'」';
+    case 'sit_good':  return '处境 · 顺：'+v.from+'那边——「'+v.tx+'」';
+    case 'sit_flat':  return '处境 · 平：'+v.from+'那边——「'+v.tx+'」';
+    case 'sit_first': return '处境 · 头一遭：开局至今第一次挂上处境';
+    case 'sit_none':  return '处境 · 空白：今天一条没挂上（此前 '+v.n+' 天里挂了 '+v.k+' 天）';
+    case 'money_broke':  return '钱包 · 见底：当日最低 ¥'+v.lo+'，低于见底线 ¥'+v.k+'（'+v.at+'）';
+    case 'money_debt':   return '钱包 · 欠债：当日最低 ¥'+v.lo+'，已是负数';
+    case 'money_swing':  return '钱包 · 大额'+(v.d>0?'进账':'出账')+'：当日净 '+clipSigned(v.d)+'，此前 '+v.n+' 天平均 '+clipSigned(v.m);
+    case 'money_flatpay':return '钱包 · 发薪日没涨：周五当天净 '+clipSigned(v.d);
+    case 'social_mute':  return '社交 · 零对话：一天没跟人说过话（此前 '+v.n+' 天平均 '+v.m+' 人）';
+    case 'social_all':   return '社交 · 三个人都聊了：'+v.names;
+    case 'social_burst': return '社交 · 密：闲聊 '+v.n+' 次，平常 '+v.m+' 次';
+    case 'sleep_late':   return '作息 · 晚睡：'+v.s+' 睡下，比平常晚 '+v.d+' 分钟';
+    case 'sleep_early':  return '作息 · 早睡：'+v.s+' 睡下，比平常早 '+v.d+' 分钟';
+    case 'wake_early':   return '作息 · 早起：'+v.s+' 起，比平常早 '+v.d+' 分钟';
+    case 'wake_late':    return '作息 · 晚起：'+v.s+' 起，比平常晚 '+v.d+' 分钟';
+    case 'hunger_nomeal':return '生存 · 一天没吃：吃饭 0 次（此前 '+v.n+' 天平均 '+v.m+' 次）';
+    case 'hunger_peak':  return '生存 · 饿着：清醒时饥饿峰值 '+v.h+'，越过见顶线 '+v.k+'（'+v.at+'）';
+    case 'hunger_high':  return '生存 · 比平常饿：清醒时饥饿峰值 '+v.h+'，平常 '+v.m+'（'+v.at+'）';
+    case 'worn_out':     return '生存 · 硬撑：清醒时体力最低 '+v.e+'，跌破见底线 '+v.k+'（'+v.at+'）';
+    case 'worn_low':     return '生存 · 比平常累：清醒时体力最低 '+v.e+'，平常 '+v.m+'（'+v.at+'）';
+  }
+  if(id.indexOf('freq:')===0) return '频次 · '+(CLIP_CATNAME[id.slice(5)]||id.slice(5))+' '+v.n+' 次，平常 '+v.m+' 次';
+  return '';
+}
+
+// 摘原文：只从当窗日志里直接引用已有条目，一个字不重写。
+// 先按偏离项的类目取，取不到再退到「离该项时间锚点最近」的条目，最后退到当天首尾。
+function clipQuotes(w,sh,ent,ag,items){
+  const mine=ent.filter(e=>e.agent===ag.id || (e.type==='chat' && e.with===ag.id));
+  const seen={}, out=[];
+  const take=e=>{ if(!e) return; const k=e.lid||('t'+e.t+e.text); if(seen[k]) return; seen[k]=1; out.push(e); };
+  for(const it of items){
+    if(out.length>=CLIP_QUOTE_MAX) break;
+    const cat=clipQCat(it.id);
+    let hits=cat?mine.filter(e=>clipCat(e)===cat):[];
+    if(clipHead(it.id)==='money') hits=hits.concat(mine.filter(e=>String(e.text||'').indexOf('¥')>=0))
+                                          .concat(ent.filter(e=>e.type==='sys' && /发薪|交租/.test(String(e.text||''))));
+    if(!hits.length && it.at) hits=mine.slice().sort((a,b)=>Math.abs(a.t-it.at)-Math.abs(b.t-it.at)).slice(0,2);
+    if(it.at) hits=hits.slice().sort((a,b)=>Math.abs(a.t-it.at)-Math.abs(b.t-it.at));
+    for(const e of hits.slice(0,2)){ if(out.length>=CLIP_QUOTE_MAX) break; take(e); }
+  }
+  if(!out.length){ take(mine[0]); take(mine[mine.length-1]); }
+  return out.filter(Boolean).sort((a,b)=>a.t-b.t).slice(0,CLIP_QUOTE_MAX)
+    .map(e=>({t:e.t, name:String(e.name||''), text:String(e.text||''),
+              thought:e.thought?String(e.thought):'', type:String(e.type||'act'), llm:e.llm?1:0}));
+}
+
+function clipClose(w,sh){
+  const cd=sh.d, t0=clipT0(cd), t1=t0+1440;
+  if(!Array.isArray(w.clips)) w.clips=[];
+  // 当窗日志：w.log 容量 400 条 ≈ 9.5 天，单窗实测峰值 48 条，故结算时本窗条目必然全在（且都在尾部）
+  const ent=[];
+  for(const e of w.log){ if(e && typeof e==='object' && isFinite(e.t) && e.t>=t0 && e.t<t1) ent.push(e); }
+  const wd=(cd-1)%7;
+  const sums={}, raw={}, cnt={};
+  for(const ag of w.agents){
+    const r=sh.a[ag.id]; if(!r) continue;
+    const mine=ent.filter(e=>e.agent===ag.id || (e.type==='chat' && e.with===ag.id));
+    const cat={}, catT={};
+    let chatN=0, chatT=0; const mates={}, mateNames=[];
+    for(const e of mine){
+      const c=clipCat(e);
+      if(c){ cat[c]=(cat[c]||0)+1; if(!catT[c]) catT[c]=e.t; }
+      if(e.type==='chat'){
+        chatN++; if(!chatT) chatT=e.t;
+        const other=(e.agent===ag.id)?e.with:e.agent;
+        if(other && other!==ag.id && !mates[other]){
+          mates[other]=1;
+          const o=w.agents.find(x=>x.id===other); if(o) mateNames.push(o.name);
+        }
+      }
+    }
+    sums[ag.id]={wd:wd, mNet:r.m1-r.m0, eat:cat.eat||0, chatN:chatN, chatT:chatT,
+                 mates:Object.keys(mates).length, mateNames:mateNames, cat:cat, catT:catT};
+    const base=(w.clipBase[ag.id] && typeof w.clipBase[ag.id]==='object') ? w.clipBase[ag.id] : (w.clipBase[ag.id]={});
+    // raw＝候选（未折除）。共性折减按候选数，因为它问的是「今天全城是不是都这样」，与个人常态无关。
+    raw[ag.id]=clipMake(w,sh,ent,ag,sums[ag.id],base);
+    for(const it of raw[ag.id]) cnt[it.id]=(cnt[it.id]||0)+1;
+  }
+  // 常态化折除：把「这人平常就这样」的绝对判据整条剔出计分（缘由见 CLIP_HABIT 注释）
+  const kept={};
+  for(const ag of w.agents){
+    const base=w.clipBase[ag.id]||{};
+    kept[ag.id]=(raw[ag.id]||[]).filter(it=>CLIP_ABS.indexOf(it.id)<0 || !clipHabitual(base,it.id));
+  }
+  // 共性折减：同一偏离项当天 ≥CLIP_COMMON_N 人同时命中 ⇒ 那是城市事件（发薪／交租／下雨），
+  // 不是「谁今天不像平常的自己」。折减而不归零：工资 200–450，同一件事各人幅度仍有差别。
+  // 丙级封顶：纯行为频次按权重从高到低累计到 CLIP_FREQ_CAP 为止，其余直接不计。
+  const sc={}, items={};
+  for(const ag of w.agents){
+    const list=(kept[ag.id]||[]).map(it=>{
+      const common=(cnt[it.id]||0)>=CLIP_COMMON_N ? 1 : 0;
+      return {id:it.id, v:it.v, at:it.at, t:clipTier(it.id),
+              k:clipRound(clipWeight(it.id)*(common?CLIP_COMMON_MUL:1),3), c:common};
+    }).sort((a,b)=>b.k-a.k || (a.id<b.id?-1:a.id>b.id?1:0));
+    const keep=[]; let freq=0;
+    for(const it of list){
+      if(it.t==='c'){ if(freq+it.k>CLIP_FREQ_CAP+1e-9) continue; freq+=it.k; }
+      keep.push(it);
+    }
+    items[ag.id]=keep;
+    sc[ag.id]=clipRound(keep.reduce((s,it)=>s+it.k,0),2);
+  }
+  // 挑人：落差最高者；并列则甲级权重合计高者优先；再并列取住户表下标靠前者（确定性，零 rng）
+  let pick=null, best=-1, bestA=-1;
+  for(const ag of w.agents){
+    const s=sc[ag.id]||0; if(s<=0) continue;
+    const a=(items[ag.id]||[]).reduce((x,it)=>x+(it.t==='a'?it.k:0),0);
+    if(s>best+1e-9 || (Math.abs(s-best)<=1e-9 && a>bestA+1e-9)){ best=s; bestA=a; pick=ag; }
+  }
+  const rec={d:cd, wd:wd, full:sh.full?1:0, sc:sc,
+             id:pick?pick.id:'', name:pick?pick.name:'', score:pick?sc[pick.id]:0,
+             base:pick?clipDays(w.clipBase[pick.id]||{}):0,
+             items:pick?items[pick.id].map(it=>({id:it.id, k:it.k, c:it.c, v:it.v})):[],
+             q:pick?clipQuotes(w,sh,ent,pick,items[pick.id]):[]};
+  w.clips.push(rec);
+  while(w.clips.length>CLIP_KEEP) w.clips.shift();
+  // 把今天并进基线（**结算之后**，故今天从不参与评自己）。不完整的窗一律不并，免得半截数据带偏均值。
+  if(sh.full){
+    for(const ag of w.agents){
+      const r=sh.a[ag.id], s=sums[ag.id]; if(!r||!s) continue;
+      const b=w.clipBase[ag.id]=(w.clipBase[ag.id] && typeof w.clipBase[ag.id]==='object')?w.clipBase[ag.id]:{};
+      clipAdd(b,'days',1);
+      clipAdd(b,'mNet',s.mNet);   clipAdd(b,'mLo',r.mLo);
+      if(r.hHi>=0)  clipAdd(b,'hHi',r.hHi);        // 哨兵值不入基线
+      if(r.eLo<=100) clipAdd(b,'eLo',r.eLo);
+      clipAdd(b,'eat',s.eat);     clipAdd(b,'chatN',s.chatN);  clipAdd(b,'mates',s.mates);
+      clipAdd(b,'sitHit',r.sitK?1:0);
+      if(r.bed)  clipAdd(b,'bed',  r.bed -t0);
+      if(r.wake) clipAdd(b,'wake', r.wake-t0);
+      for(const c of CLIP_FREQ_CATS) clipAdd(b,'freq:'+c,(s.cat[c]||0));
+      // 绝对判据的逐人命中率账（供常态化折除用）：记的是**候选**，不是最终计分的那份，
+      // 否则一旦折除、命中率就再也涨不上来／掉不下去，闸会自锁。
+      const has={}; for(const it of (raw[ag.id]||[])) has[it.id]=1;
+      for(const id of CLIP_ABS) clipAdd(b,'hit:'+id, has[id]?1:0);
+    }
+  }
+}
+
+// 每拍末尾调用。旧档缺字段→从空账起；篡改档畸形值→就地重建（照 w.chatTopics 先例，绝不抛错）。
+function clipTick(w){
+  if(!Array.isArray(w.clips)) w.clips=[];
+  if(!w.clipBase || typeof w.clipBase!=='object' || Array.isArray(w.clipBase)) w.clipBase={};
+  const cd=clipDayOf(w.t);
+  let sh=w.clipDay;
+  const okSheet = sh && typeof sh==='object' && !Array.isArray(sh) && isFinite(sh.d)
+               && sh.a && typeof sh.a==='object' && !Array.isArray(sh.a);
+  if(!okSheet) sh=w.clipDay=clipSheet(w,cd);
+  else if(sh.d!==cd){ clipClose(w,sh); sh=w.clipDay=clipSheet(w,cd); }
+  for(const ag of w.agents){
+    const r=sh.a[ag.id];
+    if(!r || typeof r!=='object' || !isFinite(r.m0)) sh.a[ag.id]=clipRow(w,ag);
+  }
+  clipSample(w,sh);
+}
+/*CLIP-END*/
+
 function advance10(w){
   w.t+=10;
   const mod=PURE.minuteOfDay(w.t);
@@ -920,6 +1365,8 @@ function advance10(w){
   const last=w.log[w.log.length-1];
   if(last && (last.type==='chat'||last.type==='player')) w.lastSpark=w.t;
   const g=w.t-w.lastSpark; if(g>w.stats.maxGap) w.stats.maxGap=g;
+  // 第 21 单·每日剪辑：本拍末尾采样，跨日切时结算前一天。只读不改、零 rng（见 CLIP 段首注释）
+  clipTick(w);
 }
 
 function step(w, dtMin){
@@ -969,7 +1416,10 @@ function hydrate(str){
   };
   return {world:w, meta:d.meta||null};
 }
-const Sim={makeWorld, step, sendMessage, sendCustomMessage, decide, MSGS, ANCHORS, ROOMS, TILE, MAPW, MAPH, STREET_Y, serialize, hydrate, SAVE_V, PEER_ROLE, PEER_EVENTS, SIT_TTL, currentSit, TOPIC_POOL, TOPIC_RECENT, pickTopic};
+const Sim={makeWorld, step, sendMessage, sendCustomMessage, decide, MSGS, ANCHORS, ROOMS, TILE, MAPW, MAPH, STREET_Y, serialize, hydrate, SAVE_V, PEER_ROLE, PEER_EVENTS, SIT_TTL, currentSit, TOPIC_POOL, TOPIC_RECENT, pickTopic,
+  CLIP_CUT, CLIP_KEEP, CLIP_QUOTE_MAX, CLIP_BASE_MIN, CLIP_COMMON_N, CLIP_COMMON_MUL, CLIP_FREQ_CAP,
+  CLIP_BROKE, CLIP_STARVE, CLIP_DRAINED, CLIP_W, CLIP_TIER, CLIP_LOGCAT, CLIP_CATNAME, CLIP_FREQ_CATS,
+  clipDayOf, clipT0, clipCat, clipTier, clipWeight, clipItemText};
 /*SIM-END*/
 
 if(typeof document==='undefined'){ module.exports={PURE, Sim}; return; }
@@ -1198,12 +1648,13 @@ const Focus=(()=>{
 })();
 
 /* ---------- 页面切换 ---------- */
-const TAB_ORDER=['live','roles','log','phone','settings'];
+const TAB_ORDER=['live','roles','log','clip','phone','settings'];
 function setScreen(id){
   state.screen=id;
   $$('.screen').forEach(s=>s.classList.toggle('active', s.id==='scr-'+id));
   $$('#tabbar .tab').forEach(t=>t.setAttribute('aria-current', t.dataset.tab===id?'true':'false'));
   if(id==='roles') renderRoles();
+  if(id==='clip') renderClips();
   if(id==='phone') renderPhone();
   if(id==='settings') renderStats();
   if(id==='log'){ const s=$('#scr-log'); s.scrollTop=1e9; state.logStick=true; const jb=$('#log-jump'); if(jb) jb.hidden=true; }
@@ -1309,6 +1760,90 @@ function drainLog(){
   if(scr.classList.contains('active') && state.logStick) scr.scrollTop=1e9;
   if(sideStick) side.scrollTop=1e9;
   const jb=$('#log-jump'); if(jb) jb.hidden=state.logStick;
+}
+/* ---------- 每日剪辑（第 21 单）：SIM 已把选材结果算好放在 w.clips，本层只负责摆出来 ----------
+   本页零 AI：卡上每一个字都来自 Sim.clipItemText 的固定模板或城市日志条目原文。
+   渲染纪律照既有口径——建一次、只在头部插新卡（每模拟日至多一次），不做周期性整块重建。 */
+function clipRows(){
+  const w=state.world;
+  return Array.isArray(w.clips) ? w.clips.filter(c=>c && typeof c==='object' && isFinite(c.d)) : [];
+}
+function clipQLine(q){
+  const li=document.createElement('li');
+  li.className=String((q&&q.type)||'act');
+  li.innerHTML='<span class="lt num">'+PURE.fmtStamp(+q.t||0)+'</span><span class="ln">'+esc(q.name||'')+'</span>'
+    +esc(q.text||'')+(q.thought?' <span class="lth">— '+(q.llm?'✨ ':'')+esc(q.thought)+'</span>':'');
+  return li;
+}
+function clipCard(c){
+  const art=document.createElement('article');
+  art.className='clip'; art.dataset.cd=c.d;
+  const ag=state.world.agents.find(a=>a && a.id===c.id);
+  const day='D'+c.d+' 周'+'一二三四五六日'[((+c.wd)%7+7)%7];
+  const tags=[];
+  if(!c.full) tags.push('<span class="chip">窗口不完整 · 不计入基线</span>');
+  if(c.name && (+c.base||0)<Sim.CLIP_BASE_MIN) tags.push('<span class="chip">基线还没建起（'+(+c.base||0)+' 天）· 只按绝对判据挑</span>');
+  let h='<div class="clip-hd"><span class="clip-day num">'+esc(day)+'</span>';
+  if(c.name){
+    h+=(ag?'<span class="dotc" style="background:'+esc(ag.color)+'"></span>':'')
+      +'<b class="clip-who">'+esc(c.name)+'</b>'
+      +'<span class="chip clip-score num">落差 '+(+c.score||0).toFixed(2)+'</span>';
+  }else{
+    h+='<span class="clip-who dim">无人入选</span>';
+  }
+  h+='</div>';
+  if(tags.length) h+='<div class="clip-hd" style="margin-top:var(--sp1)">'+tags.join('')+'</div>';
+  art.innerHTML=h;
+  const items=Array.isArray(c.items)?c.items:[];
+  if(!c.name || !items.length){
+    const p=document.createElement('p'); p.className='clip-empty';
+    p.textContent='今天四个人都没离开常轨，没有可挑的落差。';
+    art.appendChild(p);
+  }else{
+    const ul=document.createElement('ul'); ul.className='clip-items';
+    for(const it of items){
+      const li=document.createElement('li');
+      li.className='t-'+esc(Sim.clipTier(it.id));
+      li.innerHTML='<span class="clip-k num">'+(+it.k||0).toFixed(2)+'</span><span class="grow">'+esc(Sim.clipItemText(it))
+        +(it.c?'<span class="clip-cut">　全城同项 · 已折减</span>':'')+'</span>';
+      ul.appendChild(li);
+    }
+    art.appendChild(ul);
+    const q=Array.isArray(c.q)?c.q:[];
+    if(q.length){
+      const h3=document.createElement('h3'); h3.className='clip-sub'; h3.textContent='当天的日志原文';
+      art.appendChild(h3);
+      const qul=document.createElement('ul'); qul.className='log-ul clip-q';
+      for(const one of q) qul.appendChild(clipQLine(one||{}));
+      art.appendChild(qul);
+    }
+  }
+  const foot=document.createElement('p'); foot.className='clip-foot';
+  const sc=(c.sc && typeof c.sc==='object')?c.sc:{};
+  const line=state.world.agents.filter(a=>a&&sc[a.id]!==undefined).map(a=>a.name+' '+(+sc[a.id]||0).toFixed(2)).join(' ／ ');
+  foot.textContent='四人落差：'+(line||'—')+(c.name?('　·　基线 '+(+c.base||0)+' 天'):'');
+  art.appendChild(foot);
+  return art;
+}
+function renderClips(){
+  const box=$('#clip-list'), rows=clipRows();
+  if(!rows.length){
+    if(box.dataset.empty!=='1'){
+      box.innerHTML='<p class="clip-empty">还没有剪辑。每天凌晨 4 点结算前一天，第一条最快在开城次日 04:00 出现。</p>';
+      box.dataset.empty='1'; box.dataset.top='';
+    }
+    return;
+  }
+  // 只在头部补新卡（倒序＝最新在上）；已在页上的卡一位不动，故不会吞掉进行中的操作
+  const top=box.dataset.top===''||box.dataset.top===undefined ? null : +box.dataset.top;
+  if(box.dataset.empty==='1'){ box.innerHTML=''; box.dataset.empty='0'; }
+  const fresh=(top===null)?rows.slice():rows.filter(c=>c.d>top);
+  if(top!==null && !fresh.length) return;
+  for(const c of fresh) box.insertBefore(clipCard(c), box.firstChild);
+  // 存档只留最近 CLIP_KEEP 天，页面同步裁掉尾部，免得读旧档后页上留着已出队的卡
+  while(box.children.length>rows.length) box.removeChild(box.lastChild);
+  box.dataset.top=rows[rows.length-1].d;
+  Focus.refresh();
 }
 function traitChips(ag){ return ag.traits.map(t=>'<span class="chip">'+esc(t)+'</span>').join(''); }
 function buildRoles(){
@@ -2511,6 +3046,7 @@ function loop(now){
       if(d!==state.lastReflectDay && PURE.minuteOfDay(w.t)>=1310){ state.lastReflectDay=d; runReflection(); }
     }
     if($('#scr-roles').classList.contains('active')) renderRoles();
+    if($('#scr-clip').classList.contains('active')) renderClips();
     if($('#scr-phone').classList.contains('active')) renderPhone();
     if($('#scr-settings').classList.contains('active')) renderStats();
   }
