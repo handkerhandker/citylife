@@ -15,8 +15,9 @@ function grab(re,n){ const m=src.match(re); if(!m) throw new Error('抽取失败
 const vcState={world:null};
 const mk=new Function('Sim','state','return (function(){'
   +grab(/const AI_VOICE=\{[\s\S]*?\n\};/,'voice')+'\n'
+  +grab(/const SIT_MOOD=\{[\s\S]*?\};/,'mood')+'\n'                       // 第 18 单：agentCard 改由档位标签取词
   +grab(/function hungerWord\(h\)\{[^\n]*\}/,'hunger')+'\n'
-  +grab(/const OPEN_KINDS=\[[\s\S]*?\nfunction styleAssign\(ag, hook\)\{[\s\S]*?\n\}/,'assign')+'\n'
+  +grab(/const OPEN_KINDS=\[[\s\S]*?\nfunction styleAssign\(ag, hook\)\{[\s\S]*?\n\}/,'assign')+'\n'   // 含第 18 单 DIARY_OPEN_KINDS
   +grab(/function agentCard\(ag, hook\)\{[\s\S]*?\n\}/,'card')+'\nreturn {agentCard};})()');
 const {agentCard}=mk(Sim, vcState);
 // enhanceMessage 的提示词表达式原文（形参 ag / msgLabel）

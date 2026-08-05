@@ -22,17 +22,20 @@ const {PURE, Sim}=require(APP);
 /* —— 抽取生产源码求值（零重写）—— */
 function grab(re,name){ const m=src.match(re); if(!m) throw new Error('抽取失败:'+name); return m[0]; }
 const codeVoice=grab(/const AI_VOICE=\{[\s\S]*?\n\};/,'AI_VOICE');
+const codeMood=grab(/const SIT_MOOD=\{[\s\S]*?\};/,'SIT_MOOD');   // 第 18 单：agentCard 改由档位标签取词，须一并供给
 const codeHunger=grab(/function hungerWord\(h\)\{[^\n]*\}/,'hungerWord');
 const codeCard=grab(/function agentCard\(ag, hook\)\{[\s\S]*?\n\}/,'agentCard');
-const codeAssign=grab(/const OPEN_KINDS=\[[\s\S]*?\nfunction styleAssign\(ag, hook\)\{[\s\S]*?\n\}/,'styleAssign');
+const codeAssign=grab(/const OPEN_KINDS=\[[\s\S]*?\nfunction styleAssign\(ag, hook\)\{[\s\S]*?\n\}/,'styleAssign');   // 含第 18 单 DIARY_OPEN_KINDS
 // 生产的 agentCard 读两个 DOM 层环境量：Sim（第 17 单起用 Sim.currentSit 取当天处境）与 state.world。
 // 这里如实供给同名环境量——被求值的仍是生产源码原文，"提示词与生产逐字节相同"不受影响。
 const vcState={world:null};
-const mk=new Function('Sim','state','return (function(){'+codeVoice+'\n'+codeHunger+'\n'+codeAssign+'\n'+codeCard+'\nreturn {agentCard, AI_VOICE};})()');
+const mk=new Function('Sim','state','return (function(){'+codeVoice+'\n'+codeMood+'\n'+codeHunger+'\n'+codeAssign+'\n'+codeCard+'\nreturn {agentCard, AI_VOICE};})()');
 const {agentCard, AI_VOICE}=mk(Sim, vcState);
 
 /* —— 日记提示词模板：逐字取自 runReflection —— */
 // 日记提示词表达式原文（含 +cards+ 拼接），直接以 day/cards 为形参求值 → 与生产逐字节相同
+// 第 18 单起该表达式赋给 diaryPrompt 再传给 callClaude（方案乙重生成要复用同一份），
+// 表达式本身仍是 day/cards 的纯拼接，逐字取用不受影响。
 const tpl=grab(/'都市生活模拟《云港小事》第'\+day\+'天深夜[\s\S]*?"a4":"\.\.\."\}'/,'diary tpl');
 const buildPrompt=new Function('day','cards','return '+tpl);
 function diaryPrompt(w, day){
