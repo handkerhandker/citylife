@@ -9,6 +9,12 @@ ok(PURE.decideLayout(820,1180,'auto')==='medium','iPad 竖屏→medium');
 ok(PURE.decideLayout(1440,900,'auto')==='expanded','桌面→expanded');
 ok(PURE.decideLayout(300,600,'expanded')==='expanded','强制布局生效');
 ok(PURE.fmtTime(8*60+5)==='08:05','fmtTime');
+// 第 19 单追加一：按时间排列的列表须打日期戳，否则跨天条目混叠（决策者实证：短信往来记录看似时间倒流）
+ok(PURE.fmtStamp(8*60+5)==='D1 08:05','fmtStamp 首日：D1 08:05');
+ok(PURE.fmtStamp(74*1440+4*60+40)==='D75 04:40' && PURE.fmtStamp(76*1440+3*60+30)==='D77 03:30','fmtStamp 跨天可分辨：D75 04:40 / D77 03:30');
+ok(PURE.fmtStamp(74*1440+4*60+40)!==PURE.fmtStamp(75*1440+4*60+40),'同一时分不同日 → 时间戳不同（混叠即由此消除）');
+ok(PURE.fmtStamp(0)==='D1 00:00' && PURE.fmtStamp(1439)==='D1 23:59','fmtStamp 日界两端');
+ok(PURE.fmtStamp(1440)==='D2 00:00','fmtStamp 跨零点进位');
 ok(PURE.weekdayName(0)==='一' && PURE.weekdayName(4*1440)==='五' && PURE.weekdayName(6*1440)==='日','weekday D1=一 D5=五 D7=日');
 const from={x:0,y:0,w:10,h:10}, right={x:100,y:0,w:10,h:10}, below={x:0,y:100,w:10,h:10};
 ok(PURE.navScore(from,right,1,0)<PURE.navScore(from,below,1,0),'空间寻焦：向右优先选右侧');
@@ -264,7 +270,7 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
     +grab(/const OPEN_KINDS=\[[\s\S]*?\nfunction styleAssign\(ag, hook\)\{[\s\S]*?\n\}/,'styleAssign')+'\n'
     +grab(/const LEAD_INTERJ=\[[\s\S]*?\nfunction redoLead\(who, kind\)\{[\s\S]*?\n\}/,'方案乙闸')+'\n'
     +grab(/function agentCard\(ag, hook\)\{[\s\S]*?\n\}/,'agentCard')
-    +'\nreturn {agentCard, styleAssign, SIT_MOOD, OPEN_KINDS, DIARY_OPEN_KINDS, leadsWithInterj, chatLeadBad, reOpenKind, redoLead};})()');
+    +'\nreturn {agentCard, styleAssign, SIT_MOOD, OPEN_KINDS, DIARY_OPEN_KINDS, leadsWithInterj, chatLeadBad, reOpenKind, redoLead, LEAD_INTERJ, LEAD_INTERJ_AMB};})()');
   const V=mk(Sim, vcState);
   const w=Sim.makeWorld(31337);
   for(let i=0;i<200;i++) Sim.step(w,10);
@@ -321,6 +327,32 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
     ok(V.OPEN_KINDS.indexOf(V.reOpenKind(ag,'chat'))>=0,'lastOpenKind 不在池内时仍派出合法类目');
     ok(V.redoLead('沈小满','直接说事').indexOf('沈小满')===0,'重生成指令点名到人');
   }
+  // 第 19 单追加二：「哈」这条缝 —— 判据只看「哈」后面跟的是标点还是汉字，不看后面接的哪个词
+  {
+    // 决策者实证的两条原文（v29 线上，沈小满回信），必须拦下
+    const real=['哈？买房？…你谁啊，老给我发短信，是认识我吗？还是发错了？',
+                '哈，这话说得跟我妈似的…你谁啊，老发这种没头没尾的，别是发错人了吧？'];
+    ok(real.every(s=>V.leadsWithInterj(s)),'决策者实证的两条「哈」起手回信全数拦下');
+    // 拦：哈＋标点 / 哈＋空白 / 全句一个哈 / 哈哈 / 哈喽 / 被引号包住
+    const hit=['哈？买房？','哈，这话说得','哈！真的假的','哈。行吧','哈 你说呢','哈',
+               '哈哈，笑死','哈哈哈，绝了','哈喽，在吗','「哈？」','（哈，那算了）','"哈！"'];
+    // 放行：哈＋汉字＝实词（任务书点名的三个）＋哈在句中＋正常开场
+    const pass=['哈尔滨的雪下得比这儿大','哈欠打了三个，眼泪都出来了','哈密瓜切了半个放冰箱',
+                '今天被她一句话逗得哈哈大笑','说完他哈了一口气','跑通了，收工。',
+                '哈尔滨、哈欠、哈密瓜，三个词都不该被拦'];
+    const missA=hit.filter(s=>!V.leadsWithInterj(s));
+    const missB=pass.filter(s=>V.leadsWithInterj(s));
+    ok(missA.length===0,'「哈」起手全数拦下（'+hit.length+' 条）'+(missA.length?('：漏 '+missA.join('｜')):''));
+    ok(missB.length===0,'「哈」实词零误伤（'+pass.length+' 条）'+(missB.length?('：误伤 '+missB.join('｜')):''));
+    // 结构判据的底：拦不是因为出现了「哈」，而是因为「哈」后面是标点或句末
+    ok(V.leadsWithInterj('哈？') && !V.leadsWithInterj('哈尔滨'),'同一个字，后跟标点则拦、后跟汉字则放行');
+    ok(!V.leadsWithInterj('买房？哈，你说呢'),'「哈」在句中不拦（人味留着）');
+    ok(V.redoLead('沈小满','直接说事').indexOf('哈')>=0,'重生成指令已把「哈」列进不许用的起手字');
+    // 歧义表本身的形态：只收真有实词冲突的字；无冲突的字应留在主表用单字判
+    ok(Array.isArray(V.LEAD_INTERJ_AMB) && V.LEAD_INTERJ_AMB.length>0,'歧义单字表已登记（'+V.LEAD_INTERJ_AMB.join('／')+'）');
+    ok(V.LEAD_INTERJ_AMB.every(c=>V.LEAD_INTERJ.indexOf(c)<0),'歧义字不得同时留在主表（否则单字直判、结构闸失效）');
+    ok(V.LEAD_INTERJ.every(s=>s.length>=1 && V.LEAD_INTERJ_AMB.every(c=>s!==c)),'主表条目与歧义表零重叠');
+  }
   // 病症四：日记挂点与对白挂点分家
   {
     ok(V.DIARY_OPEN_KINDS.length===4 && V.OPEN_KINDS.length===4,'两池均为 4 类（styleAssign 措辞写死「四类」）');
@@ -363,6 +395,129 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
     const noT=build({label:'客厅'}, {}, card, A, B);
     ok(noT.indexOf('本次话题由系统指定')<0,'旧档条目无 topic → 整句省略，回落 v28 行为');
   }
+}
+// --- 时间戳全站排查（第 19 单追加一）：按时间排列的列表一律不得只印 HH:MM ---
+{
+  const fs=require('fs'), path=require('path');
+  const src=fs.readFileSync(path.resolve(__dirname,'city-life-framework.html'),'utf8');
+  // 四处按时间排列的列表渲染点：日志墙/侧栏/短信往来记录（共用 logLine）、画布浮层、角色页最近记录
+  const sites=[
+    [/li\.innerHTML='<span class="lt num">'\+PURE\.fmtStamp\(e\.t\)/, 'logLine（日志墙＋侧栏＋短信往来记录三处共用）'],
+    [/mini\.textContent=PURE\.fmtStamp\(e\.t\)/, '画布浮层最近两条'],
+    [/'<li><span class="lt num">'\+PURE\.fmtStamp\(e\.t\)/, '角色页弹窗·最近记录'],
+    [/'已存 · '\+PURE\.fmtStamp\(lastSaveInfo\.t\)/, '存档信息行（既有先例，已并入同一格式函数）'],
+  ];
+  for(const [re,name] of sites) ok(re.test(src), '时间戳已打日期：'+name);
+  // 反向：全站不得再有「列表条目只印 HH:MM」。顶栏时钟是当前时刻、非列表，且旁边 #tb-day 已印 D 号，故豁免。
+  const bare=(src.match(/PURE\.fmtTime\(/g)||[]).length;
+  const inStamp=(src.match(/fmtStamp\(t\)\{ return 'D'\+PURE\.dayOf\(t\)\+' '\+PURE\.fmtTime\(t\); \}/g)||[]).length;
+  const clock=(src.match(/\$\('#tb-clock'\)\.textContent=PURE\.fmtTime\(w\.t\);/g)||[]).length;
+  ok(bare===inStamp+clock, '裸 PURE.fmtTime 仅剩 fmtStamp 内部与顶栏时钟两处（实测 '+bare+' 处 = '+inStamp+' + '+clock+'）');
+}
+// --- 同锚错开落位表（第 19 单）：DOM 层源码抽取求值，被验的是生产源码原文 ---
+{
+  const fs=require('fs'), path=require('path');
+  const src=fs.readFileSync(path.resolve(__dirname,'city-life-framework.html'),'utf8');
+  const grab=(re,name)=>{ const m=src.match(re); if(!m){ ok(false,'源码抽取失败:'+name); return ''; } return m[0]; };
+  const vcState={world:null};
+  const R=new Function('Sim','state','return (function(){'
+    +grab(/const APT=\{[^}]*\};/,'APT')+'\n'
+    +grab(/const PIX_SOLID=new Set\(\[[^\]]*\]\);/,'PIX_SOLID')+'\n'
+    +grab(/function pixStandPos\(v\)\{[\s\S]*?\n\}/,'pixStandPos')+'\n'
+    +grab(/const STAND_SPOTS=\{[\s\S]*?\nfunction standSpot\(ag\)\{[\s\S]*?\n\}/,'STAND_SPOTS')+'\n'
+    +grab(/const PLAZA=\{[^}]*\};/,'PLAZA')+'\n'
+    +grab(/const PLAZA_WAY=\{[^}]*\};/,'PLAZA_WAY')+'\n'
+    +grab(/const SHORE_Y=\d+;/,'SHORE_Y')+'\n'
+    +'return {STAND_SPOTS, standSpot, pixStandPos, PIX_SOLID, PLAZA, PLAZA_WAY, SHORE_Y};})()');
+  const V=R(Sim, vcState);
+  const w=Sim.makeWorld(90210);
+  vcState.world=w;
+  const N=w.agents.length;
+  const ROOM={}; for(const r of Sim.ROOMS) ROOM[r.id]=r;
+
+  // 理论最大同占 ≥2 的锚点 ＝ 多人可同时被派去的功能位（口径见交付件第三章普查表）
+  const MULTI=['home_table','home_tv','kitchen','store_counter','park_bench','river_walk','market'];
+  const SOLO=['home_desk','bed1','bed2','bed3','bed4','desk1','desk2','store_shelf'];
+  const miss=MULTI.filter(k=>!Array.isArray(V.STAND_SPOTS[k]));
+  ok(miss.length===0,'多人锚全部登记站位表'+(miss.length?('：缺 '+miss.join('、')):'（'+MULTI.length+' 处）'));
+  ok(Object.keys(V.STAND_SPOTS).every(k=>!!Sim.ANCHORS[k]),'站位表零幽灵锚（键全部见于 ANCHORS）');
+  ok(SOLO.every(k=>!V.STAND_SPOTS[k]),'单人锚不登记站位（床/工位/写作角/货架）');
+  const wrongN=MULTI.filter(k=>(V.STAND_SPOTS[k]||[]).length!==N);
+  ok(wrongN.length===0,'每张站位表恰 '+N+' 位＝住户人数'+(wrongN.length?('：'+wrongN.join('、')):''));
+
+  // 站位几何：钳制空操作 + 精灵包围盒落在所属房间内
+  const pts=[];
+  let solidHit=0, outRoom=0;
+  for(const k of MULTI){
+    const a=Sim.ANCHORS[k];
+    (V.STAND_SPOTS[k]||[]).forEach((d,i)=>{
+      const x=a.x+0.5+d[0], y=a.y+0.5+d[1];
+      const q=V.pixStandPos({x,y});
+      if(q.x!==x||q.y!==y) solidHit++;                       // 钳制一旦生效即可能把两人重新并到一处
+      const r=ROOM[a.room];
+      if(r){ if(!((x-0.5)>=r.x && (x+0.5)<=r.x+r.w && (y-1.5)>=r.y && (y+0.5)<=r.y+r.h)) outRoom++; }
+      pts.push({k,i,x,y,room:a.room});
+    });
+  }
+  ok(solidHit===0,'每个站位的脚底格均非实体格（钳制恒为空操作，'+solidHit+' 处命中）');
+  ok(outRoom===0,'精灵包围盒（横 1 格纵 2 格）全落所属房间内（越界 '+outRoom+' 处）');
+
+  // market：全部站位留在《云港城市总规》T 竖净道，且零触岸线行 23（总规五.2 判例）
+  {
+    const a=Sim.ANCHORS.market; let bad=0, shore=0;
+    for(const d of V.STAND_SPOTS.market){
+      const x=a.x+0.5+d[0], y=a.y+0.5+d[1];
+      if(!((x-0.5)>=V.PLAZA_WAY.x && (x+0.5)<=V.PLAZA_WAY.x+V.PLAZA_WAY.w)) bad++;
+      if(!((y-1.5)>=V.PLAZA.y && (y+0.5)<=V.PLAZA.y+V.PLAZA.h)) bad++;
+      if((y+0.5)>V.SHORE_Y) shore++;
+    }
+    ok(bad===0,'街市站位全落 T 竖净道（列 '+V.PLAZA_WAY.x+'–'+(V.PLAZA_WAY.x+V.PLAZA_WAY.w-1)+'）与广场行内（越界 '+bad+' 处）');
+    ok(shore===0,'街市站位零触岸线行 '+V.SHORE_Y+'（总规五.2 判例，'+shore+' 处）');
+  }
+
+  // 两两间距：同房间内一切可同时在场的站位；同下标的不同锚＝同一个人，不可能同时在场，故豁免
+  // 第二条判据＝名牌不得压人身：名牌画在精灵顶（脚底 y −2 格）。若两人几乎同列（|Δx|<1）
+  // 且纵向错开不足 2.5 格，靠下者的名牌就正落在靠上者的身上——精灵虽已分开，观感仍是「叠着」。
+  {
+    let near=0, chip=0, worst=1e9, worstMsg='';
+    const push=(A,B,m)=>{
+      const dx=Math.abs(A.x-B.x), dy=Math.abs(A.y-B.y), d=Math.hypot(dx,dy);
+      if(d<worst){worst=d;worstMsg=m;}
+      if(d<1) near++;
+      if(dx<1 && dy<2.5) chip++;
+    };
+    for(let i=0;i<pts.length;i++)for(let j=i+1;j<pts.length;j++){
+      const A=pts[i],B=pts[j];
+      if(A.room!==B.room) continue;
+      if(A.i===B.i) continue;                                 // 同下标＝同一个人
+      push(A,B,A.k+'#'+A.i+'↔'+B.k+'#'+B.i);
+    }
+    for(const s of SOLO){                                     // 单人锚显示点亦不得与站位撞车
+      const a=Sim.ANCHORS[s], X={x:a.x+0.5,y:a.y+0.5};
+      for(const p of pts){ if(p.room!==a.room) continue; push(X,p,s+'↔'+p.k+'#'+p.i); }
+    }
+    ok(near===0,'同房间可同时在场的落点两两 ≥1 格（最近一对 '+worst.toFixed(2)+' 格：'+worstMsg+'）');
+    ok(chip===0,'零「名牌压人身」组合（近同列且纵错<2.5 格的 '+chip+' 对）');
+  }
+
+  // 派活：四人同锚必得四个互不相同的站位；未登记锚零偏移；篡改档陌生住户不抛错
+  {
+    let dup=0;
+    for(const k of MULTI){
+      const seen=new Set();
+      for(const ag of w.agents){ ag.anchor=k; const s=V.standSpot(ag); const key=s[0]+','+s[1]; if(seen.has(key)) dup++; seen.add(key); }
+    }
+    ok(dup===0,'四人同处一锚必得四个互不相同的站位（重复 '+dup+' 处）');
+    let zero=0;
+    for(const s of SOLO){ for(const ag of w.agents){ ag.anchor=s; const p=V.standSpot(ag); if(p[0]!==0||p[1]!==0) zero++; } }
+    ok(zero===0,'未登记锚（单人锚）一律零偏移，显示落点与本单前逐字一致（越界 '+zero+' 处）');
+    const ghost={id:'zzz', anchor:'home_table'};              // 不在 agents 数组里（篡改档/旧档）
+    const g=V.standSpot(ghost);
+    ok(Array.isArray(g)&&g.length===2,'陌生住户取站位不抛错，落回首位');
+    ok(V.standSpot({anchor:'不存在的锚'})[0]===0,'陌生锚零偏移');
+    ok(V.standSpot(null)[0]===0,'空住户零偏移');
+  }
+  for(const ag of w.agents) ag.anchor=ag.bed;                 // 复原，免污染后续（本块已是文末）
 }
 console.log(fails? ('\n'+fails+' FAILURES') : '\nALL PASS');
 process.exit(fails?1:0);
