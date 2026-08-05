@@ -368,7 +368,7 @@ h2.sec:first-child{ margin-top:0; }
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-        <span class="num dim" id="set-build">v30</span>
+        <span class="num dim" id="set-build">v31</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -2012,9 +2012,13 @@ $('#set-pix').addEventListener('click',()=>{
    口径三条：
    ①站位按住户在 agents 数组中的固定下标分配（零 rng、零状态、零占用查询），
      故同一锚点的任意两人恒取不同站位，且一个人的站位不因别人来去而移动（不出现互相挪窝）。
-   ②只在「已走到（v.path 空）」时生效；行进中零偏移，显示照旧＝SIM 插值原样（照补充指令四口径）。
-     切换仍走既有平滑器限速滑动，禁跨格瞬现。
+   ②【第 20 单改口径】站位是寻路的真终点，不是渲染期的装饰。buildPath 直接以「锚点显示点＋本表偏移」为终点，
+     draw() 对本表零引用。旧口径（只在 v.path 空时于绘制期贴偏移）已作废——它正是病症二瞬移与病症三穿桌的病根：
+     偏移一贴一撤各跳一次，且最大 4.61 格的偏移把平滑器「位移>3 即直置」的旁路整个撑开（实测见交付件第二章）。
    ③登记值为「相对该锚显示点的格偏移」，非绝对坐标——ROOMS/ANCHORS 日后迁址自动跟随，无第二处硬编码。
+   ④【第 20 单新增判据】站位精灵包围盒若与高件家具（PIX_FURN_TALL）绘制矩形相交，则该站位脚底 y 必须严格大于
+     该家具脚底 y（否则按脚底排序时家具后画，人被盖住）。第 19 单只校验了「脚底格非实体」与「包围盒在房内」，
+     漏了这一条，餐桌左椅因此被桌面盖住身体三成（病症一）。门禁已补上，逐条实测见交付件第一章。
    放样自查（harness 逐条断言，判据见 docs/交付/第19单-人物落位重叠排障.md 第五章）：
    每个站位的脚底格均不在 PIX_SOLID（钳制恒为空操作，不会把两人重新并到一处）；
    精灵包围盒（横 1 格、纵 2 格）全落所属 ROOMS 之内；market 全部站位落在《云港城市总规》
@@ -2022,8 +2026,11 @@ $('#set-pix').addEventListener('click',()=>{
    且零「名牌压人身」组合——名牌画在精灵顶（脚底 y −2 格），故近乎同列（|Δx|<1 格）时纵向须错开 ≥2.5 格，
    否则精灵虽已分开、靠下者的名牌仍正落在靠上者身上（本单第一版栽过一次，见交付件五.4）。 */
 const STAND_SPOTS={
-  // 客厅·餐桌：右椅（现状位，零偏移）／左椅／桌东两个站位。四位同排，名牌并排不压人身
-  home_table:[[0,0],[-3,0],[1.5,0],[3,0]],
+  // 客厅·餐桌：右椅（现状位，零偏移）／左席／桌东两个站位。
+  // 左席第 20 单下压 1.5 格：餐桌绘制矩形 x[2.604,4.979] y[8.500,10.813]、脚底 y=10.813，
+  // 原 [-3,0] 落点 (2.5,9.5) 脚底 y=10.0 < 10.813，按脚底排序时餐桌后画，把人盖掉 29.7% 包围盒（病症一实证）。
+  // 改 [-3,1.5] 后落点 (2.5,11.0)、脚底 y=11.5 > 10.813，人画在桌之前，观感即「站在桌子左前方」。
+  home_table:[[0,0],[-3,1.5],[1.5,0],[3,0]],
   // 客厅·沙发：沙发横跨列 1–4，三个坐位顺沙发排开，第四人站在沙发东侧
   home_tv:[[0,0],[-1.5,0],[1.5,0],[3,0]],
   // 厨房：灶台前（现状位）／台面前／冰箱前两位。冰箱脚底 y=10.063，故后两位下压 1 格，
@@ -2134,10 +2141,73 @@ function buildingAt(x,y,room){
   }
   return null;
 }
-function buildPath(fromX,fromY,toAnchorId){
+/* ---------- 第 20 单·避实体走线（纯渲染层，SIM 零改动） ----------
+   病症三取证：「门→餐桌」这一段原本是一根直线，脚底轨迹横穿餐桌实体格（3,8 / 4,8 / 3,9 / 4,9 / 2,9 / 5,9…）。
+   30 天双种子逐帧实测 800–1000 帧/3 天；把站位偏移整个关掉照样发生 ——
+   这是第 19 单之前就有的老账，不是错开落位引入的（对照读数见交付件第二章）。
+   本单立「规矩二·全程不得穿实体」，故走线自己得会绕。
+   口径三条：
+   ①只对「直线脚底轨迹撞上实体格」的那一段改线，其余段逐字保持原样（老走线的观感不动）；
+   ②改线＝在非实体脚底格上做四邻域 BFS（邻域序写死，零 rng、零状态），再拉绳简化，中间点一律取格心；
+   ③PIX_SOLID 全部落在 APT 内，故楼外（街面/公园/广场/步道）走线永不触发本段，B 案骨架判例零影响。 */
+const SOLID_STEP=0.02;                                             // 脚底轨迹采样步长（格）：远细于单帧步长上限 0.19 格，故采样漏检不可能反过来被逐帧门禁看见
+function footCell(x,y){ return Math.floor(x)+','+Math.floor(y+0.5); }   // 脚底格＝显示点下移半格（与 pixStandPos / draw 落笔口径同源）
+function segHitsSolid(ax,ay,bx,by){
+  const n=Math.max(1,Math.ceil(Math.hypot(bx-ax,by-ay)/SOLID_STEP));
+  for(let i=0;i<=n;i++){ const t=i/n; if(PIX_SOLID.has(footCell(ax+(bx-ax)*t, ay+(by-ay)*t))) return true; }
+  return false;
+}
+function bfsAround(ax,ay,bx,by){
+  const s=[Math.floor(ax),Math.floor(ay+0.5)], g=[Math.floor(bx),Math.floor(by+0.5)];
+  if(PIX_SOLID.has(s.join(','))||PIX_SOLID.has(g.join(','))) return null;   // 端点本身就在实体格：不替人遮丑，交回原线段由逐帧门禁揭发
+  const x0=Math.max(0,Math.min(s[0],g[0],APT.x)-1),               x1=Math.min(Sim.MAPW-1,Math.max(s[0],g[0],APT.x+APT.w-1)+1);
+  const y0=Math.max(0,Math.min(s[1],g[1],APT.y)-1),               y1=Math.min(Sim.MAPH-1,Math.max(s[1],g[1],APT.y+APT.h-1)+1);
+  const key=(x,y)=>x+','+y, prev={}, seen={}, q=[s];
+  seen[key(s[0],s[1])]=1;
+  const D=[[1,0],[-1,0],[0,1],[0,-1]];                            // 邻域序写死＝确定性的唯一来源（同起讫恒得同一条线）
+  for(let h=0;h<q.length;h++){
+    const cx=q[h][0], cy=q[h][1];
+    if(cx===g[0]&&cy===g[1]){
+      const out=[]; let k=key(cx,cy);
+      while(k!==undefined){ const c=k.split(','); out.unshift({x:+c[0]+0.5,y:+c[1]}); k=prev[k]; }
+      return out;                                                 // 格心航点＝(gx+0.5, gy)：脚底恰为 (gx+0.5, gy+0.5)，即该格中心（与 pixStandPos 返回口径同源）
+    }
+    for(const d of D){
+      const nx=cx+d[0], ny=cy+d[1];
+      if(nx<x0||nx>x1||ny<y0||ny>y1) continue;
+      const nk=key(nx,ny);
+      if(seen[nk]||PIX_SOLID.has(nk)) continue;
+      seen[nk]=1; prev[nk]=key(cx,cy); q.push([nx,ny]);
+    }
+  }
+  return null;
+}
+function avoidSolids(fromX,fromY,pts){
+  const out=[]; let cx=fromX, cy=fromY;
+  for(const p of pts){
+    if(!segHitsSolid(cx,cy,p.x,p.y)){ out.push(p); cx=p.x; cy=p.y; continue; }
+    const cells=bfsAround(cx,cy,p.x,p.y);
+    if(!cells){ out.push(p); cx=p.x; cy=p.y; continue; }           // 绕不过去：保持原样，不静默吞掉
+    const chain=cells.slice(1); chain.push(p);                     // 首格＝起点所在格，起点用真实分数坐标，不必回格心
+    let ax=cx, ay=cy, i=0;
+    while(i<chain.length){                                         // 拉绳简化：每次取「还能直达的最远那个」，四邻域相邻格心互达恒安全，故必然推进
+      let j=chain.length-1;
+      while(j>i && segHitsSolid(ax,ay,chain[j].x,chain[j].y)) j--;
+      out.push(chain[j]); ax=chain[j].x; ay=chain[j].y; i=j+1;
+    }
+    cx=p.x; cy=p.y;
+  }
+  return out;
+}
+// 第 20 单：终点取「站位」而非锚点中心 —— 站位自此是寻路的真终点，起点恒取人当前实际所在处（updateWalkers 传 v.x/v.y）。
+// 如此则不存在「渲染期贴上／撤销偏移」这一动作，病症二的跳变与病症三的穿桌从结构上消失（任务书第一优先档）。
+function buildPath(fromX,fromY,toAnchorId,spot){
+  return avoidSolids(fromX,fromY,buildPathRaw(fromX,fromY,toAnchorId,spot));
+}
+function buildPathRaw(fromX,fromY,toAnchorId,spot){
   const a=Sim.ANCHORS[toAnchorId];
   const pts=[];
-  const target={x:a.x+0.5,y:a.y+0.5};
+  const target={x:a.x+0.5+(spot?spot[0]:0),y:a.y+0.5+(spot?spot[1]:0)};
   const fromRoom=Sim.ROOMS.find(r=>fromX>=r.x&&fromX<r.x+r.w&&fromY>=r.y&&fromY<r.y+r.h);
   const toRoom=Sim.ROOMS.find(r=>r.id===a.room);
   const sYc=Sim.STREET_Y+0.5;
@@ -2174,10 +2244,16 @@ function updateWalkers(dtSec){
   const mult=w.speed===0?0:w.speed;
   for(const ag of w.agents){
     const v=state.vis[ag.id];
-    if(v.anchor!==ag.anchor){
-      v.path = state.reduceMotion ? [] : buildPath(v.x,v.y,ag.anchor);
-      if(state.reduceMotion){ const a=Sim.ANCHORS[ag.anchor]; v.x=a.x+0.5; v.y=a.y+0.5; }
-      v.anchor=ag.anchor;
+    // 第 20 单：站位并入寻路。重铺条件＝锚变了、或站位表变了（改档/换人）；起点恒取 v.x/v.y＝人当前实际所在处。
+    const sp=standSpot(ag), spk=sp[0]+','+sp[1];
+    if(v.anchor!==ag.anchor || v.spot!==spk){
+      const a=Sim.ANCHORS[ag.anchor];
+      if(state.reduceMotion || v.spot===undefined){            // 首帧落位与 reduceMotion 直置：任务书明列的两处豁免，打 warp 标让平滑器放行
+        v.x=a.x+0.5+sp[0]; v.y=a.y+0.5+sp[1]; v.path=[]; v.warp=true;
+      } else {
+        v.path=buildPath(v.x,v.y,ag.anchor,sp);
+      }
+      v.anchor=ag.anchor; v.spot=spk;
     }
     let budget=5.5*dtSec*mult;
     v.moving=v.path.length>0 && budget>0;
@@ -2190,6 +2266,28 @@ function updateWalkers(dtSec){
       else { v.x+=dx/d*budget; v.y+=dy/d*budget; budget=0; }
     }
   }
+}
+/* ---------- 第 20 单·规矩三：显示坐标只有一个来源 ----------
+   本函数是 v.dspX / v.dspY 的唯一写入处，入链只有「寻路结果 v.x/v.y」一条；
+   站位偏移已在 buildPath 的终点里消化掉，绘制期零参与（draw() 只读 dspX/dspY，不得再叠任何位移）。
+   —— 病症二的病根正是「寻路结果 ＋ 渲染期偏移」两处叠加：偏移这一帧贴上／下一帧撤销，
+   显示位一来一回各跳一次。判据反过来立：draw() 里对 standSpot/STAND_SPOTS 零引用（门禁逐条断言）。
+   平滑器的旁路也在本单收口：原「位移>3 格即直置」是按距离猜传送，
+   而站位偏移最大 4.61 格、起步那一帧再叠上本帧步长，恰好从这道缝里整个溜过去（实测 30–69 次/3 天，最大 4.67 格）。
+   现改为只认显式 warp 标（首帧落位 / reduceMotion 直置两处设置），距离再大也一律限速。 */
+function stepDisplay(ag,dtSec,pixOn){
+  const v=state.vis[ag.id];
+  const usePix = pixOn && Object.prototype.hasOwnProperty.call(PIX_IDX,ag.id);
+  let tx=v.x, ty=v.y;
+  if(usePix && !v.moving){ const q=pixStandPos({x:tx,y:ty}); tx=q.x; ty=q.y; }   // 兜底钳制：走线已保证脚底非实体格，此处恒为空操作（门禁逐帧断言）
+  if(v.dspX===undefined || v.warp){ v.dspX=tx; v.dspY=ty; v.warp=false; }
+  else{
+    const dx=tx-v.dspX, dy=ty-v.dspY, len=Math.hypot(dx,dy);
+    const cap=(5.5*(state.world.speed||1)+6)*dtSec;   // SIM 本帧步长上限+过渡余量,保证追随不落后
+    if(len<=cap){ v.dspX=tx; v.dspY=ty; }
+    else{ v.dspX+=dx/len*cap; v.dspY+=dy/len*cap; }
+  }
+  return v;
 }
 let rainSeed=0;
 function draw(now){
@@ -2279,23 +2377,10 @@ function draw(now){
     if(r.w*s>52) chip(sx(r.x+r.w/2), sy(r.y)+16, r.label, '#aeb6c6', Math.max(9,Math.min(12, s*0.7)));
   }
   // 小人与高件家具:按脚底 y 统一排序绘制(补充指令三:靠下者后画形成正确遮挡;旧渲染路径不变)
+  // 第 20 单·规矩三：绘制期不碰位移。显示坐标全部出自 stepDisplay 一处，此处只取用。
   const dispPos={};
   for(const ag of state.world.agents){
-    const v=state.vis[ag.id];
-    const usePix = pixOn && Object.prototype.hasOwnProperty.call(PIX_IDX,ag.id);
-    // 补充指令四:移动中零钳制(显示=SIM 插值原样为目标);仅静止时按登记落位;切换经限速短程滑动,禁跨格瞬现
-    // 第 19 单:同锚错开在「已走到」时叠加(v.path 空才算走到——暂停在半路时 v.moving 也为 false,
-    // 那种情形不得偏移,否则一按暂停人就横移);错开后再交给钳制器,登记表已保证钳制恒为空操作。
-    let tx=v.x, ty=v.y;
-    if(!v.path.length){ const sp=standSpot(ag); tx=v.x+sp[0]; ty=v.y+sp[1]; }
-    if(usePix && !v.moving){ const q=pixStandPos({x:tx,y:ty}); tx=q.x; ty=q.y; }
-    if(v.dspX===undefined || Math.hypot(tx-v.dspX,ty-v.dspY)>3){ v.dspX=tx; v.dspY=ty; }   // 初始化/传送级跳变直置
-    else{
-      const dx=tx-v.dspX, dy=ty-v.dspY, len=Math.hypot(dx,dy);
-      const cap=(5.5*(state.world.speed||1)+6)*dtFrame;   // SIM 本帧步长上限+过渡余量,保证追随不落后
-      if(len<=cap){ v.dspX=tx; v.dspY=ty; }
-      else{ v.dspX+=dx/len*cap; v.dspY+=dy/len*cap; }
-    }
+    const v=stepDisplay(ag,dtFrame,pixOn);
     dispPos[ag.id]={x:v.dspX,y:v.dspY};
   }
   const ents=state.world.agents.map(ag=>({kind:'a',ag,fy:dispPos[ag.id].y+0.5}));
