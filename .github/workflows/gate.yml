@@ -26,6 +26,8 @@ jobs:
         run: node harness.js
       - name: 30 天退化检查
         run: node sim30.js
+      - name: 走位三铁律门禁（第 20 单）
+        run: node walkgate.js
       - name: 中转函数语法检查
         run: |
           cp functions/relay.js relay-check.mjs
