@@ -535,7 +535,10 @@ const WORK_THOUGHTS={
 // 称谓沿用现有台词已出现的职务称呼（客户 见 WORK_THOUGHTS.trade；编辑 见 WORK_THOUGHTS.write 与 a4.fear），
 // 组长／店长为同类职务称呼，非新造人名。挂表按 workKind（四人 workKind 互异，照 WORK_THOUGHTS 先例，语义等于按人）。
 const PEER_ROLE={work:'组长', clerk:'店长', trade:'客户', write:'编辑'};
-// 每人 6 条（口径 5–7），好坏参半且必含「平淡」一档——不是天天有戏。
+// 每人 6 条（口径 5–7），必含恰好 1 条「平淡」档——不是天天有戏。
+// 好坏配平（补充指令一）：6 条＝1 平＋5 条好坏，5 为奇数故逐人对半在算术上不可能，
+// 落法改为「全城对半」——非平淡的 20 条整体 10 好／10 坏（店长与客户 3 好 2 坏，
+// 组长与编辑 2 好 3 坏；后两张系任务书点名示例形状，原样保留）。harness 有断言锁死。
 // k：good 顺／bad 逆／flat 平淡；text＝挂在住户身上的处境短语，唯一去处是 AI 角色卡那一行（任务书四）。
 // 刻意不带上墙文案与独白：本单事件不进日志墙，故不设 text 以外的第二份措辞。
 const PEER_EVENTS={
@@ -550,7 +553,7 @@ const PEER_EVENTS={
   clerk:[
     {k:'bad', text:'排面没理齐，被店长说了两句'},
     {k:'good',text:'今天的排面被店长夸了'},
-    {k:'bad', text:'被店长临时排了个晚班'},
+    {k:'good',text:'店长把周日的班调开了'},
     {k:'good',text:'店长塞来两盒临期便当，晚饭有着落'},
     {k:'bad', text:'盘点对不上，差了三样'},
     {k:'flat',text:'店长一天没来店里，没消息'},
@@ -560,7 +563,7 @@ const PEER_EVENTS={
     {k:'good',text:'客户追加了一笔'},
     {k:'bad', text:'客户提出要撤单'},
     {k:'good',text:'客户发来一句谢谢'},
-    {k:'bad', text:'方案被客户压下来，要改第三版'},
+    {k:'good',text:'方案一次过，客户没提意见'},
     {k:'flat',text:'客户一天没来消息'},
   ],
   write:[
@@ -576,9 +579,11 @@ const PEER_EVENTS={
 // 一个工作日只有 8 次左右机会，故 0.35 对应「约 97% 的工作日会抽一次」。取值意图＝让「没戏」只来自事件表的平淡档一个源头，
 // 而不是额外掺一份静默漏抽；命中即封当日（一天至多一次），封后当日零 rng 消耗。
 const PEER_CHANCE=0.35;
-// 可调：处境状态时效（分钟）。任务书口径为 10–14 小时量级，此处取中位 12 小时＝720 分钟。
-// 到点自然消失（按 w.t 判活，不做定时清扫）；工作时段内挂上，足以覆盖当晚 21:50 的睡前日记。
-const SIT_TTL=12*60;
+// 可调：处境状态时效（分钟）。任务书口径 10–14 小时量级；补充指令一裁定取上限 14 小时＝840 分钟。
+// 缘由：12 小时时事件多在 8–11 点命中、恰在 21:50 睡前日记之前到期，日记时刻挂载比例仅约 70%，
+// 而睡前日记（四人一次打包生成）正是本单假说的主要观察窗口，丢三成样本会让假说验不干净。
+// 到点自然消失（按 w.t 判活，不做定时清扫）。
+const SIT_TTL=14*60;
 const CHAT_LINES=[
   ['最近那家外卖涨价了你发现没？','发现了！蛋炒饭都要35了。'],
   ['周日要不要一起去街市看看？','行啊，听说有新摊位。'],
@@ -928,7 +933,7 @@ function hydrate(str){
   };
   return {world:w, meta:d.meta||null};
 }
-const Sim={makeWorld, step, sendMessage, sendCustomMessage, decide, MSGS, ANCHORS, ROOMS, TILE, MAPW, MAPH, STREET_Y, serialize, hydrate, SAVE_V, PEER_ROLE, PEER_EVENTS, currentSit};
+const Sim={makeWorld, step, sendMessage, sendCustomMessage, decide, MSGS, ANCHORS, ROOMS, TILE, MAPW, MAPH, STREET_Y, serialize, hydrate, SAVE_V, PEER_ROLE, PEER_EVENTS, SIT_TTL, currentSit};
 /*SIM-END*/
 
 if(typeof document==='undefined'){ module.exports={PURE, Sim}; return; }

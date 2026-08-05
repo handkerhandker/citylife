@@ -135,11 +135,19 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
     const arr=tbl[k];
     ok(Array.isArray(arr) && arr.length>=5 && arr.length<=7, '事件表 '+k+' 条数 '+(arr||[]).length+'（口径 5–7）');
     const ks=new Set(arr.map(e=>e.k));
-    ok(ks.has('good')&&ks.has('bad')&&ks.has('flat'),'事件表 '+k+' 好坏参半且有平淡档');
+    ok(ks.has('good')&&ks.has('bad'),'事件表 '+k+' 好坏俱全');
+    ok(arr.filter(e=>e.k==='flat').length===1,'事件表 '+k+' 恰好 1 条平淡档');
     // 铁律 3：外围角色是事件源不是人——事件条目只许有 k 与 text，不得携带独白/日程/画像等"人"的字段
     ok(arr.every(e=>typeof e.text==='string' && e.text && Object.keys(e).length===2),
        '事件表 '+k+' 每条仅 k+text 两字段（外围角色不得获得内心世界）');
   }
+  // 好坏配平（补充指令一）：6 条＝1 平＋5 好坏，5 为奇数故逐人对半不可能，落法为全城对半
+  const all=['work','clerk','trade','write'].reduce((a,k)=>a.concat(tbl[k]),[]);
+  const g=all.filter(e=>e.k==='good').length, b=all.filter(e=>e.k==='bad').length, f=all.filter(e=>e.k==='flat').length;
+  ok(g===b,'全城好坏对半：'+g+' 好 / '+b+' 坏');
+  ok(f===4 && all.length===24,'四人各 6 条共 24 条，平淡档共 4 条：'+all.length+' 条 / '+f+' 平');
+  // 文案唯一：四表互不相交是 ②「四人同挂同一条」恒为 0 的结构前提
+  ok(new Set(all.map(e=>e.text)).size===24,'24 条文案互不重复（四表不相交）');
 }
 // --- 外围事件触发口径与处境状态（第 17 单） ---
 {
@@ -160,7 +168,7 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
       if(s && stamp!==prevSit[ag.id]){                  // 新挂上一条（until 变化即为新事件）
         const mod=PURE.minuteOfDay(w.t), win=WIN[ag.id];
         if(!win || mod<win[0] || mod>=win[1] || (mod>=12*60 && mod<13*60)) outOfWindow++;
-        if(s.until!==w.t+12*60) ttlBad++;               // 时效＝SIT_TTL，10–14 小时量级
+        if(s.until!==w.t+Sim.SIT_TTL) ttlBad++;         // 时效＝SIT_TTL（补充指令一裁定 14 小时）
         perDay[ag.id+'|'+PURE.dayOf(w.t)]=(perDay[ag.id+'|'+PURE.dayOf(w.t)]||0)+1;
         hitBy[ag.id]=(hitBy[ag.id]||0)+1;
         sawKind.add(textK[s.text]);
@@ -180,7 +188,8 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   ok(Object.keys(hitBy).length===4,'四名住户都收到过外围事件：'+JSON.stringify(hitBy));
   ok(Object.values(perDay).every(v=>v===1),'一天至多一次（最大 '+Math.max(...Object.values(perDay))+'）');
   ok(outOfWindow===0,'全部落在该住户当天的工作时段内（越界 '+outOfWindow+' 次）');
-  ok(ttlBad===0,'时效一律为 SIT_TTL＝12 小时（偏差 '+ttlBad+' 次）');
+  ok(ttlBad===0,'时效一律为 SIT_TTL＝'+(Sim.SIT_TTL/60)+' 小时（偏差 '+ttlBad+' 次）');
+  ok(Sim.SIT_TTL>=10*60 && Sim.SIT_TTL<=14*60,'SIT_TTL 落在任务书 10–14 小时口径内：'+(Sim.SIT_TTL/60)+' 小时');
   ok(repeat===0,'同人相邻两次外围事件不复读（复读 '+repeat+' 次）');
   ok(sawKind.has('good')&&sawKind.has('bad')&&sawKind.has('flat'),'好／坏／平淡三档都出现过：'+[...sawKind].join('/'));
   // 处境状态字段：至多 1 条、到点消失、坏输入不抛错
