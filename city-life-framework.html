@@ -530,50 +530,55 @@ const WORK_THOUGHTS={
   write:['写了三百字，删了两百。','找到一个好句子，今天值了。','稿子越写越像流水账，撕掉重来。','编辑发来一个"？"，我回"在了在了"。','把开头改成结尾，居然通了。','查资料掉进兔子洞，一小时没了。','想了个好标题，先存着。'],
 };
 // —— 第 17 单：外围角色（不露面）与事件表 ——
-// 一个外围角色 ＝ 一张事件表，仅此而已：不进 ROOMS/ANCHORS、不在地图上、不走路、不进角色页。
+// 一个外围角色 ＝ 一张事件表，仅此而已：不进 ROOMS/ANCHORS、不在地图上、不走路、不进日志墙、不进角色页。
+// 外围角色不得获得内心世界／日程／语言指纹／画像——他们是事件源，不是人（任务书铁律 3）。
 // 称谓沿用现有台词已出现的职务称呼（客户 见 WORK_THOUGHTS.trade；编辑 见 WORK_THOUGHTS.write 与 a4.fear），
 // 组长／店长为同类职务称呼，非新造人名。挂表按 workKind（四人 workKind 互异，照 WORK_THOUGHTS 先例，语义等于按人）。
 const PEER_ROLE={work:'组长', clerk:'店长', trade:'客户', write:'编辑'};
 // 每人 6 条（口径 5–7），好坏参半且必含「平淡」一档——不是天天有戏。
-// k：good 顺／bad 逆／flat 平淡；text＝上墙的事件词，thought＝当场独白，card＝喂给 AI 角色卡的处境短语。
+// k：good 顺／bad 逆／flat 平淡；text＝挂在住户身上的处境短语，唯一去处是 AI 角色卡那一行（任务书四）。
+// 刻意不带上墙文案与独白：本单事件不进日志墙，故不设 text 以外的第二份措辞。
 const PEER_EVENTS={
   work:[
-    {k:'bad', text:'收到组长打回的 CR',      thought:'评语三行，第三行最扎心。',       card:'CR 被组长打回'},
-    {k:'good',text:'负责的那版顺利上线',      thought:'组长说很稳。没回滚就是最高评价。', card:'负责的版本上线成功，组长说很稳'},
-    {k:'bad', text:'被组长塞了个加急',        thought:'今晚这顿饭得往后挪。',           card:'被组长塞了临时加急'},
-    {k:'bad', text:'组长转来改过的需求',      thought:'昨天写的那部分可以删了。',       card:'需求被改，昨天写的白写'},
-    {k:'good',text:'被组长在群里点名夸了',    thought:'夸了一句，就一句，够用了。',     card:'被组长在群里点名夸了一句'},
-    {k:'flat',text:'组长一天没派活',          thought:'没消息就是好消息，大概。',       card:'组长一天没找过，没消息'},
+    {k:'bad', text:'CR 被组长打回，评语写了三行'},
+    {k:'good',text:'负责的那版顺利上线，组长说很稳'},
+    {k:'bad', text:'被组长塞了个加急，今晚得晚走'},
+    {k:'bad', text:'组长转来改过的需求，昨天写的白写'},
+    {k:'good',text:'被组长在群里点名夸了一句'},
+    {k:'flat',text:'组长一天没派活，没消息'},
   ],
   clerk:[
-    {k:'bad', text:'排面没理齐，被店长说了两句', thought:'认了，明早提前十分钟来。',     card:'排面没理齐，被店长说了两句'},
-    {k:'good',text:'店长夸了今天的排面',        thought:'理了一早上，值。',             card:'排面被店长夸了'},
-    {k:'bad', text:'被店长临时排了个晚班',      thought:'今晚的约又得改期，第三次了。', card:'被店长临时加了晚班'},
-    {k:'good',text:'店长塞来两盒临期便当',      thought:'晚饭有着落，还是甜口那种。',   card:'店长送了两盒临期便当，晚饭有着落'},
-    {k:'bad', text:'盘点对不上，差了三样',      thought:'找了半小时，最后在冷柜后面。', card:'盘点对不上，店长皱了眉'},
-    {k:'flat',text:'店长一天没来店里',          thought:'一个人守着收银台，也挺清净。', card:'店长一天没露面，没消息'},
+    {k:'bad', text:'排面没理齐，被店长说了两句'},
+    {k:'good',text:'今天的排面被店长夸了'},
+    {k:'bad', text:'被店长临时排了个晚班'},
+    {k:'good',text:'店长塞来两盒临期便当，晚饭有着落'},
+    {k:'bad', text:'盘点对不上，差了三样'},
+    {k:'flat',text:'店长一天没来店里，没消息'},
   ],
   trade:[
-    {k:'bad', text:'客户在电话里发了火',    thought:'仓位是客户自己要加的。',         card:'客户来电发火'},
-    {k:'good',text:'客户追加了一笔',        thought:'信任写在金额上，不必多说。',     card:'客户追加了一笔'},
-    {k:'bad', text:'客户提出要撤单',        thought:'解释了两遍，对方只回一个嗯。',   card:'客户提出撤单'},
-    {k:'good',text:'客户发来一句谢谢',      thought:'两个字，比行情让人踏实。',       card:'客户来消息道谢'},
-    {k:'bad', text:'方案被客户压了下来',    thought:'回去改，第三版。',               card:'方案被客户压下来'},
-    {k:'flat',text:'客户一天没来消息',      thought:'没有消息，就按原计划。',         card:'客户一天没来消息'},
+    {k:'bad', text:'客户在电话里发了火'},
+    {k:'good',text:'客户追加了一笔'},
+    {k:'bad', text:'客户提出要撤单'},
+    {k:'good',text:'客户发来一句谢谢'},
+    {k:'bad', text:'方案被客户压下来，要改第三版'},
+    {k:'flat',text:'客户一天没来消息'},
   ],
   write:[
-    {k:'bad', text:'收到编辑的催稿',        thought:'措辞客气，句号却很硬。',             card:'被编辑催稿'},
-    {k:'bad', text:'稿子被编辑退了回来',    thought:'退稿信写得很得体，读完还是凉半截。', card:'稿子被编辑退回'},
-    {k:'good',text:'专栏过稿了',            thought:'编辑只回两个字：可以。够了。',       card:'专栏过了编辑那关'},
-    {k:'bad', text:'编辑压来一篇急稿',      thought:'明早十点，字数照旧。',               card:'被编辑压了个明早的急稿'},
-    {k:'good',text:'编辑夸了这篇的开头',    thought:'那是删到第六遍才留下的开头。',       card:'开头被编辑夸了'},
-    {k:'flat',text:'编辑一天没来信',        thought:'安静的一天，稿子自己也没动。',       card:'编辑一天没来信，没消息'},
+    {k:'bad', text:'编辑来催稿了'},
+    {k:'bad', text:'稿子被编辑退了回来'},
+    {k:'good',text:'专栏过稿了'},
+    {k:'bad', text:'编辑压来一篇明早要的急稿'},
+    {k:'good',text:'编辑夸了这篇的开头'},
+    {k:'flat',text:'编辑一天没来信，没消息'},
   ],
 };
 // 可调：工作时段内每次决策的命中概率。注意 decide() 在上班期间约每 60 分钟才轮到一次（setActivity 置 busyUntil＝+60），
 // 一个工作日只有 8 次左右机会，故 0.35 对应「约 97% 的工作日会抽一次」。取值意图＝让「没戏」只来自事件表的平淡档一个源头，
 // 而不是额外掺一份静默漏抽；命中即封当日（一天至多一次），封后当日零 rng 消耗。
 const PEER_CHANCE=0.35;
+// 可调：处境状态时效（分钟）。任务书口径为 10–14 小时量级，此处取中位 12 小时＝720 分钟。
+// 到点自然消失（按 w.t 判活，不做定时清扫）；工作时段内挂上，足以覆盖当晚 21:50 的睡前日记。
+const SIT_TTL=12*60;
 const CHAT_LINES=[
   ['最近那家外卖涨价了你发现没？','发现了！蛋炒饭都要35了。'],
   ['周日要不要一起去街市看看？','行啊，听说有新摊位。'],
@@ -672,13 +677,14 @@ function pickV(w,arr,ag,key){
   return arr[idx];
 }
 
-// 第 17 单·处境状态：外围角色事件命中后挂在该住户身上，当天有效、跨天自动失效（不做定时清扫，按天号判活）。
+// 第 17 单·处境状态：外围角色事件命中后挂在该住户身上，带时效（SIT_TTL），到点自然消失。
+// 不做定时清扫，一律按 w.t 判活——过期的 sit 留在档里无害，且顺带充当防连日复读的比对底。
 // ag.sit 为普通对象，随 serialize 全量入档；旧档无 sit 字段 → 返回 null，绝不判坏档（照 tempo/saidDay/lastUtterance 先例）。
-// 型别守卫覆盖被篡改档（sit 为原始类型也只返回 null，不抛错）。
+// 型别守卫覆盖被篡改档（sit 为原始类型、until 非有限数，一律只返回 null，不抛错）。
 function currentSit(w,ag){
   const s=ag&&ag.sit;
   if(!s || typeof s!=='object') return null;
-  return s.day===PURE.dayOf(w.t) ? s : null;
+  return (isFinite(s.until) && w.t < s.until) ? s : null;
 }
 function setActivity(w,ag,anchorId,type,label,minutes,thought,logText,logType){
   const S=w.stats; (S.act[ag.id]=S.act[ag.id]||{})[type]=(S.act[ag.id][type]||0)+1; if(anchorId==='market') S.market++;
@@ -773,17 +779,18 @@ function decide(w, ag){
     if(mutter){ logAct(w,ag,'工作中',thought); }
     // 第 17 单·外围角色事件：只在该住户当天的工作时段内触发，一天至多一次。
     // 短路顺序有意为之——peerDay 先判，命中封当日后本日再不消耗 rng；陌生 workKind（无表）零 rng 零事件。
+    // 刻意不落日志、不进 personalLog：外围角色不进日志墙（任务书一），处境的唯一去处是 AI 角色卡（任务书四）。
     const ptbl=PEER_EVENTS[ag.workKind];
     if(ptbl && ptbl.length && ag.flags.peerDay!==today && w.rng()<PEER_CHANCE){
       ag.flags.peerDay=today;
       // 防连日复读：撞上次抽中的那条则顺延一条（照 styleAssign 撞类顺延先例）。
-      // sit 不做跨天清扫，故 sit.i 天然留着上一次的下标可比；恰好消耗 1 次 rng，与 pick 等量。
+      // sit 过期不清扫，故 sit.i 天然留着上一次的下标可比；恰好消耗 1 次 rng，与 pick 等量。
       const prev=(ag.sit && typeof ag.sit==='object') ? ag.sit.i : -1;
       let idx=Math.floor(w.rng()*ptbl.length);
       if(idx===prev) idx=(idx+1)%ptbl.length;
       const ev=ptbl[idx];
-      ag.sit={k:ev.k, from:PEER_ROLE[ag.workKind]||'', text:ev.card, i:idx, day:today};   // 处境状态：挂在人身上，当天有效
-      logAct(w,ag,ev.text,ev.thought);
+      // 处境状态：每人至多挂 1 条，新的直接顶掉旧的；until 到点自然消失
+      ag.sit={k:ev.k, from:PEER_ROLE[ag.workKind]||'', text:ev.text, i:idx, until:w.t+SIT_TTL};
     }
     return;
   }
@@ -1578,11 +1585,13 @@ function agentCard(ag, hook){
   const fear=(ag.money<300)?'凑不齐下个月房租':ag.fear;
   const recent=ag.personalLog.slice(-3).map(e=>e.text).join('；')||'（今天刚开始）';
   const last=String(ag.lastUtterance||'').slice(0,80);   // 旧档/开局缺字段→空串，不注入
-  const sit=Sim.currentSit(state.world, ag);             // 第 17 单：当天处境（外围角色事件挂住的那一件），跨天自动不再注入
+  // 第 17 单·处境状态：唯一去处就是这一行；时效过了或从未挂过则整行省略（不留空字段）。
+  // 铁律——这是底色不是内容：只许影响语气和挑什么说，不许被复述。措辞写死在此，勿改成陈述句。
+  const sit=Sim.currentSit(state.world, ag);
   return ag.name+'（'+ag.job+'）｜特质:'+ag.traits.join('/')+'｜心愿:'+ag.want+'｜担忧:'+fear
     +'｜钱包:¥'+Math.round(ag.money)+'｜'+hungerWord(ag.hunger)+'、体力'+Math.round(ag.energy)
     +'｜正在:'+ag.activity.label
-    +(sit?'｜今天工作上:'+sit.text:'')
+    +(sit?'｜今天心里压着的事:'+sit.text+'（这是背景底色，只影响你的语气和你挑什么说；不许直接提起它，更不许解释自己为什么这样）':'')
     +'｜说话方式:'+(AI_VOICE[ag.id]||ag.voice)
     +styleAssign(ag, hook)
     +(last?'｜上次开口:「'+last+'」（这句的开法与比喻对象都不得重复）':'')
