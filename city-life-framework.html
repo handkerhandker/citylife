@@ -368,7 +368,7 @@ h2.sec:first-child{ margin-top:0; }
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-        <span class="num dim" id="set-build">v27</span>
+        <span class="num dim" id="set-build">v28</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -529,6 +529,67 @@ const WORK_THOUGHTS={
   clerk:['理货，顺手把过期饭团下架。','来了个熟客，聊了两句。','收银台前排了小队，忙而不乱。','小孩在货架前站了十分钟，买了根棒棒糖。','补货补到一半，饮料柜空了三排。','常来的大叔今天没来，有点惦记。','扫码枪没电，手忙脚乱找充电线。'],
   write:['写了三百字，删了两百。','找到一个好句子，今天值了。','稿子越写越像流水账，撕掉重来。','编辑发来一个"？"，我回"在了在了"。','把开头改成结尾，居然通了。','查资料掉进兔子洞，一小时没了。','想了个好标题，先存着。'],
 };
+// —— 第 17 单：外围角色（不露面）与事件表 ——
+// 一个外围角色 ＝ 一张事件表，仅此而已：不进 ROOMS/ANCHORS、不在地图上、不走路、不进日志墙、不进角色页。
+// 外围角色不得获得内心世界／日程／语言指纹／画像——他们是事件源，不是人（任务书铁律 3）。
+// 称谓沿用台词中已在用的职务称呼：客户见 WORK_THOUGHTS.trade、编辑见 WORK_THOUGHTS.write 与 a4.fear（仓库文案）；
+// 组长／店长虽未写进仓库文案，但 AI 生成的对白中早已在用（决策者截图实证），四个称谓一律非新造。挂表按 workKind（四人 workKind 互异，照 WORK_THOUGHTS 先例，语义等于按人）。
+const PEER_ROLE={work:'组长', clerk:'店长', trade:'客户', write:'编辑'};
+// 每人 7 条 ＝ 3 好 / 3 坏 / 1 平，全城 28 条（补充指令二：撤销「每人 6 条」约束，
+// 该约束原为顾虑 pickV 抽词池容量口径，但本表不是抽词池，顾虑不成立）。
+// 逐人对半自此可整除，故不再走补充指令一的「全城对半」变通。
+// 缘由写死：全城对半下顾云帆与白一鸣结构性偏逆、沈小满与陆知秋结构性偏顺，
+// 30 天累积会让四人境遇系统性分化，污染本单假说的验收——试玩者会把
+// 「两个人一直倒霉」误读成「处境让四人说话分开了」。harness 三条断言锁死。
+// k：good 顺／bad 逆／flat 平淡；text＝挂在住户身上的处境短语，唯一去处是 AI 角色卡那一行（任务书四）。
+// 刻意不带上墙文案与独白：本单事件不进日志墙，故不设 text 以外的第二份措辞。
+const PEER_EVENTS={
+  work:[
+    {k:'bad', text:'CR 被组长打回，评语写了三行'},
+    {k:'good',text:'负责的那版顺利上线，组长说很稳'},
+    {k:'bad', text:'被组长塞了个加急，今晚得晚走'},
+    {k:'bad', text:'组长转来改过的需求，昨天写的白写'},
+    {k:'good',text:'被组长在群里点名夸了一句'},
+    {k:'good',text:'组长准了两天去还技术债'},
+    {k:'flat',text:'组长一天没派活，没消息'},
+  ],
+  clerk:[
+    {k:'bad', text:'排面没理齐，被店长说了两句'},
+    {k:'good',text:'今天的排面被店长夸了'},
+    {k:'good',text:'店长把周日的班调开了'},
+    {k:'good',text:'店长塞来两盒临期便当，晚饭有着落'},
+    {k:'bad', text:'盘点对不上，差了三样'},
+    {k:'bad', text:'被店长当着客人的面纠正了一句'},
+    {k:'flat',text:'店长一天没来店里，没消息'},
+  ],
+  trade:[
+    {k:'bad', text:'客户在电话里发了火'},
+    {k:'good',text:'客户追加了一笔'},
+    {k:'bad', text:'客户提出要撤单'},
+    {k:'good',text:'客户发来一句谢谢'},
+    {k:'good',text:'方案一次过，客户没提意见'},
+    {k:'bad', text:'客户抽走了一半资金'},
+    {k:'flat',text:'客户一天没来消息'},
+  ],
+  write:[
+    {k:'bad', text:'编辑来催稿了'},
+    {k:'bad', text:'稿子被编辑退了回来'},
+    {k:'good',text:'专栏过稿了'},
+    {k:'bad', text:'编辑压来一篇明早要的急稿'},
+    {k:'good',text:'编辑夸了这篇的开头'},
+    {k:'good',text:'编辑说这篇排进下期头条'},
+    {k:'flat',text:'编辑一天没来信，没消息'},
+  ],
+};
+// 可调：工作时段内每次决策的命中概率。注意 decide() 在上班期间约每 60 分钟才轮到一次（setActivity 置 busyUntil＝+60），
+// 一个工作日只有 8 次左右机会，故 0.35 对应「约 97% 的工作日会抽一次」。取值意图＝让「没戏」只来自事件表的平淡档一个源头，
+// 而不是额外掺一份静默漏抽；命中即封当日（一天至多一次），封后当日零 rng 消耗。
+const PEER_CHANCE=0.35;
+// 可调：处境状态时效（分钟）。任务书口径 10–14 小时量级；补充指令一裁定取上限 14 小时＝840 分钟。
+// 缘由：12 小时时事件多在 8–11 点命中、恰在 21:50 睡前日记之前到期，日记时刻挂载比例仅约 70%，
+// 而睡前日记（四人一次打包生成）正是本单假说的主要观察窗口，丢三成样本会让假说验不干净。
+// 到点自然消失（按 w.t 判活，不做定时清扫）。
+const SIT_TTL=14*60;
 const CHAT_LINES=[
   ['最近那家外卖涨价了你发现没？','发现了！蛋炒饭都要35了。'],
   ['周日要不要一起去街市看看？','行啊，听说有新摊位。'],
@@ -627,6 +688,15 @@ function pickV(w,arr,ag,key){
   return arr[idx];
 }
 
+// 第 17 单·处境状态：外围角色事件命中后挂在该住户身上，带时效（SIT_TTL），到点自然消失。
+// 不做定时清扫，一律按 w.t 判活——过期的 sit 留在档里无害，且顺带充当防连日复读的比对底。
+// ag.sit 为普通对象，随 serialize 全量入档；旧档无 sit 字段 → 返回 null，绝不判坏档（照 tempo/saidDay/lastUtterance 先例）。
+// 型别守卫覆盖被篡改档（sit 为原始类型、until 非有限数，一律只返回 null，不抛错）。
+function currentSit(w,ag){
+  const s=ag&&ag.sit;
+  if(!s || typeof s!=='object') return null;
+  return (isFinite(s.until) && w.t < s.until) ? s : null;
+}
 function setActivity(w,ag,anchorId,type,label,minutes,thought,logText,logType){
   const S=w.stats; (S.act[ag.id]=S.act[ag.id]||{})[type]=(S.act[ag.id][type]||0)+1; if(anchorId==='market') S.market++;
   const moving = ag.anchor!==anchorId;
@@ -718,6 +788,21 @@ function decide(w, ag){
     if(logText!==null || mutter) ag.lastMutterT=w.t;
     setActivity(w,ag,ag.workAnchor,'work',label,60,thought,logText);
     if(mutter){ logAct(w,ag,'工作中',thought); }
+    // 第 17 单·外围角色事件：只在该住户当天的工作时段内触发，一天至多一次。
+    // 短路顺序有意为之——peerDay 先判，命中封当日后本日再不消耗 rng；陌生 workKind（无表）零 rng 零事件。
+    // 刻意不落日志、不进 personalLog：外围角色不进日志墙（任务书一），处境的唯一去处是 AI 角色卡（任务书四）。
+    const ptbl=PEER_EVENTS[ag.workKind];
+    if(ptbl && ptbl.length && ag.flags.peerDay!==today && w.rng()<PEER_CHANCE){
+      ag.flags.peerDay=today;
+      // 防连日复读：撞上次抽中的那条则顺延一条（照 styleAssign 撞类顺延先例）。
+      // sit 过期不清扫，故 sit.i 天然留着上一次的下标可比；恰好消耗 1 次 rng，与 pick 等量。
+      const prev=(ag.sit && typeof ag.sit==='object') ? ag.sit.i : -1;
+      let idx=Math.floor(w.rng()*ptbl.length);
+      if(idx===prev) idx=(idx+1)%ptbl.length;
+      const ev=ptbl[idx];
+      // 处境状态：每人至多挂 1 条，新的直接顶掉旧的；until 到点自然消失
+      ag.sit={k:ev.k, from:PEER_ROLE[ag.workKind]||'', text:ev.text, i:idx, until:w.t+SIT_TTL};
+    }
     return;
   }
   // 4. 体力低 → 回家小憩
@@ -854,7 +939,7 @@ function hydrate(str){
   };
   return {world:w, meta:d.meta||null};
 }
-const Sim={makeWorld, step, sendMessage, sendCustomMessage, decide, MSGS, ANCHORS, ROOMS, TILE, MAPW, MAPH, STREET_Y, serialize, hydrate, SAVE_V};
+const Sim={makeWorld, step, sendMessage, sendCustomMessage, decide, MSGS, ANCHORS, ROOMS, TILE, MAPW, MAPH, STREET_Y, serialize, hydrate, SAVE_V, PEER_ROLE, PEER_EVENTS, SIT_TTL, currentSit};
 /*SIM-END*/
 
 if(typeof document==='undefined'){ module.exports={PURE, Sim}; return; }
@@ -1511,9 +1596,14 @@ function agentCard(ag, hook){
   const fear=(ag.money<300)?'凑不齐下个月房租':ag.fear;
   const recent=ag.personalLog.slice(-3).map(e=>e.text).join('；')||'（今天刚开始）';
   const last=String(ag.lastUtterance||'').slice(0,80);   // 旧档/开局缺字段→空串，不注入
+  // 第 17 单·处境状态：唯一去处就是这一行；时效过了或从未挂过则整行省略（不留空字段）。
+  // 铁律——这是底色不是内容：只许影响语气和挑什么说，不许被复述。措辞写死在此，勿改成陈述句。
+  const sit=Sim.currentSit(state.world, ag);
   return ag.name+'（'+ag.job+'）｜特质:'+ag.traits.join('/')+'｜心愿:'+ag.want+'｜担忧:'+fear
     +'｜钱包:¥'+Math.round(ag.money)+'｜'+hungerWord(ag.hunger)+'、体力'+Math.round(ag.energy)
-    +'｜正在:'+ag.activity.label+'｜说话方式:'+(AI_VOICE[ag.id]||ag.voice)
+    +'｜正在:'+ag.activity.label
+    +(sit?'｜今天心里压着的事:'+sit.text+'（这是背景底色，只影响你的语气和你挑什么说；不许直接提起它，更不许解释自己为什么这样）':'')
+    +'｜说话方式:'+(AI_VOICE[ag.id]||ag.voice)
     +styleAssign(ag, hook)
     +(last?'｜上次开口:「'+last+'」（这句的开法与比喻对象都不得重复）':'')
     +'｜最近:'+recent;

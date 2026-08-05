@@ -122,5 +122,93 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   for(let i=0;i<300;i++) Sim.step(r.world,10);
   ok(isFinite(r.world.t) && r.world.agents.every(a=>isFinite(a.hunger)),'旧档续跑 300 拍无异常');
 }
+// --- 外围角色与事件表（第 17 单） ---
+{
+  const roleOf=Sim.PEER_ROLE, tbl=Sim.PEER_EVENTS;
+  const names=['work','clerk','trade','write'].map(k=>roleOf[k]);
+  ok(names.join('/')==='组长/店长/客户/编辑','外围角色四个：'+names.join('/'));
+  // 硬口径：不进 ROOMS/ANCHORS、不在地图上
+  const mapText=Sim.ROOMS.map(r=>r.id+'|'+r.label).join('|')
+    +'|'+Object.keys(Sim.ANCHORS).map(k=>k+'|'+Sim.ANCHORS[k].label+'|'+Sim.ANCHORS[k].s).join('|');
+  ok(names.every(n=>mapText.indexOf(n)<0),'外围角色不进 ROOMS/ANCHORS');
+  for(const k of ['work','clerk','trade','write']){
+    const arr=tbl[k];
+    ok(Array.isArray(arr) && arr.length===7, '事件表 '+k+' 条数 '+(arr||[]).length+'（补充指令二口径：每人 7 条）');
+    const g1=arr.filter(e=>e.k==='good').length, b1=arr.filter(e=>e.k==='bad').length, f1=arr.filter(e=>e.k==='flat').length;
+    // 逐人好坏相等（补充指令二）：全城对半会让两人结构性偏逆、两人结构性偏顺，
+    // 30 天累积成境遇系统性分化，污染本单假说验收，故配平口径下沉到逐人
+    ok(g1===b1,'事件表 '+k+' 逐人好坏相等：'+g1+' 好 / '+b1+' 坏');
+    ok(f1===1,'事件表 '+k+' 恰好 1 条平淡档');
+    // 铁律 3：外围角色是事件源不是人——事件条目只许有 k 与 text，不得携带独白/日程/画像等"人"的字段
+    ok(arr.every(e=>typeof e.text==='string' && e.text && Object.keys(e).length===2),
+       '事件表 '+k+' 每条仅 k+text 两字段（外围角色不得获得内心世界）');
+  }
+  const all=['work','clerk','trade','write'].reduce((a,k)=>a.concat(tbl[k]),[]);
+  const f=all.filter(e=>e.k==='flat').length;
+  ok(all.length===28 && f===4,'全城 28 条含 4 平：'+all.length+' 条 / '+f+' 平');
+  // 文案唯一：四表互不相交是 ②「四人同挂同一条」恒为 0 的结构前提
+  ok(new Set(all.map(e=>e.text)).size===28,'28 条文案互不重复（四表不相交）');
+}
+// --- 外围事件触发口径与处境状态（第 17 单） ---
+{
+  const DAYS=20;
+  const w=Sim.makeWorld(2026);
+  const textK={};
+  for(const k in Sim.PEER_EVENTS) Sim.PEER_EVENTS[k].forEach(e=>{ textK[e.text]=e.k; });
+  // 工作时段外沿（含 工作狂 −30 与 短信「别迟到」earlyWork −30 两档提前量），午休 12:00–13:00 挖空
+  const WIN={a1:[8.5*60,18*60], a2:[9.5*60,19*60], a3:[8*60,18*60], a4:[9*60,17*60]};
+  const perDay={}, hitBy={}, sawKind=new Set(), lastText={}, prevSit={};
+  let outOfWindow=0, repeat=0, logLeak=0, ttlBad=0;
+  const logLen0=w.log.length;
+  for(let i=0;i<DAYS*144;i++){
+    Sim.step(w,10);
+    for(const ag of w.agents){
+      const s=ag.sit;
+      const stamp=s?(s.until+'|'+s.text):'';
+      if(s && stamp!==prevSit[ag.id]){                  // 新挂上一条（until 变化即为新事件）
+        const mod=PURE.minuteOfDay(w.t), win=WIN[ag.id];
+        if(!win || mod<win[0] || mod>=win[1] || (mod>=12*60 && mod<13*60)) outOfWindow++;
+        if(s.until!==w.t+Sim.SIT_TTL) ttlBad++;         // 时效＝SIT_TTL（补充指令一裁定 14 小时）
+        perDay[ag.id+'|'+PURE.dayOf(w.t)]=(perDay[ag.id+'|'+PURE.dayOf(w.t)]||0)+1;
+        hitBy[ag.id]=(hitBy[ag.id]||0)+1;
+        sawKind.add(textK[s.text]);
+        if(lastText[ag.id]===s.text) repeat++;
+        lastText[ag.id]=s.text;
+      }
+      prevSit[ag.id]=stamp;
+    }
+  }
+  // 硬口径：外围角色不进日志墙——全部日志正文/独白里不得出现任何事件表措辞
+  const allLog=w.log.map(e=>(e.name||'')+(e.text||'')+(e.thought||'')).join('\n');
+  for(const t in textK){ if(allLog.indexOf(t)>=0) logLeak++; }
+  ok(logLeak===0,'外围角色事件不进日志墙（泄漏 '+logLeak+' 条）');
+  ok(w.log.length>logLen0,'日志墙照常有其他内容（'+w.log.length+' 条），非整体静默');
+  const hits=Object.keys(perDay).length;
+  ok(hits>0,'20 天内外围事件触发过：'+hits+' 次');
+  ok(Object.keys(hitBy).length===4,'四名住户都收到过外围事件：'+JSON.stringify(hitBy));
+  ok(Object.values(perDay).every(v=>v===1),'一天至多一次（最大 '+Math.max(...Object.values(perDay))+'）');
+  ok(outOfWindow===0,'全部落在该住户当天的工作时段内（越界 '+outOfWindow+' 次）');
+  ok(ttlBad===0,'时效一律为 SIT_TTL＝'+(Sim.SIT_TTL/60)+' 小时（偏差 '+ttlBad+' 次）');
+  ok(Sim.SIT_TTL>=10*60 && Sim.SIT_TTL<=14*60,'SIT_TTL 落在任务书 10–14 小时口径内：'+(Sim.SIT_TTL/60)+' 小时');
+  ok(repeat===0,'同人相邻两次外围事件不复读（复读 '+repeat+' 次）');
+  ok(sawKind.has('good')&&sawKind.has('bad')&&sawKind.has('flat'),'好／坏／平淡三档都出现过：'+[...sawKind].join('/'));
+  // 处境状态字段：至多 1 条、到点消失、坏输入不抛错
+  ok(w.agents.every(a=>a.sit===undefined||a.sit===null||typeof a.sit==='object'),'每人至多挂 1 条（单字段，新的顶掉旧的）');
+  const ag=w.agents[0];
+  ag.sit={k:'bad', from:'组长', text:'CR 被组长打回，评语写了三行', i:0, until:w.t+60};
+  ok((Sim.currentSit(w,ag)||{}).text==='CR 被组长打回，评语写了三行','处境状态时效内有效');
+  ag.sit={k:'bad', from:'组长', text:'x', i:0, until:w.t};
+  ok(Sim.currentSit(w,ag)===null,'处境状态到点自然消失');
+  ok(Sim.currentSit(w,{})===null,'旧档缺 sit 字段返回 null，不判坏档');
+  ok(Sim.currentSit(w,{sit:'x'})===null && Sim.currentSit(w,{sit:1})===null,'篡改档 sit 为原始类型不抛错');
+  ok(Sim.currentSit(w,{sit:{text:'x'}})===null && Sim.currentSit(w,{sit:{text:'x',until:'abc'}})===null,'sit 缺/坏 until 一律判失效');
+  // 旧档兼容：抹掉 sit 与 flags.peerDay 仍可续跑
+  const d=JSON.parse(Sim.serialize(w,null));
+  d.world.agents.forEach(a=>{ delete a.sit; if(a.flags) delete a.flags.peerDay; });
+  const r=Sim.hydrate(JSON.stringify(d));
+  ok(!!r,'旧档（无 sit/peerDay）可反序列化');
+  for(let i=0;i<300;i++) Sim.step(r.world,10);
+  ok(isFinite(r.world.t) && r.world.agents.every(a=>isFinite(a.hunger)),'旧档续跑 300 拍无异常');
+}
 console.log(fails? ('\n'+fails+' FAILURES') : '\nALL PASS');
 process.exit(fails?1:0);
