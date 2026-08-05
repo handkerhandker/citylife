@@ -364,5 +364,110 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
     ok(noT.indexOf('本次话题由系统指定')<0,'旧档条目无 topic → 整句省略，回落 v28 行为');
   }
 }
+// --- 同锚错开落位表（第 19 单）：DOM 层源码抽取求值，被验的是生产源码原文 ---
+{
+  const fs=require('fs'), path=require('path');
+  const src=fs.readFileSync(path.resolve(__dirname,'city-life-framework.html'),'utf8');
+  const grab=(re,name)=>{ const m=src.match(re); if(!m){ ok(false,'源码抽取失败:'+name); return ''; } return m[0]; };
+  const vcState={world:null};
+  const R=new Function('Sim','state','return (function(){'
+    +grab(/const APT=\{[^}]*\};/,'APT')+'\n'
+    +grab(/const PIX_SOLID=new Set\(\[[^\]]*\]\);/,'PIX_SOLID')+'\n'
+    +grab(/function pixStandPos\(v\)\{[\s\S]*?\n\}/,'pixStandPos')+'\n'
+    +grab(/const STAND_SPOTS=\{[\s\S]*?\nfunction standSpot\(ag\)\{[\s\S]*?\n\}/,'STAND_SPOTS')+'\n'
+    +grab(/const PLAZA=\{[^}]*\};/,'PLAZA')+'\n'
+    +grab(/const PLAZA_WAY=\{[^}]*\};/,'PLAZA_WAY')+'\n'
+    +grab(/const SHORE_Y=\d+;/,'SHORE_Y')+'\n'
+    +'return {STAND_SPOTS, standSpot, pixStandPos, PIX_SOLID, PLAZA, PLAZA_WAY, SHORE_Y};})()');
+  const V=R(Sim, vcState);
+  const w=Sim.makeWorld(90210);
+  vcState.world=w;
+  const N=w.agents.length;
+  const ROOM={}; for(const r of Sim.ROOMS) ROOM[r.id]=r;
+
+  // 理论最大同占 ≥2 的锚点 ＝ 多人可同时被派去的功能位（口径见交付件第三章普查表）
+  const MULTI=['home_table','home_tv','kitchen','store_counter','park_bench','river_walk','market'];
+  const SOLO=['home_desk','bed1','bed2','bed3','bed4','desk1','desk2','store_shelf'];
+  const miss=MULTI.filter(k=>!Array.isArray(V.STAND_SPOTS[k]));
+  ok(miss.length===0,'多人锚全部登记站位表'+(miss.length?('：缺 '+miss.join('、')):'（'+MULTI.length+' 处）'));
+  ok(Object.keys(V.STAND_SPOTS).every(k=>!!Sim.ANCHORS[k]),'站位表零幽灵锚（键全部见于 ANCHORS）');
+  ok(SOLO.every(k=>!V.STAND_SPOTS[k]),'单人锚不登记站位（床/工位/写作角/货架）');
+  const wrongN=MULTI.filter(k=>(V.STAND_SPOTS[k]||[]).length!==N);
+  ok(wrongN.length===0,'每张站位表恰 '+N+' 位＝住户人数'+(wrongN.length?('：'+wrongN.join('、')):''));
+
+  // 站位几何：钳制空操作 + 精灵包围盒落在所属房间内
+  const pts=[];
+  let solidHit=0, outRoom=0;
+  for(const k of MULTI){
+    const a=Sim.ANCHORS[k];
+    (V.STAND_SPOTS[k]||[]).forEach((d,i)=>{
+      const x=a.x+0.5+d[0], y=a.y+0.5+d[1];
+      const q=V.pixStandPos({x,y});
+      if(q.x!==x||q.y!==y) solidHit++;                       // 钳制一旦生效即可能把两人重新并到一处
+      const r=ROOM[a.room];
+      if(r){ if(!((x-0.5)>=r.x && (x+0.5)<=r.x+r.w && (y-1.5)>=r.y && (y+0.5)<=r.y+r.h)) outRoom++; }
+      pts.push({k,i,x,y,room:a.room});
+    });
+  }
+  ok(solidHit===0,'每个站位的脚底格均非实体格（钳制恒为空操作，'+solidHit+' 处命中）');
+  ok(outRoom===0,'精灵包围盒（横 1 格纵 2 格）全落所属房间内（越界 '+outRoom+' 处）');
+
+  // market：全部站位留在《云港城市总规》T 竖净道，且零触岸线行 23（总规五.2 判例）
+  {
+    const a=Sim.ANCHORS.market; let bad=0, shore=0;
+    for(const d of V.STAND_SPOTS.market){
+      const x=a.x+0.5+d[0], y=a.y+0.5+d[1];
+      if(!((x-0.5)>=V.PLAZA_WAY.x && (x+0.5)<=V.PLAZA_WAY.x+V.PLAZA_WAY.w)) bad++;
+      if(!((y-1.5)>=V.PLAZA.y && (y+0.5)<=V.PLAZA.y+V.PLAZA.h)) bad++;
+      if((y+0.5)>V.SHORE_Y) shore++;
+    }
+    ok(bad===0,'街市站位全落 T 竖净道（列 '+V.PLAZA_WAY.x+'–'+(V.PLAZA_WAY.x+V.PLAZA_WAY.w-1)+'）与广场行内（越界 '+bad+' 处）');
+    ok(shore===0,'街市站位零触岸线行 '+V.SHORE_Y+'（总规五.2 判例，'+shore+' 处）');
+  }
+
+  // 两两间距：同房间内一切可同时在场的站位；同下标的不同锚＝同一个人，不可能同时在场，故豁免
+  // 第二条判据＝名牌不得压人身：名牌画在精灵顶（脚底 y −2 格）。若两人几乎同列（|Δx|<1）
+  // 且纵向错开不足 2.5 格，靠下者的名牌就正落在靠上者的身上——精灵虽已分开，观感仍是「叠着」。
+  {
+    let near=0, chip=0, worst=1e9, worstMsg='';
+    const push=(A,B,m)=>{
+      const dx=Math.abs(A.x-B.x), dy=Math.abs(A.y-B.y), d=Math.hypot(dx,dy);
+      if(d<worst){worst=d;worstMsg=m;}
+      if(d<1) near++;
+      if(dx<1 && dy<2.5) chip++;
+    };
+    for(let i=0;i<pts.length;i++)for(let j=i+1;j<pts.length;j++){
+      const A=pts[i],B=pts[j];
+      if(A.room!==B.room) continue;
+      if(A.i===B.i) continue;                                 // 同下标＝同一个人
+      push(A,B,A.k+'#'+A.i+'↔'+B.k+'#'+B.i);
+    }
+    for(const s of SOLO){                                     // 单人锚显示点亦不得与站位撞车
+      const a=Sim.ANCHORS[s], X={x:a.x+0.5,y:a.y+0.5};
+      for(const p of pts){ if(p.room!==a.room) continue; push(X,p,s+'↔'+p.k+'#'+p.i); }
+    }
+    ok(near===0,'同房间可同时在场的落点两两 ≥1 格（最近一对 '+worst.toFixed(2)+' 格：'+worstMsg+'）');
+    ok(chip===0,'零「名牌压人身」组合（近同列且纵错<2.5 格的 '+chip+' 对）');
+  }
+
+  // 派活：四人同锚必得四个互不相同的站位；未登记锚零偏移；篡改档陌生住户不抛错
+  {
+    let dup=0;
+    for(const k of MULTI){
+      const seen=new Set();
+      for(const ag of w.agents){ ag.anchor=k; const s=V.standSpot(ag); const key=s[0]+','+s[1]; if(seen.has(key)) dup++; seen.add(key); }
+    }
+    ok(dup===0,'四人同处一锚必得四个互不相同的站位（重复 '+dup+' 处）');
+    let zero=0;
+    for(const s of SOLO){ for(const ag of w.agents){ ag.anchor=s; const p=V.standSpot(ag); if(p[0]!==0||p[1]!==0) zero++; } }
+    ok(zero===0,'未登记锚（单人锚）一律零偏移，显示落点与本单前逐字一致（越界 '+zero+' 处）');
+    const ghost={id:'zzz', anchor:'home_table'};              // 不在 agents 数组里（篡改档/旧档）
+    const g=V.standSpot(ghost);
+    ok(Array.isArray(g)&&g.length===2,'陌生住户取站位不抛错，落回首位');
+    ok(V.standSpot({anchor:'不存在的锚'})[0]===0,'陌生锚零偏移');
+    ok(V.standSpot(null)[0]===0,'空住户零偏移');
+  }
+  for(const ag of w.agents) ag.anchor=ag.bed;                 // 复原，免污染后续（本块已是文末）
+}
 console.log(fails? ('\n'+fails+' FAILURES') : '\nALL PASS');
 process.exit(fails?1:0);

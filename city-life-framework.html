@@ -368,7 +368,7 @@ h2.sec:first-child{ margin-top:0; }
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-        <span class="num dim" id="set-build">v29</span>
+        <span class="num dim" id="set-build">v30</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -1980,6 +1980,52 @@ $('#set-pix').addEventListener('click',()=>{
   $('#set-pix').textContent=pix.on?'开':'关';
 });
 
+/* ---------- 第 19 单·同锚错开落位表（纯显示层，SIM 零改动） ----------
+   病因（本单取证已证实）：ANCHORS 是「一功能一点」，同一功能位的多名住户被派到同一个锚点，
+   而显示落点＝锚点几何直算（v.x=a.x+0.5 / v.y=a.y+0.5），逐人零区分，故 N 人重合到同一像素。
+   落位逻辑里没有任何占用检查／让位／排队（全文检索确认），且 pixStandPos 对全部 15 个锚点
+   均为空操作（无一锚的脚底格落在 PIX_SOLID），所以钳制器也不会把人分开。
+   治法取任务书第一优先档＝纯显示层错开：同处一个功能位在设定上本就合理（一张餐桌坐几个人、
+   一个灶台一人炒一人洗、便利店收银台前排队），故只在渲染时给不同像素落点即可。
+   —— 不动 SIM、不动 rng、不改 ANCHORS，sim30 六项与指纹零风险（本单实测逐字节一致）。
+   口径三条：
+   ①站位按住户在 agents 数组中的固定下标分配（零 rng、零状态、零占用查询），
+     故同一锚点的任意两人恒取不同站位，且一个人的站位不因别人来去而移动（不出现互相挪窝）。
+   ②只在「已走到（v.path 空）」时生效；行进中零偏移，显示照旧＝SIM 插值原样（照补充指令四口径）。
+     切换仍走既有平滑器限速滑动，禁跨格瞬现。
+   ③登记值为「相对该锚显示点的格偏移」，非绝对坐标——ROOMS/ANCHORS 日后迁址自动跟随，无第二处硬编码。
+   放样自查（harness 逐条断言，判据见 docs/交付/第19单-人物落位重叠排障.md 第五章）：
+   每个站位的脚底格均不在 PIX_SOLID（钳制恒为空操作，不会把两人重新并到一处）；
+   精灵包围盒（横 1 格、纵 2 格）全落所属 ROOMS 之内；market 全部站位落在《云港城市总规》
+   T 竖净道（列 21–23）且零触岸线行 23（总规五.2 判例）；同房间内任意两个可同时在场的站位间距 ≥1 格；
+   且零「名牌压人身」组合——名牌画在精灵顶（脚底 y −2 格），故近乎同列（|Δx|<1 格）时纵向须错开 ≥2.5 格，
+   否则精灵虽已分开、靠下者的名牌仍正落在靠上者身上（本单第一版栽过一次，见交付件五.4）。 */
+const STAND_SPOTS={
+  // 客厅·餐桌：右椅（现状位，零偏移）／左椅／桌东两个站位。四位同排，名牌并排不压人身
+  home_table:[[0,0],[-3,0],[1.5,0],[3,0]],
+  // 客厅·沙发：沙发横跨列 1–4，三个坐位顺沙发排开，第四人站在沙发东侧
+  home_tv:[[0,0],[-1.5,0],[1.5,0],[3,0]],
+  // 厨房：灶台前（现状位）／台面前／冰箱前两位。冰箱脚底 y=10.063，故后两位下压 1 格，
+  // 保证人物脚底 y 大于冰箱脚底、按脚底排序时画在冰箱之前，不被冰箱挡住
+  kitchen:[[0,0],[1.5,0],[3,1],[4.5,1]],
+  // 便利店收银台：台前一人＋左右各排开三人（该店无像素素材，落点只需落在 store 房内）
+  store_counter:[[0,0],[1.5,0],[3,0],[-1.5,0]],
+  // 公园长椅／江边步道：顺步道横向排开
+  park_bench:[[0,0],[1.5,0],[-1.5,0],[3,0]],
+  river_walk:[[0,0],[1.5,0],[-1.5,0],[3,0]],
+  // 周日街市：T 竖净道只有 3 格宽（列 21–23），横排摆不下四人，故走「前一后二加北一」三排。
+  // 四个站位全部留在净道内，不侵摊位（列 18–19）／驻足带（列 20）／夜谈角／江畔景观锚（列 24–26），
+  // 且脚底一律不越岸线行 23（《云港城市总规》五.2 判例：行 23 是岸线带，不承担通行）
+  market:[[0,0],[-1,2.5],[1,2.5],[0,-2.5]],
+};
+const STAND_ZERO=[0,0];
+function standSpot(ag){
+  const list=STAND_SPOTS[ag&&ag.anchor];
+  if(!list||!list.length) return STAND_ZERO;                 // 未登记的锚（含单人锚 bed/desk/写作角）一律零偏移
+  const i=state.world.agents.indexOf(ag);
+  return list[(i<0?0:i)%list.length];
+}
+
 /* ---------- 画布：DPR 适配 + 等比取景 + 屏幕空间文字 ---------- */
 const cv=$('#cv'), ctx=cv.getContext('2d');
 function resizeCanvas(){
@@ -2215,10 +2261,13 @@ function draw(now){
   const dispPos={};
   for(const ag of state.world.agents){
     const v=state.vis[ag.id];
-    if(!(pixOn && Object.prototype.hasOwnProperty.call(PIX_IDX,ag.id))){ v.dspX=v.x; v.dspY=v.y; dispPos[ag.id]={x:v.x,y:v.y}; continue; }
+    const usePix = pixOn && Object.prototype.hasOwnProperty.call(PIX_IDX,ag.id);
     // 补充指令四:移动中零钳制(显示=SIM 插值原样为目标);仅静止时按登记落位;切换经限速短程滑动,禁跨格瞬现
+    // 第 19 单:同锚错开在「已走到」时叠加(v.path 空才算走到——暂停在半路时 v.moving 也为 false,
+    // 那种情形不得偏移,否则一按暂停人就横移);错开后再交给钳制器,登记表已保证钳制恒为空操作。
     let tx=v.x, ty=v.y;
-    if(!v.moving){ const q=pixStandPos(v); tx=q.x; ty=q.y; }
+    if(!v.path.length){ const sp=standSpot(ag); tx=v.x+sp[0]; ty=v.y+sp[1]; }
+    if(usePix && !v.moving){ const q=pixStandPos({x:tx,y:ty}); tx=q.x; ty=q.y; }
     if(v.dspX===undefined || Math.hypot(tx-v.dspX,ty-v.dspY)>3){ v.dspX=tx; v.dspY=ty; }   // 初始化/传送级跳变直置
     else{
       const dx=tx-v.dspX, dy=ty-v.dspY, len=Math.hypot(dx,dy);
@@ -2313,8 +2362,9 @@ cv.addEventListener('pointerup',e=>{
     const v=state.vis[ag.id];
     // 像素模式下精灵约 2 格高、脚底贴格底：测距锚点上移到精灵视觉中心，点头部同样可选（最近人＋半径逻辑不变，旧渲染不受影响）
     // 测距基点与绘制同用平滑显示位(补充指令三/四:落位显示后可点性不退化)
+    // 第 19 单:错开落位对两条渲染路径都生效,故测距一律认平滑显示位(旧渲染下 dspX 恒＝显示落点)
     let vx=v.x, vy=v.y;
-    if(pixTap && Object.prototype.hasOwnProperty.call(PIX_IDX,ag.id) && v.dspX!==undefined){ vx=v.dspX; vy=v.dspY; }
+    if(v.dspX!==undefined){ vx=v.dspX; vy=v.dspY; }
     let cyv=sy(vy);
     if(pixTap && Object.prototype.hasOwnProperty.call(PIX_IDX,ag.id)){
       const fw=pix.chars.width/24, fh=pix.chars.height/8;
