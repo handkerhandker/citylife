@@ -161,8 +161,13 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   const w=Sim.makeWorld(2026);
   const textK={};
   for(const k in Sim.PEER_EVENTS) Sim.PEER_EVENTS[k].forEach(e=>{ textK[e.text]=e.k; });
-  // 工作时段外沿（含 工作狂 −30 与 短信「别迟到」earlyWork −30 两档提前量），午休 12:00–13:00 挖空
+  // 工作时段外沿（含 工作狂 −30 与 短信「别迟到」earlyWork −30 两档提前量）
   const WIN={a1:[8.5*60,18*60], a2:[9.5*60,19*60], a3:[8*60,18*60], a4:[9*60,17*60]};
+  // 饭点那一小时挖空。第 22 单起饭点逐人化＝本人上班起点（含工作狂 −30，不含 earlyWork）
+  // ＋ RHY_LUNCH_AFTER，四人互异；本表照 decide() 的算法按真值算出来，改常量不必改门禁。
+  const LUNCH={}; for(const k in WIN) LUNCH[k]=0;
+  { const base={a1:9*60, a2:10*60, a3:9*60-30, a4:9.5*60};   // startBase ＋ 工作狂 −30
+    for(const k in base) LUNCH[k]=base[k]+Sim.RHY_LUNCH_AFTER; }
   const perDay={}, hitBy={}, sawKind=new Set(), lastText={}, prevSit={};
   let outOfWindow=0, repeat=0, logLeak=0, ttlBad=0;
   const logLen0=w.log.length;
@@ -173,7 +178,8 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
       const stamp=s?(s.until+'|'+s.text):'';
       if(s && stamp!==prevSit[ag.id]){                  // 新挂上一条（until 变化即为新事件）
         const mod=PURE.minuteOfDay(w.t), win=WIN[ag.id];
-        if(!win || mod<win[0] || mod>=win[1] || (mod>=12*60 && mod<13*60)) outOfWindow++;
+        const lu=LUNCH[ag.id];
+        if(!win || mod<win[0] || mod>=win[1] || (mod>=lu && mod<lu+60)) outOfWindow++;
         if(s.until!==w.t+Sim.SIT_TTL) ttlBad++;         // 时效＝SIT_TTL（补充指令一裁定 14 小时）
         perDay[ag.id+'|'+PURE.dayOf(w.t)]=(perDay[ag.id+'|'+PURE.dayOf(w.t)]||0)+1;
         hitBy[ag.id]=(hitBy[ag.id]||0)+1;
@@ -695,25 +701,41 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
     ok(big.clips.length===Sim.CLIP_KEEP,'剪辑最多留 '+Sim.CLIP_KEEP+' 天（实测 '+big.clips.length+'）');
   }
 
-  // 常态化折除：判据是「最不像平常的自己」，长期状态不算落差
+  // 常态化折除：判据是「最不像平常的自己」，长期状态不算落差。
+  // 判据须按**结算当时的那本账**算（clipHabitual 读的就是它），不能拿终局命中率去判早期的卡——
+  // 命中率不是单调的（第 22 单实测：陆知秋 social_all 一路在 0.5 上下走、终局恰为 0.500，
+  // 而 D25/D31 结算当时尚在 0.5 以下，按口径本就该计分），拿终局去判会误报。
+  // 改法只收紧不放宽：逐日结算前抄一份账，只要那一刻已判为常态、当天的卡上就一条都不许有。
   {
     const w=Sim.makeWorld(20260803);
-    for(let i=0;i<31*144;i++) Sim.step(w,10);
-    let habitual=0, leaked=0;
-    for(const ag of w.agents){
-      const b=w.clipBase[ag.id]||{};
-      for(const id of ['money_broke','social_all','sit_bad','hunger_peak','worn_out']){
-        const r=b['hit:'+id];
-        if(r && r.n>=Sim.CLIP_BASE_MIN && r.s/r.n>=0.5){
-          habitual++;
-          // 一旦判为常态，此后就不该再靠这条把他挑出来
-          const late=w.clips.filter(c=>c.id===ag.id && c.d>Sim.CLIP_BASE_MIN+3 && c.items.some(it=>it.id===id));
-          leaked+=late.length;
+    const IDS=['money_broke','social_all','sit_bad','hunger_peak','worn_out'];
+    let habitual=0, leaked=0, checked=0;
+    const everHab={};
+    for(let d=0; d<31; d++){
+      const pre={};
+      for(const ag of w.agents){
+        const b=(w.clipBase&&w.clipBase[ag.id])||{};      // 开城首拍前 clipBase 尚未建起
+        for(const id of IDS){
+          const r=b['hit:'+id];
+          const h=!!(r && r.n>=Sim.CLIP_BASE_MIN && r.s/r.n>=0.5);   // 0.5＝CLIP_HABIT（该常量未导出，照原断言用字面量）
+          pre[ag.id+'|'+id]=h;
+          if(h && !everHab[ag.id+'|'+id]){ everHab[ag.id+'|'+id]=1; habitual++; }
+        }
+      }
+      const n0=(w.clips||[]).length;                   // 开城首拍前 clips 尚未建起
+      for(let i=0;i<144;i++) Sim.step(w,10);           // 每 144 拍恰好跨一次日切＝恰好结算一天
+      for(const c of w.clips.slice(n0)){
+        if(!c.id) continue;
+        for(const it of c.items){
+          if(IDS.indexOf(it.id)<0) continue;
+          checked++;
+          if(pre[c.id+'|'+it.id]) leaked++;
         }
       }
     }
     ok(habitual>0,'实测存在「平常就这样」的绝对判据（'+habitual+' 项人×判据）');
-    ok(leaked===0,'常态化的绝对判据不再计入落差（漏算 '+leaked+' 处）');
+    ok(checked>0,'实验成立：入选卡上确有受折除管辖的绝对判据（'+checked+' 条参与核对）');
+    ok(leaked===0,'常态化的绝对判据不再计入落差（按结算当时的账核对，漏算 '+leaked+' 处）');
   }
 
   // 反向自查：上面三条源码断言不是摆设——把病态写法复演一遍，断言它们确实判违规
@@ -745,6 +767,203 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
     ok(uiSrc.length>1000,'剪辑渲染层可抽取（'+uiSrc.length+' 字）');
     ok(!/callClaude|enhance|runReflection|llm\.on/.test(uiSrc),'剪辑渲染层零 LLM 挂点（本单一个字都不过 AI）');
     ok(/PURE\.fmtStamp/.test(uiSrc),'剪辑引用条目走 fmtStamp 打日期戳（第 19 单追加一口径）');
+  }
+}
+
+/* ===================== 第 22 单 · 作息人格 ===================== */
+{
+  const src=require('fs').readFileSync('city-life-framework.html','utf8');
+  const A=['a1','a2','a3','a4'];
+  const w0=Sim.makeWorld(20260803);
+  const NM={}; for(const a of w0.agents) NM[a.id]=a.name;
+
+  // —— 口径① 差异落在人格上：逐人参数只能是「基准 ＋ 本人每条特质那一行」的和 ——
+  {
+    const keys=Object.keys(Sim.RHY_BASE);
+    let mismatch=0;
+    for(const ag of w0.agents){
+      const got=Sim.rhyOf(ag), want={};
+      for(const k of keys) want[k]=Sim.RHY_BASE[k];
+      for(const t of ag.traits){ const d=Sim.RHY_TRAIT[t]||{}; for(const k in d) if(k in want) want[k]+=d[k]; }
+      // 与实现同款钳位（钳位本身也是口径的一部分）
+      want.bed=PURE.clamp(want.bed,Sim.RHY_BED_MIN,Sim.RHY_BED_MAX);
+      want.dur=PURE.clamp(want.dur,Sim.RHY_DUR_MIN,Sim.RHY_DUR_MAX);
+      want.reg=PURE.clamp(want.reg,0,1); want.lie=Math.max(0,want.lie); want.grit=Math.max(0,want.grit);
+      for(const k of keys) if(Math.abs(got[k]-want[k])>1e-9) mismatch++;
+    }
+    ok(mismatch===0,'逐人作息参数＝RHY_BASE ＋ 本人特质逐行相加（表外无第二处赋值，错 '+mismatch+' 格）');
+    // 四人的每一条特质都必须在表里登记（漏一条＝那个人的作息里有一段说不出理由的差异）
+    let unreg=[];
+    for(const ag of w0.agents) for(const t of ag.traits) if(!Sim.RHY_TRAIT[t]) unreg.push(ag.name+'·'+t);
+    ok(unreg.length===0,'四人全部 8 条特质都在 RHY_TRAIT 里登记（未登记：'+(unreg.join('／')||'无')+'）');
+    // 钱的特质不进作息（登记在表里是为了证明没漏，不是为了留空位）
+    let moneyLeak=0;
+    for(const t of ['节俭','大方']){ const d=Sim.RHY_TRAIT[t]||{}; for(const k in d) if(d[k]) moneyLeak++; }
+    ok(moneyLeak===0,'钱的特质（节俭／大方）对作息零贡献（'+moneyLeak+' 格非零）');
+    // 陌生特质／缺 traits：一律回落基准，绝不抛错
+    const fake=Sim.rhyOf({traits:['莫须有','夜猫子']}), owl=Sim.rhyOf({traits:['夜猫子']});
+    ok(JSON.stringify(fake)===JSON.stringify(owl),'陌生特质自动跳过（篡改档不抛错、不改数）');
+    ok(JSON.stringify(Sim.rhyOf({}))===JSON.stringify(Sim.rhyOf({traits:[]})),'缺 traits 回落 RHY_BASE');
+  }
+
+  // —— 口径① 规律性是人格的一格：四人基准钟点两两不同，且 reg 排序与人设一致 ——
+  {
+    const R={}; for(const ag of w0.agents) R[ag.id]=Sim.rhyOf(ag);
+    const wake={}; for(const id of A) wake[id]=(R[id].bed+R[id].dur)%1440;
+    let close=0;
+    for(let i=0;i<A.length;i++) for(let j=i+1;j<A.length;j++){
+      if(Math.abs(wake[A[i]]-wake[A[j]])<25) close++;
+      if(Math.abs((R[A[i]].bed%1440)-(R[A[j]].bed%1440))<20) close++;
+    }
+    ok(close===0,'四人基准起床两两相差 ≥25 分、基准就寝两两相差 ≥20 分（改前沈小满与陆知秋逐分钟相同，'+close+' 对过近）');
+    const show=k=>A.map(i=>NM[i]+' '+R[i][k]).join('／');
+    ok(R.a3.reg<R.a4.reg && R.a4.reg<R.a2.reg && R.a2.reg<R.a1.reg,
+       '规律性排序＝陆知秋(工作狂)最铁打 < 白一鸣 < 沈小满 < 顾云帆(夜猫子·摸鱼)最松散：'+A.map(i=>NM[i]+' '+R[i].reg.toFixed(2)).join('／'));
+    ok(R.a3.lie===0 && R.a1.lie>=R.a2.lie && R.a2.lie>R.a4.lie,'周末赖床＝工作狂 0 分、夜猫子最多：'+show('lie'));
+    ok(R.a3.grit===Math.max.apply(null,A.map(i=>R[i].grit)),'硬扛系数以工作狂最高：'+show('grit'));
+  }
+
+  // —— 口径② 波动有成因：本段零 rng（源码原文，剥注释后判——本段注释里成段写着「零 w.rng()」）——
+  {
+    const raw=(src.match(/\/\*RHY-START\*\/[\s\S]*?\/\*RHY-END\*\//)||[''])[0];
+    ok(raw.length>2000,'RHY 段可抽取（'+raw.length+' 字）');
+    const code=raw.replace(/\/\*[\s\S]*?\*\//g,'').replace(/(^|[^:'"])\/\/.*$/gm,'$1');
+    ok(/function rhyOf\(ag\)\{/.test(code) && /function rhyDur\(w,ag,R,rest\)\{/.test(code),
+       '剥注释后代码仍完整（剥过头会让下面几条断言变成空转）');
+    ok(!/\brng\b/.test(code),'作息层代码零 rng 引用（波动全部来自世界状态，不是掷骰子）');
+    ok(!/\bpickV?\s*\(/.test(code),'作息层代码零抽词调用');
+    // 反向自查：真写了才判违规／只在注释里写不判违规（一条恒绿的闸等于没立）
+    const strip=s=>s.replace(/\/\*[\s\S]*?\*\//g,'').replace(/(^|[^:'"])\/\/.*$/gm,'$1');
+    ok(/\brng\b/.test(strip('/* 本段零 w.rng() */\nfunction rhyDur(w){ return w.rng()*10; }')),
+       '反向：作息层真摇了 rng 会被判违规');
+    ok(!/\brng\b/.test(strip('/* 本段零 w.rng() 调用，一次骰子都不掷 */\nfunction rhyDur(w,ag,R,rest){ return R.dur; }')),
+       '反向不误伤：只在注释里提到 rng 的合规写法放行');
+  }
+
+  // —— 口径② 成因链可追：同一世界、同一时刻，只改「挂着什么处境」，作息就该跟着变；
+  //     而把 reg 归零（＝铁打的作息）则一动不动。这条把「有成因」与「成因经由 reg 落地」一起钉住。
+  {
+    // 探针立在**排期函数**上而不是涌现出来的入睡时刻：实际躺下＝max(排期, 手上活儿干完)，
+    // 若那天他忙到比三档都晚，三档会落在同一拍上，比出来的是活动时长不是成因（首版实测踩中）。
+    // 故固定同一个世界、同一个时刻、同一份体力与小憩记账，只换 ag.sit 一个变量。
+    const at=(traits)=>{
+      const w=Sim.makeWorld(31337);
+      for(let i=0;i<12*144;i++) Sim.step(w,10);
+      const ag=w.agents[0];                               // a1 顾云帆（reg 最高）
+      if(traits) ag.traits=traits;
+      const R=Sim.rhyOf(ag), rest=Sim.rhyRest(ag);
+      const one=k=>{ ag.sit = k ? {k:k, from:'组长', text:'x', i:0, until:w.t+3000} : null;
+                     return {bed:Sim.rhyBedClock(w,ag,R,rest), dur:Sim.rhyDur(w,ag,R,rest)}; };
+      return {bad:one('bad'), good:one('good'), none:one('')};
+    };
+    const P=at(null);
+    ok(P.bad.bed>P.none.bed && P.none.bed>P.good.bed,
+       '挂着逆境就睡得比平常晚、挂着顺境比平常早（逆 '+P.bad.bed+' ／平 '+P.none.bed+' ／顺 '+P.good.bed+' 分）');
+    ok(P.bad.dur>P.none.dur && P.none.dur>P.good.dur,
+       '夜猫子挂着逆境还睡得更沉（时长 逆 '+P.bad.dur+' ／平 '+P.none.dur+' ／顺 '+P.good.dur+' 分）');
+    ok(P.bad.bed+P.bad.dur>P.none.bed+P.none.dur,'两段合起来＝起床跟着一起往后挪');
+    // 方向逐人不同：早起的白一鸣挂着逆境反而提前收工、少睡（owl／keep 为负）
+    const Q=at(['内向','早起']);
+    ok(Q.bad.bed<Q.none.bed && Q.bad.dur<Q.none.dur,
+       '同一件坏事在不同人格上方向相反：早起者提前收工且少睡（就寝 '+Q.bad.bed+'<'+Q.none.bed+'，时长 '+Q.bad.dur+'<'+Q.none.dur+'）');
+    // 反向：把 reg 压到 0 的人（铁打的作息），同样的成因一分钟都推不动他
+    const FLAT=['工作狂','工作狂','工作狂'];              // reg 相加后被钳到 0
+    ok(Sim.rhyOf({traits:FLAT}).reg===0,'反向自查的构造成立：reg 被钳到 0');
+    const F=at(FLAT);
+    ok(F.bad.bed===F.good.bed && F.bad.dur===F.good.dur,
+       '反向：reg＝0 的人，逆境顺境一分钟也推不动（就寝 '+F.bad.bed+' vs '+F.good.bed+'，时长 '+F.bad.dur+' vs '+F.good.dur+'）');
+  }
+
+  // —— 口径③ 生存红线：30 天双种子逐拍体检 ——
+  {
+    for(const seed of [20260803,424242]){
+      const w=Sim.makeWorld(seed);
+      const prev={}; for(const a of w.agents) prev[a.id]=a.activity.type;
+      const wake={}, bed={}, dur={}; for(const id of A){ wake[id]=[]; bed[id]=[]; dur[id]=[]; }
+      const lastBed={};
+      let runH=0,maxRunH=0, runE=0,maxRunE=0, minE=101, maxH=-1, oob=0, moneyLo=1e9;
+      let bedOffMax=-1, wakeOffMin=1e9;
+      for(let i=0;i<30*144;i++){
+        Sim.step(w,10);
+        const t0=(Sim.clipDayOf(w.t)-1)*1440+Sim.CLIP_CUT;
+        for(const a of w.agents){
+          const s=a.activity.type==='sleep', p=prev[a.id]==='sleep';
+          if(s&&!p){ bed[a.id].push(w.t-t0); if(w.t-t0>bedOffMax) bedOffMax=w.t-t0; lastBed[a.id]=w.t; }
+          if(!s&&p){ wake[a.id].push(w.t-t0); if(w.t-t0<wakeOffMin) wakeOffMin=w.t-t0;
+                     if(lastBed[a.id]!==undefined) dur[a.id].push(w.t-lastBed[a.id]); }
+          if(!s){
+            if(a.energy<minE) minE=a.energy; if(a.hunger>maxH) maxH=a.hunger;
+            runH=a.hunger>=Sim.CLIP_STARVE?runH+1:0; if(runH>maxRunH) maxRunH=runH;
+            runE=a.energy<=Sim.CLIP_DRAINED?runE+1:0; if(runE>maxRunE) maxRunE=runE;
+          } else { runH=0; runE=0; }
+          if(!isFinite(a.hunger)||!isFinite(a.energy)||!isFinite(a.money)) oob++;
+          if(a.hunger<0||a.hunger>100||a.energy<0||a.energy>100) oob++;
+          if(a.money<moneyLo) moneyLo=a.money;
+          prev[a.id]=a.activity.type;
+        }
+      }
+      ok(oob===0,'['+seed+'] 30 天零 NaN 零越界（'+oob+' 处）');
+      ok(minE>0,'['+seed+'] 清醒体力从不见零（谷值 '+minE.toFixed(1)+'，绝对线 '+Sim.CLIP_DRAINED+'）');
+      // 「偶尔饿着」可以，「长期饿着」不行——连续高位不得超过一小时量级
+      ok(maxRunH*10<=120,'['+seed+'] 饥饿越过 '+Sim.CLIP_STARVE+' 最长连续 '+(maxRunH*10)+' 分钟 ≤120（偶尔可以，长期不行）');
+      ok(maxRunE*10<=120,'['+seed+'] 体力跌破 '+Sim.CLIP_DRAINED+' 最长连续 '+(maxRunE*10)+' 分钟 ≤120');
+      ok(moneyLo>=-123,'['+seed+'] 负债不穿 sim30 底线 ¥-123（谷底 ¥'+Math.round(moneyLo)+'，余量 '+Math.round(moneyLo+123)+'）');
+      // 睡眠时长：钳位之内，且不得短到体力回不满
+      let durBad=0, durMin=1e9;
+      for(const id of A) for(const v of dur[id]){ if(v<Sim.RHY_DUR_MIN-10||v>Sim.RHY_DUR_MAX+10) durBad++; if(v<durMin) durMin=v; }
+      ok(durBad===0,'['+seed+'] 每一觉都落在时长钳位内（越界 '+durBad+' 次，最短 '+(durMin/60).toFixed(2)+' 小时）');
+      // 日切两端余量：由钳位保证，不靠运气
+      ok(bedOffMax<1440-60,'['+seed+'] 最晚就寝距窗尾还有 '+(1440-bedOffMax)+' 分钟（>60）');
+      ok(wakeOffMin>60-1,'['+seed+'] 最早起床距窗首还有 '+wakeOffMin+' 分钟（≥60）');
+      // 本单的正题：起床时刻不再零方差，而且方差本身逐人不同
+      const sd=arr=>{ const m=arr.reduce((s,v)=>s+v,0)/arr.length; return Math.sqrt(arr.reduce((s,v)=>s+(v-m)*(v-m),0)/arr.length); };
+      const S={}; for(const id of A) S[id]=sd(wake[id]);
+      ok(A.every(id=>S[id]>0),'['+seed+'] 四人起床时刻都不再是零方差（改前四人全为 0）：'+A.map(i=>NM[i]+' '+S[i].toFixed(0)).join('／'));
+      ok(S.a3===Math.min.apply(null,A.map(i=>S[i])) && S.a1>3*S.a3,
+         '['+seed+'] 规律性做出来了：陆知秋最稳（sd '+S.a3.toFixed(0)+' 分），顾云帆散度是他的 '+(S.a1/S.a3).toFixed(1)+' 倍（>3）');
+    }
+  }
+
+  // —— 口径③／存档：新字段随存档、旧档缺省、篡改档不抛错 ——
+  {
+    const w=Sim.makeWorld(4242);
+    for(let i=0;i<3*144;i++) Sim.step(w,10);
+    const s=Sim.serialize(w,null);
+    ok(/"rest":/.test(s),'rest 随存档序列化');
+    const r=Sim.hydrate(s);
+    ok(!!r && r.world.agents.every(a=>a.rest && isFinite(a.rest.wake)),'存档往返后 rest 完好');
+    // 旧档：整个 rest 字段不存在
+    const old=Sim.hydrate(s.replace(/"rest":\{[^}]*\},?/g,''));
+    ok(!!old && old.world.agents.every(a=>!a.rest),'构造成立：旧档确实没有 rest 字段');
+    for(let i=0;i<3*144;i++) Sim.step(old.world,10);
+    ok(old.world.agents.every(a=>isFinite(a.hunger)&&isFinite(a.energy)&&a.rest&&isFinite(a.rest.wake)),
+       '旧档缺 rest → 就地建账、续跑无异常');
+    // 篡改档：rest 是字符串／数组／全是坏数
+    for(const bad of ['"rest":"zzz"','"rest":[1,2,3]','"rest":{"bed":"x","wake":null,"dur":{},"nap":[]}']){
+      const t=Sim.hydrate(s.replace(/"rest":\{[^}]*\}/g, bad));
+      ok(!!t,'篡改档 '+bad.slice(0,18)+'… 仍能 hydrate');
+      for(let i=0;i<2*144;i++) Sim.step(t.world,10);
+      ok(t.world.agents.every(a=>isFinite(a.hunger)&&isFinite(a.energy)&&a.hunger>=0&&a.hunger<=100),
+         '篡改档 '+bad.slice(0,18)+'… 就地重建、续跑不抛错不越界');
+    }
+    // 篡改档：metab 被改成畸形值，也不许把「饿了就吃」整个关掉
+    const mw=Sim.makeWorld(7); const ma=mw.agents[0];
+    ma.metab={hungerRate:1, energyRate:1, eatAt:NaN, napAt:'x'};
+    ok(Sim.rhyEatAt(mw,ma,Sim.rhyOf(ma))<=Sim.RHY_HUNGER_FLOOR && isFinite(Sim.rhyEatAt(mw,ma,Sim.rhyOf(ma))),
+       '篡改档畸形 eatAt → 收进有限区间（实测 '+Sim.rhyEatAt(mw,ma,Sim.rhyOf(ma)).toFixed(0)+'）');
+    ok(Sim.rhyNapAt(mw,ma,Sim.rhyOf(ma))>=Sim.RHY_ENERGY_FLOOR,'篡改档畸形 napAt → 不低于生存红线');
+    for(let i=0;i<2*144;i++) Sim.step(mw,10);
+    ok(mw.agents.every(a=>isFinite(a.hunger)&&a.hunger<=100),'篡改 metab 后续跑无异常');
+  }
+
+  // —— 饭点逐人化：四人的饭点那一小时互不重叠 ——
+  {
+    const base={a1:9*60, a2:10*60, a3:9*60-30, a4:9.5*60};
+    const lu={}; for(const k in base) lu[k]=base[k]+Sim.RHY_LUNCH_AFTER;
+    let overlap=0;
+    for(let i=0;i<A.length;i++) for(let j=i+1;j<A.length;j++) if(Math.abs(lu[A[i]]-lu[A[j]])<30) overlap++;
+    ok(overlap===0,'四人饭点两两相差 ≥30 分（'+A.map(i=>NM[i]+' '+PURE.fmtTime(lu[i])).join('／')+'）');
+    ok(Sim.RHY_LUNCH_AFTER>0 && Sim.RHY_LUNCH_AFTER<8*60,'饭点偏移取值合理（'+Sim.RHY_LUNCH_AFTER+' 分）');
   }
 }
 console.log(fails? ('\n'+fails+' FAILURES') : '\nALL PASS');

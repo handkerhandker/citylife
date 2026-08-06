@@ -398,7 +398,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-        <span class="num dim" id="set-build">v32</span>
+        <span class="num dim" id="set-build">v33</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -663,6 +663,168 @@ function tempoDur(w,ag,base){
   return m + 10*Math.floor(w.rng()*(jit+1));
 }
 
+/*RHY-START*/
+/* ===== 第 22 单·作息人格 ==================================================
+   缘由（第 21 单交付件 5.1 实测，非推测）：四人起床时刻 30 天零方差
+   （白一鸣 06:10／沈小满与陆知秋 07:10／顾云帆 08:10，逐分钟固定），故「反常早起／
+   反常晚起」两条判据**结构上无法命中**；清醒饥饿被各人 eatAt 顶死（全城峰值 78，
+   绝对线 88）、清醒体力被 napAt 托住（全城谷值 14.5，绝对线 12），「饿着没吃饭／
+   体力见底还在硬撑」同样打不着。**病根不在判据，在这个世界本身不产生那种状态。**
+   本段治的就是这个。
+
+   三条硬口径写死在实现里：
+   ① **差异落在人格上，不是随机抖动**：逐人参数一律由 RHY_TRAIT 逐条相加得出
+      （RHY_BASE 起底），**表外没有第二处赋值**——四个人的作息不是四个不相干的数字，
+      是各自既有特质的和。规律性（reg）本身也是人格的一格：陆知秋［工作狂］reg 最低，
+      境遇再怎么变他也天天那个点起；顾云帆［夜猫子·摸鱼］reg 最高，今天六点明天八点。
+   ② **波动有成因，不许是纯噪声**：今晚几点睡、今晚睡多久，全部是「此刻已经成立的
+      世界状态」的函数——挂着什么处境／明早是不是周末／昨晚是不是睡饱了／今天眯了
+      几觉／此刻体力还剩多少／玩家发没发短信。**本段零 w.rng() 调用，一次骰子都不掷**
+      （门禁两道断言：源码原文剥注释后零 rng ＋ 反向自查）。起床时刻不再是一个参数，
+      而是「几点躺下 ＋ 今晚该睡多久」的结果，故每一次晚起都追得到一条因果链。
+   ③ **生存红线不许破**：就寝／起床／时长三处硬钳位（RHY_BED_* ／ RHY_WAKE_* ／
+      RHY_DUR_*），外加「饿到 RHY_HUNGER_FLOOR 一律先吃」「累到 RHY_ENERGY_FLOOR
+      一律先睡（工作时段也不例外）」两道兜底。故「有人长期饿着」「体力见底不睡」
+      结构上不可能发生；且钳位区间整个落在剪辑日切 04:00 的两侧留白里，
+      「每窗每人恰好一次入睡、一次醒来」由构造保证，不再靠运气。
+*/
+// —— 可调常量区（保守初值，集中存放）——
+const RHY_BED_MIN=21*60, RHY_BED_MAX=25*60;    // 就寝钟点硬钳位：21:00 – 次日 01:00
+const RHY_WAKE_MIN=5*60, RHY_WAKE_MAX=10*60;   // 起床钟点硬钳位：05:00 – 10:00
+const RHY_DUR_MIN=6*60,  RHY_DUR_MAX=9.5*60;   // 睡眠时长硬钳位：6 – 9.5 小时
+// 生存红线两条（不受硬扛系数管辖；数值须留出「busy 期间还会继续漂移」的余量）
+const RHY_HUNGER_FLOOR=92;   // 可调：饿到这条线一律先吃（清醒饥饿因此不会长期停在高位）
+const RHY_ENERGY_FLOOR=12;   // 可调：累到这条线一律先睡，工作时段同样适用
+// 成因幅度（分钟；正＝往后推，负＝往前提）。全部先乘本人 reg 再落地。
+const RHY_GOOD=0.4;          // 可调：顺境按逆境的反向幅度打这个折（好事的劲头小于坏事）
+const RHY_CRASH_BED=45;      // 可调：此刻体力已跌破自己的小憩线 → 今晚提前倒下
+const RHY_CRASH_DUR=60;      // 可调：同上 → 而且睡到自然醒
+const RHY_OVER=30;           // 可调：上一觉比自己基准长过这个数，就算「昨晚睡饱了」
+const RHY_REBOUND=70;        // 可调：睡饱了的第二晚睡不了那么久（两晚成链，早醒由此来）
+const RHY_NAP_BED=30;        // 可调：白天多眯了一觉 → 晚上不困，往后拖
+const RHY_NAP_DUR=45;        // 可调：同上 → 夜里也睡不了那么久
+const RHY_SMS_BED=60;        // 玩家短信「早点睡」：就寝提前（既有行为，不乘 reg，逐字保留）
+const RHY_SMS_DUR=30;        // 玩家短信「别迟到」：今晚少睡一点，明早早起
+const RHY_LUNCH_AFTER=180;   // 可调：饭点＝本人上班起点后 3 小时那一小时（四人上班起点本就互异）
+const RHY_GRIT_E=0.7;        // 可调：硬扛系数作用于体力时打的折（忍饿比硬撑容易）
+// 「兜里越紧越能扛一顿」——耐饿程度的第二条成因，同时是**负债的结构性刹车**。
+// 缘由（12 种子实测，见交付件六.3）：赤字期每顿饭仍花 ¥8，负债因此按「顿数 × 8」线性下滑，
+// 而顿数只由 eatAt 决定；本单把作息摊开后，开局那一周（D2 交租 → D5 发薪）的顿数开始随机浮动，
+// 沈小满的谷底由改前恒定的 ¥-106 变成 ¥-98 ～ ¥-126，一颗种子已击穿 sim30 的负债下限 ¥-123。
+// 治法不是调门禁阈值（任务书硬口径 2 明令禁止），是给赤字装上负反馈：钱越少，下一顿拖得越久，
+// 顿数随之下降，谷底因此有界。钱回正即自动归零，不留后遗。
+const RHY_TIGHT_LINE=60;     // 可调：钱包低于这条线开始「省着点吃」
+const RHY_TIGHT_SPAN=120;    // 可调：再往下 N 元把这份忍耐加满
+const RHY_TIGHT_GRIT=26;     // 可调：加满时多扛这么多饥饿再吃
+// —— 特质 → 作息人格（硬名单，宪法第 8 条；新增特质须回写本表与交接说明）——
+// 每一格都能从既有人设读出来，逐格缘由见 docs/交付/第22单-作息人格.md 第二章。
+// bed＝基准就寝钟点偏移｜dur＝基准睡眠时长偏移｜reg＝规律性（境遇影响系数，0＝铁打的作息）
+// lie＝周末多睡多久｜owl＝挂着逆境时就寝推迟多久（负＝提前收工）
+// keep＝挂着逆境时睡眠时长偏移（负＝惦记着，睡不足）｜grit＝硬扛系数（忍饿／硬撑）
+// **钱的特质（节俭／大方）一律不进作息**——列在表里是为了证明没漏，不是为了留空位。
+const RHY_BASE={bed:23*60, dur:460, reg:0.45, lie:20, owl:10, keep:0, grit:2};
+const RHY_TRAIT={
+  '夜猫子':{bed:+60, dur:  0, reg:+0.25, lie:+10, owl:+45, keep:+15, grit: +8},
+  '摸鱼'  :{bed:+15, dur:+10, reg:+0.15, lie:+15, owl:+15, keep:+20, grit: -2},
+  '外向'  :{bed:+30, dur:  0, reg:+0.10, lie:+15, owl:+25, keep:+10, grit: -4},
+  '工作狂':{bed:  0, dur:-20, reg:-0.35, lie:-25, owl: -5, keep:-25, grit:+12},
+  '内向'  :{bed:-10, dur:+10, reg:+0.20, lie: -5, owl:-15, keep:-25, grit: +8},
+  '早起'  :{bed:-60, dur:+10, reg:-0.15, lie:-15, owl:-30, keep:-30, grit: -2},
+  '节俭'  :{}, '大方':{},
+};
+// 逐人作息人格＝RHY_BASE 逐格加上本人每条特质那一行。陌生特质（篡改档）自动跳过，
+// 缺 traits 一律回落 RHY_BASE，绝不抛错。
+function rhyOf(ag){
+  const r={};
+  for(const k in RHY_BASE) r[k]=RHY_BASE[k];
+  const tr=(ag && Array.isArray(ag.traits))?ag.traits:[];
+  for(let i=0;i<tr.length;i++){
+    const d=RHY_TRAIT[tr[i]]; if(!d) continue;
+    for(const k in d) if(k in r) r[k]+=d[k];
+  }
+  r.bed=PURE.clamp(r.bed,RHY_BED_MIN,RHY_BED_MAX);
+  r.dur=PURE.clamp(r.dur,RHY_DUR_MIN,RHY_DUR_MAX);
+  r.reg=PURE.clamp(r.reg,0,1);
+  r.lie=Math.max(0,r.lie); r.grit=Math.max(0,r.grit);
+  return r;
+}
+// 睡眠记账（随存档序列化）：bed＝这一觉几点躺下｜wake＝这一觉几点起（入睡当场定死）｜
+// dur＝上一觉实际睡了多久（「昨晚睡饱了」那条成因的取数）｜nap＝这一天眯了几觉（醒来清零）。
+// 旧档无此字段 → 就地建一份空账；篡改档畸形值 → 就地重建，照 w.chatTopics 先例，绝不抛错。
+function rhyRest(ag){
+  let r=ag.rest;
+  if(!r || typeof r!=='object' || Array.isArray(r)){ r=ag.rest={bed:0,wake:0,dur:0,nap:0}; }
+  if(!isFinite(r.bed)) r.bed=0;
+  if(!isFinite(r.wake)) r.wake=0;
+  if(!isFinite(r.dur)) r.dur=0;
+  if(!isFinite(r.nap)) r.nap=0;
+  return r;
+}
+// 处境档位 → 成因方向：逆境 +1、顺境 −RHY_GOOD、平淡／空白 0
+function rhySign(w,ag){
+  const s=currentSit(w,ag);
+  return (s && s.k==='bad') ? 1 : ((s && s.k==='good') ? -RHY_GOOD : 0);
+}
+// 此刻是不是「已经撑不住了」＝体力跌破本人的小憩线
+function rhyWorn(ag){
+  const na=tempoNum(ag && ag.metab && ag.metab.napAt, 24, 0, 100);
+  return (isFinite(ag.energy) && ag.energy<na) ? 1 : 0;
+}
+// 今晚的就寝钟点（1260–1500；>1440 表示跨零点）
+function rhyBedClock(w,ag,R,rest){
+  const extraNap=Math.max(0, Math.min(3, rest.nap-1));      // 白天多眯的觉数（第一觉是常态，不算）
+  let x=R.bed + R.reg*(R.owl*rhySign(w,ag) - RHY_CRASH_BED*rhyWorn(ag) + RHY_NAP_BED*extraNap);
+  if(ag.flags.sleepEarly) x-=RHY_SMS_BED;                   // 玩家短信「早点睡」：既有行为原样保留
+  return PURE.clamp(Math.round(x), RHY_BED_MIN, RHY_BED_MAX);   // 取整到分钟：存档与指纹里不留浮点尾数
+}
+// 今晚的就寝绝对时刻。以「上一次醒来」为锚：锚点那天的 00:00 ＋ 今晚的就寝钟点。
+// 若那一夜整个已经过去（旧档中途接上／篡改档），按整天推到最近的一夜，绝不回头补睡。
+function rhyBedAt(w,ag,R,rest){
+  const clock=rhyBedClock(w,ag,R,rest);
+  let a=(rest.wake>0 && rest.wake<=w.t) ? rest.wake : (w.t-1440);
+  if(w.t-a>1440) a=w.t-1440;
+  let x=Math.floor(a/1440)*1440+clock;
+  const k=Math.floor((w.t-x-R.dur)/1440)+1;
+  if(k>0) x+=k*1440;
+  return x;
+}
+// 今晚该睡多久（入睡那一刻定死；成因全部取自此刻已经成立的世界状态）
+function rhyDur(w,ag,R,rest){
+  const wakeDay=(PURE.minuteOfDay(w.t)>=12*60) ? (w.t+1440) : w.t;   // 明早落在哪一天
+  const off=(PURE.weekday(wakeDay)>=5) ? 1 : 0;                      // 5＝周六，6＝周日
+  const over=(rest.dur>R.dur+RHY_OVER) ? 1 : 0;                      // 昨晚睡饱了
+  const extraNap=Math.max(0, Math.min(3, rest.nap-1));
+  let d=R.dur + R.reg*(R.keep*rhySign(w,ag) + R.lie*off + RHY_CRASH_DUR*rhyWorn(ag)
+                       - RHY_REBOUND*over - RHY_NAP_DUR*extraNap);
+  if(ag.flags.earlyWork) d-=RHY_SMS_DUR;                             // 玩家短信「别迟到」
+  return PURE.clamp(Math.round(d), RHY_DUR_MIN, RHY_DUR_MAX);        // 取整到分钟（同 rhyBedClock）
+}
+// 起床绝对时刻＝躺下时刻 ＋ 今晚该睡多久，再钳进本人允许的起床钟点区间（同一个早上）
+function rhyWakeAt(t,dur){
+  let x=t+dur;
+  const m=PURE.minuteOfDay(x);
+  if(m<RHY_WAKE_MIN) x+=RHY_WAKE_MIN-m;
+  else if(m>RHY_WAKE_MAX) x-=m-RHY_WAKE_MAX;
+  if(x<=t) x+=1440;
+  return x;
+}
+// 手上是不是压着事（＝挂着逆境档处境）。忍饿／硬撑／误饭点三处共用同一个判据。
+function rhyPressed(w,ag){ const s=currentSit(w,ag); return !!(s && s.k==='bad'); }
+// 忍饿：挂着逆境时这一顿往后拖（逐人 grit），兜里越紧也拖得越久（负债的结构性刹车）。
+// 上限恒为生存红线 RHY_HUNGER_FLOOR，篡改档的畸形 eatAt 一并收进区间。
+function rhyEatAt(w,ag,R){
+  const base=tempoNum(ag && ag.metab && ag.metab.eatAt, 60, 0, 100);
+  const money=isFinite(ag.money)?ag.money:0;
+  const tight=PURE.clamp((RHY_TIGHT_LINE-money)/RHY_TIGHT_SPAN, 0, 1)*RHY_TIGHT_GRIT;
+  return Math.min(RHY_HUNGER_FLOOR, base + (rhyPressed(w,ag) ? R.grit : 0) + tight);
+}
+// 硬撑：挂着逆境时困了也先撑着（逐人 grit）。下限恒为生存红线。
+function rhyNapAt(w,ag,R){
+  const base=tempoNum(ag && ag.metab && ag.metab.napAt, 24, 0, 100);
+  return Math.max(RHY_ENERGY_FLOOR, base - (rhyPressed(w,ag) ? R.grit*RHY_GRIT_E : 0));
+}
+/*RHY-END*/
+
 function makeAgents(){
   return [
     {id:'a1', name:'顾云帆', color:'#7fa8d9', job:'程序员', wage:400, workAnchor:'desk1', bed:'bed1',
@@ -692,6 +854,9 @@ function makeAgents(){
   ].map(a=>Object.assign(a,{
     anchor:a.bed, activity:{type:'idle',label:'刚醒'}, busyUntil:0, lastMutterT:0,
     inbox:[], flags:{}, relNotes:0, personalLog:[],
+    // 第 22 单·睡眠记账（注意 rest.bed 是「几点躺下」的时刻，与 a.bed 那个床位锚名无关）。
+    // 开城即 08:00、四人 activity 都是「刚醒」，故 wake 初值取 8*60 与之对齐。
+    rest:{bed:0, wake:8*60, dur:0, nap:0},
   }));
 }
 function makeWorld(seed){
@@ -765,11 +930,8 @@ function setActivity(w,ag,anchorId,type,label,minutes,thought,logText,logType){
 
 function decide(w, ag){
   const mod=PURE.minuteOfDay(w.t);
-  const night=ag.traits.includes('夜猫子');
-  const early=ag.traits.includes('早起');
-  const wakeAt=(7*60)+(night?60:0)-(early?60:0);
-  let sleepAt=(23*60)+(night?90:0)-(early?60:0);
-  if(ag.flags.sleepEarly){ sleepAt-=60; }
+  const R=rhyOf(ag);          // 第 22 单·逐人作息人格（由既有特质逐条相加，见 RHY 段）
+  const rest=rhyRest(ag);     // 第 22 单·睡眠记账（旧档缺省／篡改档就地重建）
 
   // 0. 读短信（最高优先：玩家输入进入 TA 的世界）
   if(ag.inbox.length){
@@ -782,23 +944,46 @@ function decide(w, ag){
     ag.busyUntil=w.t+10;
     return;
   }
-  // 1. 睡觉
+  // 1. 睡觉（第 22 单：起床时刻＝躺下时刻＋今晚该睡多久，入睡那一刻定死，不再是逐分钟固定的参数）
   if(ag.activity.type==='sleep'){
-    if(mod>=wakeAt && mod<sleepAt){ ag.activity={type:'idle',label:'醒了'}; ag.busyUntil=w.t; }
+    // 旧档中途接上时可能正睡着却没有记账 → 就地补一个起床时刻，绝不当场把人叫醒
+    if(!(rest.wake>w.t)&&!(rest.bed>0)){ rest.bed=w.t; rest.wake=rhyWakeAt(w.t,R.dur); }
+    if(w.t>=rest.wake){
+      if(rest.bed>0 && rest.bed<w.t) rest.dur=w.t-rest.bed;   // 这一觉实际睡了多久（下一晚「睡饱了」那条成因的取数）
+      rest.wake=w.t; rest.nap=0;                              // 醒来即把「今天眯了几觉」清零
+      ag.activity={type:'idle',label:'醒了'}; ag.busyUntil=w.t;
+    }
     else { ag.busyUntil=w.t+30; return; }
   }
-  if(mod>=sleepAt || mod<wakeAt){
-    const until = (mod<wakeAt) ? (w.t - mod + wakeAt) : (w.t - mod + 1440 + wakeAt);
+  const bedAt=rhyBedAt(w,ag,R,rest);
+  if(w.t>=bedAt && w.t<bedAt+R.dur){
+    rest.bed=w.t;
+    rest.wake=rhyWakeAt(w.t, rhyDur(w,ag,R,rest));
     ag.anchor=ag.bed;
     ag.activity={type:'sleep',label:'睡觉'};
     const S=w.stats; (S.act[ag.id]=S.act[ag.id]||{})['sleep']=(S.act[ag.id]['sleep']||0)+1;
-    ag.busyUntil=until+10;
+    ag.busyUntil=rest.wake+10;
     delete ag.flags.sleepEarly;
     logAct(w,ag,'回卧室睡觉',pickV(w,SLEEP_THOUGHTS,ag,'lz'));
     return;
   }
-  // 2. 饿了就先吃（吃是第一生产力）
-  if(ag.hunger>ag.metab.eatAt || ag.flags.wantEat || (mod>=12*60 && mod<13*60 && ag.hunger>40)){
+  // 上班时段（第 22 单起前移到吃饭之前：饭点由本人上班起点推出，两处必须用同一套数）
+  const startBase = ag.workKind==='clerk'?10*60 : ag.workKind==='write'?9.5*60 : 9*60;
+  let start=startBase;
+  if(ag.traits.includes('工作狂')) start-=30;
+  // 饭点跟着本人的作息走，不跟玩家短信走：故取「特质调整后、earlyWork 调整前」的上班起点。
+  // 四人上班起点本就互异（8:30／9:00／9:30／10:00），饭点因此天然错开，无须另立四个数字。
+  const lunchS=start+RHY_LUNCH_AFTER, lunchE=lunchS+60;
+  if(ag.flags.earlyWork){ start-=30; }
+  const end = ag.workKind==='clerk'?19*60 : ag.workKind==='write'?17*60 : 18*60;
+  const inWork = mod>=start && mod<end && !(mod>=lunchS && mod<lunchE);
+  // 2. 饿了就先吃（吃是第一生产力）。第 22 单两处变化：
+  //    ① 饭点那一小时由本人上班起点推出（四人 8:30／9:00／9:30／10:00 → 饭点天然错开）；
+  //    ② **手上压着事就误了那顿饭**——挂着逆境时「到点就吃」这一支整个让位，
+  //       只剩「实在饿了才吃」，而那条线又被逐人 grit 往上抬（工作狂最能扛）。
+  //       这就是「饿着没吃饭」的成因；上限恒为生存红线 RHY_HUNGER_FLOOR，故不会长期饿着。
+  const pressed=rhyPressed(w,ag);
+  if(ag.hunger>rhyEatAt(w,ag,R) || ag.flags.wantEat || (!pressed && mod>=lunchS && mod<lunchE && ag.hunger>40)){
     delete ag.flags.wantEat;
     const thrifty=ag.traits.includes('节俭'), generous=ag.traits.includes('大方');
     const sunday=PURE.weekday(w.t)===6;
@@ -818,14 +1003,16 @@ function decide(w, ag){
     }
     return;
   }
-  // 3. 工作时段
-  const startBase = ag.workKind==='clerk'?10*60 : ag.workKind==='write'?9.5*60 : 9*60;
-  let start=startBase;
-  if(ag.traits.includes('工作狂')) start-=30;
-  if(ag.flags.earlyWork){ start-=30; }
-  const lunchS=12*60, lunchE=13*60;
-  const end = ag.workKind==='clerk'?19*60 : ag.workKind==='write'?17*60 : 18*60;
-  const inWork = mod>=start && mod<end && !(mod>=lunchS && mod<lunchE);
+  // 2.5 生存红线（第 22 单）：累到 RHY_ENERGY_FLOOR 一律先补觉，**工作时段也不例外**。
+  //     硬扛系数只管「肯撑到多低」，管不到这条线以下；故「体力见底还在硬撑」能真实发生，
+  //     而「体力见底不睡」结构上不可能。
+  if(ag.energy<=RHY_ENERGY_FLOOR){
+    rest.nap++;
+    setActivity(w,ag,ag.bed,'nap','小憩',tempoDur(w,ag,40),pickV(w,NAP_THOUGHTS,ag,'ln'),'回卧室小憩');
+    ag.energy=Math.min(100,ag.energy+18);
+    return;
+  }
+  // 3. 工作时段（start／end／lunch 已在上方算好，与饭点共用同一套数）
   if(inWork){
     if(ag.flags.earlyWork && mod>=startBase) delete ag.flags.earlyWork;
     const slack=ag.traits.includes('摸鱼') && w.rng()<0.25;
@@ -862,8 +1049,9 @@ function decide(w, ag){
     }
     return;
   }
-  // 4. 体力低 → 回家小憩
-  if(ag.energy<ag.metab.napAt){
+  // 4. 体力低 → 回家小憩（第 22 单：挂着逆境时这条线按逐人 grit 往下压＝硬撑，下限恒为生存红线）
+  if(ag.energy<rhyNapAt(w,ag,R)){
+    rest.nap++;
     setActivity(w,ag,ag.bed,'nap','小憩',tempoDur(w,ag,40),pickV(w,NAP_THOUGHTS,ag,'ln'),'回卧室小憩');
     ag.energy=Math.min(100,ag.energy+18);
     return;
@@ -915,9 +1103,12 @@ function decide(w, ag){
    甲乙丙三级权重 ＋ 丙级（纯行为频次）当日合计封顶 ＋ 城市事件共性折减。
 */
 // —— 可调常量区（保守初值，集中存放）——
-// 日切点：取凌晨 4 点。缘由（30 天双种子实测，见交付件二.2）：全城最晚就寝落在日切后
-// 1250 分钟＝次日 00:50，最早起床落在日切后 130 分钟＝06:10；4 点是唯一能把
-// 「夜里几点睡」整段留在当天、又不把「早上几点起」切走的空档。改此值须复测这两个数。
+// 日切点：取凌晨 4 点。4 点是唯一能把「夜里几点睡」整段留在当天、又不把「早上几点起」切走的空档。
+// 第 21 单定这个值时靠的是实测（当时全城最晚就寝落在日切后 1250 分＝次日 00:50、最早起床落在
+// 日切后 130 分＝06:10）；**第 22 单把作息摊开之后，这两头改由钳位保证，不再靠实测碰巧**：
+// 就寝钟点 ≤ 次日 01:00（RHY_BED_MAX）＋ 单次活动最长 100 分钟 ⇒ 实际躺下不晚于 02:40（日切后 ≤1360 分）；
+// 起床钟点 ≥ 05:00（RHY_WAKE_MIN）⇒ 起床恒在日切后 ≥60 分。12 种子实测余量：窗尾 ≥120 分、窗首 ≥70 分。
+// 改本值、或改 RHY_BED_MAX／RHY_WAKE_MIN，须一并复算这两头的余量（harness 有真值断言）。
 const CLIP_CUT=4*60;
 const CLIP_KEEP=60;          // 可调：保留最近 N 天剪辑（随存档；超出从头裁）
 const CLIP_QUOTE_MAX=5;      // 可调：每条剪辑至多引用几条原始日志条目
@@ -1417,6 +1608,9 @@ function hydrate(str){
   return {world:w, meta:d.meta||null};
 }
 const Sim={makeWorld, step, sendMessage, sendCustomMessage, decide, MSGS, ANCHORS, ROOMS, TILE, MAPW, MAPH, STREET_Y, serialize, hydrate, SAVE_V, PEER_ROLE, PEER_EVENTS, SIT_TTL, currentSit, TOPIC_POOL, TOPIC_RECENT, pickTopic,
+  RHY_BASE, RHY_TRAIT, RHY_BED_MIN, RHY_BED_MAX, RHY_WAKE_MIN, RHY_WAKE_MAX, RHY_DUR_MIN, RHY_DUR_MAX,
+  RHY_HUNGER_FLOOR, RHY_ENERGY_FLOOR, RHY_LUNCH_AFTER, rhyOf, rhyRest, rhyEatAt, rhyNapAt, rhyWakeAt,
+  rhyBedClock, rhyDur, rhyPressed,
   CLIP_CUT, CLIP_KEEP, CLIP_QUOTE_MAX, CLIP_BASE_MIN, CLIP_COMMON_N, CLIP_COMMON_MUL, CLIP_FREQ_CAP,
   CLIP_BROKE, CLIP_STARVE, CLIP_DRAINED, CLIP_W, CLIP_TIER, CLIP_LOGCAT, CLIP_CATNAME, CLIP_FREQ_CATS,
   clipDayOf, clipT0, clipCat, clipTier, clipWeight, clipItemText};
