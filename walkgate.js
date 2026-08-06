@@ -64,6 +64,16 @@ function boot(seed){
     state.vis[ag.id]={x:a.x+0.5,y:a.y+0.5,path:[],anchor:ag.anchor,dir:3,moving:false}; }   // 与生产源码 state.vis 初值同文
   return w;
 }
+/* 第 26 单·离线追帧：开机时**先补算、再建 state.vis**（与生产源码同序，见 html「离线追帧」段）。
+   这个先后顺序就是「补算期间零渲染层动作」的全部机理——补算跑完之前显示位压根不存在，
+   一帧都画不出来，故既不必、也无从「切回时补一次直置」（第 25 单不新增直置通道的口径得以延续）。 */
+function bootCatchUp(seed, ticks){
+  const w=Sim.makeWorld(seed); state.world=w; state.vis={};
+  Sim.catchUp(w, ticks, 0);                        // ← 补算：此刻 state.vis 是空的，stepDisplay 无从被调用
+  for(const ag of w.agents){ const a=Sim.ANCHORS[ag.anchor];
+    state.vis[ag.id]={x:a.x+0.5,y:a.y+0.5,path:[],anchor:ag.anchor,dir:3,moving:false}; }
+  return w;
+}
 
 /* ═══ 规矩一 ＋ 规矩二：逐帧采样实测 ═══
    复演主循环 loop() 的调用序：累时→Sim.step→updateWalkers→stepDisplay，逐帧取显示坐标。 */
@@ -326,14 +336,16 @@ const inStall=f=>(f%STALL_PERIOD)>=(STALL_PERIOD-STALL_LEN);
 /* 逐帧驱动器：driver(f) 说明这一帧主循环的哪几步跑、哪几步不跑。
    sim/walk/disp 三个开关分别对应 Sim.step、updateWalkers、显示推进；dt 与 speed 可逐帧变。
    位移只在**相邻两个真正出画的帧**之间量 —— 玩家看见的正是这个差，停摆期间没有画面，不构成一步。 */
-function driveScenario(seed, frames, driver){
-  let w=boot(seed), acc=0;
+function driveScenario(seed, frames, driver, mkBoot){
+  const mk=mkBoot||boot;
+  let w=mk(seed), acc=0;
   const prev={};
   const r={worstRatio:0,worstStep:0,worstCap:0,worstAt:-1,solidFrames:0,solidCells:{},
-           maxGap:0,maxGapAt:-1,drawn:0,reboots:0,kinds:{first:0,reduceMotion:0,other:0}};
+           maxGap:0,maxGapAt:-1,drawn:0,reboots:0,jumps:0,travel:0,kinds:{first:0,reduceMotion:0,other:0}};
   for(let f=0;f<frames;f++){
     const m=driver(f)||{};
-    if(m.reboot){ w=boot(seed); acc=0; r.reboots++; for(const k of Object.keys(prev)) delete prev[k]; }
+    if(m.reboot){ w=mk(seed); acc=0; r.reboots++; for(const k of Object.keys(prev)) delete prev[k]; }
+    if(m.jump){ Sim.catchUp(w, m.jump, 0); r.jumps++; }   // 病态复演专用：在 state.vis 已建表之后才补算
     if(m.speed!==undefined) w.speed=m.speed;
     state.reduceMotion=!!m.reduceMotion;
     const dt=(m.dt===undefined)?(1/FPS):m.dt;
@@ -358,6 +370,7 @@ function driveScenario(seed, frames, driver){
       if(!isFirst && !hadWarp && p){
         const cap=WALK*(w.speed||1)*dt*STEP_SLACK;
         const d=Math.hypot(v.dspX-p.x, v.dspY-p.y);
+        r.travel+=d;                                   // 读数：显示位一共走了多少格（病态复演里用来量「凭空多走的路」）
         if(d/cap>r.worstRatio){ r.worstRatio=d/cap; r.worstStep=d; r.worstCap=cap; r.worstAt=f; }
       }
       // ④ 规矩二：逐帧脚底格不得落进实体格
@@ -391,11 +404,13 @@ const SCENARIOS=[
    driver:f=>({reduceMotion: inStall(f)})},
   {name:'⑦ 快进倍速切换', note:'不停摆；速度在 1×/2× 间来回切，限速上限随之变',
    driver:f=>({speed: inStall(f) ? 2 : 1})},
+  {name:'⑧ 离线追帧补算（第 26 单）', note:'补算在 state.vis 建表之前跑完 ⇒ 整段零帧、显示位尚不存在；回来第一帧照旧走首帧落位',
+   driver:f=>({reboot: f===DAY>>1}), boot:seed=>bootCatchUp(seed, Sim.CATCHUP_MAX_DAYS*144)},
 ];
 {
   let allGap=0, allSolid=0, allOther=0, worst=0, worstName='';
   for(const sc of SCENARIOS){
-    const r=driveScenario(SEEDS[0], DAY, sc.driver);
+    const r=driveScenario(SEEDS[0], DAY, sc.driver, sc.boot);
     allGap=Math.max(allGap,r.maxGap); allSolid+=r.solidFrames; allOther+=r.kinds.other;
     if(r.worstRatio>worst){ worst=r.worstRatio; worstName=sc.name; }
     console.log(`   ${sc.name}：出画 ${r.drawn} 帧 · 最大真显差 ${r.maxGap.toExponential(1)} 格 · `
@@ -410,12 +425,12 @@ const SCENARIOS=[
       +(r.solidFrames?` [${Object.entries(r.solidCells).sort((a,b)=>b[1]-a[1]).slice(0,6).map(([k,n])=>k+'×'+n).join(' ')}]`:'')+'）');
     ok(r.kinds.other===0, `${sc.name} 直置零出白名单（首帧落位 ${r.kinds.first} 次、reduceMotion ${r.kinds.reduceMotion} 次、`
       +`第三种 ${r.kinds.other} 次）—— 这条堵的是「打个标就能瞬移」的后门`);
-    if(sc.name.startsWith('④')) ok(r.kinds.first===AGN*2 && r.reboots===1,
-      `④ 存档载入后首帧落位恰 ${AGN*2} 次＝开局 ${AGN} 人＋重载 ${AGN} 人（实测 ${r.kinds.first} 次／重载 ${r.reboots} 回）`);
+    if(sc.name.startsWith('④') || sc.name.startsWith('⑧')) ok(r.kinds.first===AGN*2 && r.reboots===1,
+      `${sc.name.slice(0,1)} 载入后首帧落位恰 ${AGN*2} 次＝开局 ${AGN} 人＋重载 ${AGN} 人（实测 ${r.kinds.first} 次／重载 ${r.reboots} 回）`);
     else if(!sc.name.startsWith('⑥')) ok(r.kinds.first===AGN,
       `${sc.name} 首帧落位恰 ${AGN} 次＝每人一次（实测 ${r.kinds.first} 次），全程未新增任何直置通道`);
   }
-  console.log(`   汇总：七种情形合计 真显差最大 ${allGap.toExponential(1)} 格 · 实体格 ${allSolid} 帧 · `
+  console.log(`   汇总：${SCENARIOS.length} 种情形合计 真显差最大 ${allGap.toExponential(1)} 格 · 实体格 ${allSolid} 帧 · `
     +`白名单外直置 ${allOther} 次 · 最紧一档「${worstName}」用掉阈值 ${(worst*100).toFixed(1)}%`);
 }
 
@@ -449,6 +464,50 @@ console.log('\n── 反向自查 · 停摆闸拦得住病态写法 ───�
   ok(!(jb.inLoop&&!jb.inDraw), '源码判据拦得住旧写法：「loop 不推进＋draw 里 stepDisplay」被判为「随切页停摆」');
   ok(jg.inLoop&&!jg.inDraw,   '源码判据不误伤：「loop 里 stepAllDisplays＋draw 只取用」被判为合规');
   ok(DISP_IN_LOOP, '生产源码现处于合规形态（显示推进在 loop 内，draw 对 stepDisplay 零调用）');
+}
+
+/* ═══ 第 26 单 · 离线追帧：「补算期间零渲染层动作」的判据与反向自查 ═══
+   这条红线的机理不在任何一条运行期判据里，而在**调用点的位置**：补算跑在 state.vis 建表之前、
+   第一帧 rAF 之前，那时显示位压根不存在，故一帧都画不出来、也无从瞬移。
+   位置这件事没法靠采样证明（不存在的帧采不到），故正面立源码结构判据；
+   反面则把「补算挪到运行中（state.vis 已建表）」原样复演一遍，量出那样会看见什么。 */
+console.log('\n── 第 26 单 · 离线追帧补算的位置判据与反向自查 ────────────');
+{
+  // 判据三条，全部从生产源码读出：不在 loop()／draw() 里、且排在 state.vis 建表之前
+  const catchupJudge=s=>({
+    inLoop:/catchUp\(/.test(s.loop||''), inDraw:/catchUp\(/.test(s.draw||''),
+    beforeVis: s.iCall>=0 && s.iVis>s.iCall,
+  });
+  const P=catchupJudge({loop:loopSrc, draw:drawAll,
+    iCall:src.indexOf('Sim.catchUp(state.world'), iVis:src.indexOf('state.vis[ag.id]={x:a.x+0.5')});
+  console.log(`   源码判读：loop() 调 catchUp ${P.inLoop?'是':'否'} · draw() 调 catchUp ${P.inDraw?'是':'否'}`
+    +` · 调用点在建 state.vis 之前 ${P.beforeVis?'是':'否'}`);
+  ok(!P.inLoop && !P.inDraw && P.beforeVis,
+    '生产源码合规：补算只在开机时跑一次，且排在 state.vis 建表之前 ⇒ 补算期间零帧可画');
+
+  // 正反各喂一次，证明这条判据不是恒绿
+  const shapeBad1={loop:"if(document.hidden) return; Sim.catchUp(w, n, rd);", draw:'', iCall:10, iVis:5};
+  const shapeBad2={loop:'', draw:'', iCall:900, iVis:100};   // 补算排到了建表之后
+  const shapeGood={loop:'Sim.step(w, chunk);', draw:'const v=state.vis[ag.id];', iCall:100, iVis:900};
+  const b1=catchupJudge(shapeBad1), b2=catchupJudge(shapeBad2), g=catchupJudge(shapeGood);
+  ok(b1.inLoop, '判据拦得住写法一：把补算挪进 loop()（＝运行中跳变）被判违规');
+  ok(!b2.beforeVis, '判据拦得住写法二：补算排到 state.vis 建表之后被判违规');
+  ok(!g.inLoop && !g.inDraw && g.beforeVis, '判据不误伤：开机段补算＋主循环只 step 的写法放行');
+
+  // 病态复演：真把补算挪到运行中会看见什么（读数＋断言）
+  const JUMP=Sim.CATCHUP_MAX_DAYS*144;
+  const bad=driveScenario(SEEDS[0], DAY, f=>({jump: f===(DAY>>1) ? JUMP : 0}));
+  const good=driveScenario(SEEDS[0], DAY, ()=>({}));
+  console.log(`   病态复演（运行中补算 ${Sim.CATCHUP_MAX_DAYS} 天，state.vis 已建表）：`
+    +`显示位全程走了 ${bad.travel.toFixed(1)} 格，同长度不补算的对照 ${good.travel.toFixed(1)} 格`
+    +` ⇒ 凭空多走 ${(bad.travel-good.travel).toFixed(1)} 格 · 实体格 ${bad.solidFrames} 帧`);
+  ok(bad.travel-good.travel>10,
+    `拦得住：运行中补算会让玩家眼睁睁看着四个人凭空多走 ${(bad.travel-good.travel).toFixed(1)} 格`
+    +'（三天份的行程一次性走给你看）—— 这正是「补算期间不许出现渲染层动作」要挡的东西');
+  ok(bad.jumps===1 && good.jumps===0, `病态复演确实跳了 ${bad.jumps} 次、对照 ${good.jumps} 次（构造成立）`);
+  ok(bad.maxGap<=1e-9 && bad.worstRatio<=1 && bad.solidFrames===0,
+    '读数（非断言）：即便这样，第 25 单三条铁律仍全绿 —— 病不在瞬移而在「多走的那段路」，'
+    +'故本单的判据只能立在调用点的位置上，立在帧上是抓不到的');
 }
 
 console.log(fails? ('\n'+fails+' FAILURES') : '\n走位三铁律 ALL PASS');

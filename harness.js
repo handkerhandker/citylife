@@ -966,5 +966,209 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
     ok(Sim.RHY_LUNCH_AFTER>0 && Sim.RHY_LUNCH_AFTER<8*60,'饭点偏移取值合理（'+Sim.RHY_LUNCH_AFTER+' 分）');
   }
 }
+
+// ═══ 第 26 单·离线追帧一期 ═══════════════════════════════════════════════
+// 三条硬红线逐条立断言：①补算不许破生存不变量（sim30 已把「从存档补算 30 天」纳入门禁，
+// 与「从零跑 30 天」同等对待，此处不重复）②补算不许花钱：零 AI，可计数 ③补算期间零渲染层动作
+// （帧级由 walkgate.js「⑧ 离线追帧补算」把关，此处只立源码结构断言）。
+{
+  const fs=require('fs'), path=require('path');
+  const src=fs.readFileSync(path.resolve(__dirname,'city-life-framework.html'),'utf8');
+  const grab=(re,name)=>{ const m=src.match(re); if(!m){ ok(false,'源码抽取失败:'+name); return ''; } return m[0]; };
+
+  // —— 口径①：换算与封顶的算术（边界一律向「少补」倒）——
+  {
+    const mk=speed=>({speed:speed===undefined?1:speed});
+    const M=60000, cap=Sim.CATCHUP_MAX_DAYS*144;
+    ok(Sim.CATCHUP_MIN_PER_MIN===1,'换算口径＝1 真实分钟 ⇒ 1 模拟分钟（实测 '+Sim.CATCHUP_MIN_PER_MIN+'）');
+    ok(Sim.catchUpPlan(mk(),9*M).ticks===0,'离开 9 分钟 → 0 拍（不足一拍不补，一拍＝10 模拟分钟）');
+    ok(Sim.catchUpPlan(mk(),10*M).ticks===1,'离开 10 分钟 → 恰 1 拍');
+    ok(Sim.catchUpPlan(mk(),8*60*M).ticks===48,'离开一晚 8 小时 → 48 拍（＝8 模拟小时）');
+    const three=Sim.catchUpPlan(mk(),3*24*60*M);
+    ok(three.ticks===cap && !three.capped,'离开 3 天 → 恰好 '+cap+' 拍且未触封顶（＝决策者原话「关三天看到这三天」）');
+    const week=Sim.catchUpPlan(mk(),7*24*60*M);
+    ok(week.ticks===cap && week.capped && week.skipTicks===(7-Sim.CATCHUP_MAX_DAYS)*144,
+       '离开 7 天 → 封顶 '+cap+' 拍、跳过 '+week.skipTicks+' 拍（'+(7-Sim.CATCHUP_MAX_DAYS)+' 天），且 capped 标记为真');
+    ok(Sim.catchUpPlan(mk(0),3*24*60*M).ticks===0 && Sim.catchUpPlan(mk(0),3*24*60*M).paused,
+       '暂停中离开（speed=0）→ 0 拍：补算不替玩家松手');
+    ok(Sim.catchUpPlan(mk(),-99*M).ticks===0,'时钟倒流（负差值）→ 0 拍，绝不倒着推');
+    ok(Sim.catchUpPlan(mk(),NaN).ticks===0 && Sim.catchUpPlan(mk(),undefined).ticks===0,
+       '坏 meta（NaN／缺 at）→ 0 拍，绝不判坏档');
+    ok(Sim.catchUpPlan({},10*M).ticks===0,'存档缺 speed 字段 → 按暂停处理，0 拍');
+  }
+
+  // —— 口径②：补算的可计数零 AI（真计数器，不是声明）——
+  {
+    let net=0;
+    const bak={fetch:global.fetch, xhr:global.XMLHttpRequest, ws:global.WebSocket};
+    const trap=name=>function(){ net++; throw new Error('补算期间出网：'+name); };
+    global.fetch=trap('fetch'); global.XMLHttpRequest=trap('XMLHttpRequest'); global.WebSocket=trap('WebSocket');
+    const w=Sim.makeWorld(31415);
+    let err='';
+    try{ Sim.catchUp(w, 30*144, 0); }catch(e){ err=String((e&&e.message)||e); }
+    global.fetch=bak.fetch; global.XMLHttpRequest=bak.xhr; global.WebSocket=bak.ws;
+    ok(net===0 && !err,'补算 30 天（4320 拍）全程出网 '+net+' 次'+(err?('，异常：'+err):'')+' —— 可计数硬断言');
+    // 源码侧：SIM 块整块没有出网符号，故上面那个 0 是结构保证不是运气。
+    // 照第 21 单先例先剥注释再判——本段注释里成句写着 runReflection／enhanceMessage 的名字，
+    // 不剥的话断言会被自己的说明文字命中（首次编写时实测踩中）。
+    const strip=x=>x.replace(/\/\*[\s\S]*?\*\//g,'').replace(/(^|[^:'"])\/\/.*$/gm,'$1');
+    const sim=strip(grab(/\/\*SIM-START\*\/[\s\S]*?\/\*SIM-END\*\//,'SIM 块'));
+    ok(/function catchUp\(w, ticks, lastReflectDay\)\{/.test(sim),'剥注释后 SIM 块代码仍完整（剥过头会让下面两条变成空转）');
+    ok(!/\bfetch\s*\(|XMLHttpRequest|callClaude|enhanceChat|enhanceMessage|runReflection/.test(sim),
+       'SIM 块（补算的全部实现所在）零 AI／零出网符号');
+    const cu=strip(grab(/\/\*CATCHUP-START\*\/[\s\S]*?\/\*CATCHUP-END\*\//,'CATCHUP 段'));
+    ok(!/document|window|requestAnimationFrame|\$\(/.test(cu),'CATCHUP 段零 DOM 符号（node 可直接跑，故门禁跑的就是生产原文）');
+    // 反向自查：这两条闸不是恒绿——把出网／DOM 塞进同形状的代码里必须当场判违规
+    ok(/\bfetch\s*\(|callClaude/.test(strip('/* 本段零 AI */\nfunction catchUp(w){ return callClaude(x); }')),
+       '反向：补算里真调了 AI 会被判违规');
+    ok(!/\bfetch\s*\(|callClaude/.test(strip('/* 与 runReflection 同文，不调 callClaude */\nfunction catchUp(w){ step(w,10); }')),
+       '反向不误伤：只在注释里提到 callClaude 的合规写法放行');
+  }
+
+  // —— 口径②续：回来后也不补生成（drainLog 的水位线）——
+  {
+    const dl=grab(/function drainLog\(\)\{[\s\S]*?\n\}/,'drainLog');
+    ok(/if\(state\.llm\.on && e\.lid>aiFloorLid && !e\.llm && !e\.llmPending\)/.test(dl),
+       'drainLog 的 AI 闸上有 aiFloorLid 水位线（读档旧条目与补算产物一律不送 AI）');
+    ok(/const aiFloorLid=state\.world\.lidSeq;/.test(src),'水位线取的是补算完成那一刻的 lidSeq');
+    const raw=grab(/async function rawCallClaude\(prompt, batch\)\{[\s\S]*?\n  L\.calls\+\+;/,'rawCallClaude 头部');
+    ok(/if\(catchupActive\)\{ catchupAiHits\+\+; return null; \}/.test(raw),
+       'rawCallClaude 首句即补算窗口闸，且命中计数（catchupAiHits）');
+    ok(raw.indexOf('catchupActive')<raw.indexOf('L.calls++'),'该闸排在计数与发请求之前（顺序对了才拦得住）');
+  }
+
+  // —— 口径③：补算期间零渲染层动作（源码结构断言；帧级见 walkgate ⑧）——
+  {
+    const boot=src.slice(src.indexOf('/* ---------- 离线追帧（第 26 单）'), src.indexOf('for(const ag of state.world.agents){'));
+    ok(boot.length>200,'取到开机补算段（'+boot.length+' 字节）');
+    ok(!/drainLog\(|renderClips\(|renderTopbar\(|draw\(|stepAllDisplays\(|updateWalkers\(|logLine\(/.test(boot),
+       '开机补算段内零渲染层调用（drainLog／renderX／draw／走位推进一个都没有）');
+    ok(!/callClaude|enhanceChat|enhanceMessage|runReflection|await /.test(boot),
+       '开机补算段内零 AI 调用、零 await（整块同步 ⇒ llm 队列一次都轮不到）');
+    const iBoot=src.indexOf('Sim.catchUp(state.world'), iVis=src.indexOf('state.vis[ag.id]={x:a.x+0.5');
+    ok(iBoot>0 && iVis>iBoot,'补算的调用点排在 state.vis 建表之前 ⇒ 补算期间连显示位都还不存在，一帧也画不出来');
+    const loop=grab(/function loop\(now\)\{[\s\S]*?\n\}/,'loop()');
+    ok(!/catchUp\(/.test(loop),'主循环 loop() 内零补算调用（补算只在开机时发生一次）');
+  }
+
+  // —— 口径④：逐拍调用 ≡ 一次调用（sim30 的补算模式要按拍观测，靠的就是这条）——
+  {
+    const one=Sim.hydrate(Sim.serialize(Sim.makeWorld(2718),null)).world;
+    const many=Sim.hydrate(Sim.serialize(Sim.makeWorld(2718),null)).world;
+    const r1=Sim.catchUp(one, 7*144, 0);
+    let rd=0, nights=0;
+    for(let i=0;i<7*144;i++){ const c=Sim.catchUp(many,1,rd); rd=c.lastReflectDay; nights+=c.nights; }
+    const full=x=>JSON.stringify({t:x.t,rngState:x.rngState,stats:x.stats,lidSeq:x.lidSeq,
+      log:x.log.map(e=>[e.lid,e.t,e.type,e.name,e.text,e.thought||'']),
+      agents:x.agents.map(a=>[a.id,a.money,a.anchor,a.hunger,a.energy,a.busyUntil,JSON.stringify(a.activity)]),
+      clips:x.clips,saidDay:x.saidDay,chatTopics:x.chatTopics,weather:x.weather});
+    ok(full(one)===full(many),'补算 7 天：逐拍调用与一次调用逐字节相同');
+    ok(r1.nights===nights && r1.nights===7,'两种调法「夜深了」轮数一致且＝天数（'+r1.nights+' ／ '+nights+'）');
+    ok(r1.lastReflectDay===rd,'lastReflectDay 进出口径一致（'+r1.lastReflectDay+'）');
+  }
+
+  // —— 补算产出的形状：模板日记、已读不回、剪辑、存档 ——
+  {
+    const w=Sim.hydrate(Sim.serialize(Sim.makeWorld(9001),null)).world;
+    const clips0=(w.clips||[]).length;
+    const r=Sim.catchUp(w, 3*144, 0);
+    ok(r.ticks===432 && r.mins===4320 && r.t1-r.t0===4320,'补算 3 天：432 拍 ＝ 4320 模拟分钟');
+    const diary=w.log.filter(e=>e.type==='diary');
+    ok(diary.length===r.nights*w.agents.length,'每个「夜深了」落满四人日记（'+r.nights+' 夜 × '+w.agents.length+' 人 = '+diary.length+' 条）');
+    ok(diary.every(e=>e.thought===Sim.DIARY_FALLBACK),'补算期间的日记逐条走模板兜底（AI 挂掉时那条路），无一条打 ✨');
+    ok(diary.every(e=>!e.llm && !e.llmPending),'补算日记不留 llmPending ⇒ 回来后 drainLog 也不会去补生成');
+    ok(w.log.some(e=>e.type==='sys' && e.text.indexOf('夜深了')>=0),'「🌙 夜深了」那条系统日志照落（回来推剪辑页的判据即由它计数）');
+    ok((w.clips||[]).length>clips0,'补算期间剪辑照常结算（'+clips0+' → '+(w.clips||[]).length+' 条）');
+    ok(r.clipsNew===true && r.clipTop1>r.clipTop0,'补算 3 天 ⇒ clipsNew 为真（最新剪辑日 '+r.clipTop0+' → '+r.clipTop1+'）');
+    const s2=Sim.serialize(w,{selected:'a1',lastReflectDay:r.lastReflectDay,at:1});
+    ok(!!Sim.hydrate(s2),'补算后的世界仍可序列化／反序列化');
+  }
+  // —— 决策者裁定三：判据＝跨过夜 且 真出了新卡。「出没出新卡」只能问最新剪辑日，不能问条数 ——
+  {
+    // ① 跨过「夜深了」但没跨过 04:00 结算点 ⇒ 有夜、无新卡（＝ 实机 B-away-60min 那一档）
+    const w=Sim.makeWorld(4242);
+    for(let i=0;i<82;i++) Sim.step(w,10);           // 开城 D1 08:00 起推 820 分 ⇒ D1 21:40，尚未跨 21:50
+    const before=Sim.clipTopDay(w);
+    ok(PURE.minuteOfDay(w.t)===21*60+40,'构造成立：起点停在 D1 21:40（实测 '+PURE.fmtTime(w.t)+'）');
+    const r=Sim.catchUp(w, 6, 0);                   // 再推 1 小时 ⇒ D1 22:40：跨过 21:50，离次日 04:00 还远
+    ok(r.nights===1,'构造成立：这一段确实跨过 1 个「夜深了」（实测 '+r.nights+' 个）');
+    ok(r.clipsNew===false && Sim.clipTopDay(w)===before,
+       '跨过夜但没跨 04:00 ⇒ clipsNew 为假（最新剪辑日仍是 '+before+'）—— 这一档不推剪辑页');
+    // ② CLIP_KEEP 饱和后，「条数增量」这条判据会永远失效，故判据只能取最新剪辑日
+    const w2=Sim.makeWorld(77);
+    Sim.catchUp(w2, (Sim.CLIP_KEEP+3)*144, 0);      // 先跑满保留上限，把 w.clips 顶到 CLIP_KEEP
+    ok(w2.clips.length===Sim.CLIP_KEEP,'构造成立：clips 已顶到保留上限 '+Sim.CLIP_KEEP+' 条（实测 '+w2.clips.length+'）');
+    const r2=Sim.catchUp(w2, 3*144, 0);
+    ok(r2.clipsAdded===0,'饱和之后「条数增量」恒为 0（实测 '+r2.clipsAdded+'）—— 拿它当判据会在第 '+(Sim.CLIP_KEEP+1)+' 个剪辑日起悄悄失效');
+    ok(r2.clipsNew===true && r2.clipTop1===r2.clipTop0+3,
+       '同一段里最新剪辑日照常前进 '+(r2.clipTop1-r2.clipTop0)+' 天（'+r2.clipTop0+' → '+r2.clipTop1+'）⇒ 判据取它才不会自锁');
+    // ③ 畸形档不抛错
+    const w3=Sim.makeWorld(5); w3.clips=[null,{d:'x'},{d:7},{}];
+    ok(Sim.clipTopDay(w3)===7,'畸形 clips 里跳过坏条目取最大日号（实测 '+Sim.clipTopDay(w3)+'）');
+    w3.clips='坏档';
+    ok(Sim.clipTopDay(w3)===0,'clips 整个不是数组 ⇒ 返回 0，绝不抛错');
+  }
+  // 临走前发的那条短信：补算期间被读掉 ⇒ 必须补一条「已读不回」，不许石沉大海
+  {
+    const w=Sim.makeWorld(1234);
+    ok(Sim.sendMessage(w,'a1','eat'),'临走前发出一条短信');
+    const before=w.log.filter(e=>e.sms==='noreply').length;
+    Sim.catchUp(w, 6*144, 0);
+    const read=w.log.filter(e=>e.type==='player' && e.sms==='read').length;
+    const nore=w.log.filter(e=>e.type==='player' && e.sms==='noreply').length;
+    ok(read>=1,'补算期间那条短信被读到了（read 条目 '+read+' 条）');
+    ok(nore-before===read,'每条被读到的短信都补了一条「已读不回」（'+(nore-before)+' ／ '+read+' 条）');
+    ok(w.log.filter(e=>e.sms==='noreply').every(e=>e.text===Sim.SMS_NOREPLY),'补的那条逐字沿用既有兜底文案');
+  }
+  // —— 正向审计带出来的一处：关页把在途 AI 调用带走的那些条目，重开时照「AI 挂掉那条路」收尾 ——
+  {
+    const fn=grab(/function settleOrphanLLM\(w\)\{[\s\S]*?\n\}/,'settleOrphanLLM');
+    const S=new Function('DIARY_FALLBACK','SMS_NOREPLY','pushLog','return '+fn)(
+      Sim.DIARY_FALLBACK, Sim.SMS_NOREPLY, (w,e)=>{ e.t=w.t; e.lid=++w.lidSeq; w.log.push(e); });
+    const w=Sim.makeWorld(555);
+    // 造一份「关页时正好三条在途」的世界：对白／日记／短信各一条，形态与生产落盘时逐字相同
+    w.log.push({type:'chat',agent:'a1',name:'甲',with:'a2',text:'和乙聊了几句',
+                thought:'（聊得正起劲⋯）',fb:'「模板上句」「模板下句」',llmPending:true,lid:++w.lidSeq});
+    w.log.push({type:'diary',agent:'a2',name:'乙',text:'睡前日记',thought:'（在台灯下写着⋯）',llmPending:true,lid:++w.lidSeq});
+    w.log.push({type:'player',sms:'read',agent:'a3',name:'丙',msg:'eat',msgLabel:'记得吃饭',
+                text:'读到了你的短信「记得吃饭」',thought:'（对着屏幕想了想⋯）',fb:'（看了眼短信）好好好，这就去解决一顿。',llmPending:true,lid:++w.lidSeq});
+    const n=S(w);
+    ok(n===3,'三条在途条目全部收尾（实测 '+n+' 条）');
+    ok(w.log.every(e=>!e.llmPending),'收尾后全场零「在途」标 ⇒ 占位符不会永远挂在墙上');
+    ok(w.log.find(e=>e.type==='chat').thought==='「模板上句」「模板下句」','对白回落到自己的模板兜底 e.fb');
+    ok(w.log.find(e=>e.type==='diary').thought===Sim.DIARY_FALLBACK,'日记回落到 DIARY_FALLBACK（它没有 e.fb，故单独一条分支）');
+    ok(w.log.find(e=>e.sms==='read').thought.indexOf('好好好')>=0,'短信内心独白回落到 e.fb');
+    const nr=w.log.filter(e=>e.sms==='noreply');
+    ok(nr.length===1 && nr[0].text===Sim.SMS_NOREPLY && nr[0].agent==='a3',
+       '被读掉却没等到回信的短信补了一条「已读不回」，落款在同一个人身上');
+    ok(w.log.every(e=>e.thought!=='（聊得正起劲⋯）' && e.thought!=='（在台灯下写着⋯）' && e.thought!=='（对着屏幕想了想⋯）'),
+       '三种占位符一个不剩');
+    ok(S(w)===0,'再收一次为 0 条（幂等，重开多少次都不会重复补「已读不回」）');
+    // 位置：必须排在补算与水位线之前，否则补出来的条目会被当成「在途」或漏进 AI
+    const iOrph=src.indexOf('if(bootWorld) settleOrphanLLM(state.world);'),
+          iCatch=src.indexOf('Sim.catchUp(state.world'), iFloor=src.indexOf('const aiFloorLid=');
+    ok(iOrph>0 && iOrph<iCatch && iCatch<iFloor,'收尾 → 补算 → 落水位线，三步顺序写死在源码里');
+  }
+
+  // 两条兜底文案在全站只有一处定义（改一处即两条路一起改，不会再分叉）
+  {
+    ok((src.match(/（写了两行，没写下去，合上了本子。）/g)||[]).length===1,'日记兜底文案全站只有一处字面量');
+    ok((src.match(/看了你的短信，没有回。/g)||[]).length===1,'短信兜底文案全站只有一处字面量');
+    ok((src.match(/1310/g)||[]).length===1 && /const REFLECT_MIN=1310;/.test(src),
+       '「夜深了」节点 21:50 已集中为 REFLECT_MIN，主循环与补算两处同引，全站无第二个裸 1310');
+  }
+  // 回来第一眼：跨过夜才推剪辑页，没跨过就不打扰
+  {
+    const ui=src.slice(src.indexOf('/* ---------- 启动 ---------- */'));
+    ok(/if\(catchup && catchup\.nights>0 && catchup\.clipsNew\)\{[\s\S]*?setScreen\('clip'\);/.test(ui),
+       '跨过至少一个「夜深了」**且**真出了新剪辑 ⇒ 直接把剪辑页推到玩家面前（决策者裁定三）');
+    ok(/\}else\{\n  setScreen\('live'\);/.test(ui),'两条不同时满足 ⇒ 照旧进现场页，不打扰（没有新卡就别推）');
+    ok(/catchup\.nights\+' 个夜晚/.test(ui) && /fmtAgo\(catchup\.mins\*60000\)/.test(ui),
+       '横幅逐字标明覆盖了多久、跨了几个夜晚');
+    ok(/catchup\.capped \?/.test(ui) && /没有补算，那段日子没有发生/.test(ui),
+       '触封顶时如实告知玩家「跳过了多少、那段日子没有发生」');
+  }
+}
+
 console.log(fails? ('\n'+fails+' FAILURES') : '\nALL PASS');
 process.exit(fails?1:0);

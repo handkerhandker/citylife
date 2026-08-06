@@ -104,8 +104,19 @@ const SILENT_FRAC_MAX=0.27;           // 可调：静默超过 SILENT_K 分钟�
 
 let fails=0;
 const ok=(c,m)=>{ if(!c){fails++; console.log('FAIL:',m);} else console.log(' ok :',m); };
-function run(seed){
-  const w=Sim.makeWorld(seed);
+function run(seed, mode){
+  let w=Sim.makeWorld(seed);
+  // 第 26 单·补算模式（mode==='catchup'）：先把开城世界存一遍再读回来，之后 30 天全部由
+  // Sim.catchUp 逐拍推进——**与「从零跑 30 天」同等对待，同一批十条判据逐条重跑一遍**。
+  // 逐拍调用是必须的：下面雨／街市／静默三项都要按拍观测。catchUp(w,1,rd) 串 4320 次与
+  // catchUp(w,4320,rd) 一次调用结果逐字节相同（该等价性由 harness「逐拍等价一次」断言背书）。
+  let rd=0;
+  if(mode==='catchup'){
+    const r0=Sim.hydrate(Sim.serialize(w,null));
+    if(!r0){ ok(false,'补算前的存档往返失败@'+seed); return null; }
+    w=r0.world;
+    rd=PURE.dayOf(w.t)-1;
+  }
   // ↓↓ 以下全部为门禁侧**纯观测**：只读 w 的字段，不写 w.stats、不碰 rng、不改世界状态。
   //    （第 23 单立的先例：门禁要量的东西若不在 w.stats 里，就在门禁侧逐拍观测，不给世界加字段。）
   let rainTicks=0;                    // 一拍恰 10 分钟，故下雨拍数×10＝下雨分钟数
@@ -113,8 +124,10 @@ function run(seed){
   let silentRun=0, silentMin=0;       // 当前已静默多久（分钟）／累计「静默超过 SILENT_K」的分钟数
   let lastLid=0;                      // w.log 是 400 条环形缓冲（html:882–884），按 lid 增量扫描才不漏条
   const durAct=w.agents.map(()=>Object.create(null));   // 逐人「活动类型 → 拍数」
+  let nights=0;
   for(let i=0;i<DAYS*144;i++){
-    Sim.step(w,10);
+    if(mode==='catchup'){ const c=Sim.catchUp(w,1,rd); rd=c.lastReflectDay; nights+=c.nights; }
+    else Sim.step(w,10);
     rainTicks+=w.weather.rain?1:0;
     // 本拍有没有「戏」：新增条目里有没有 chat／player／sys（口径同 html:1556 注释，只是按发生记账）
     let spark=0;
@@ -138,38 +151,54 @@ function run(seed){
       if(ty) durAct[k][ty]=(durAct[k][ty]||0)+1;
     }
   }
-  return {w, rainMin:rainTicks*10, marketMin:marketTicks*10, silentMin, durAct};
+  return {w, rainMin:rainTicks*10, marketMin:marketTicks*10, silentMin, durAct, nights};
 }
 function sig(w){ return JSON.stringify(w.stats)+'|'+w.agents.map(a=>a.id+':'+a.money+':'+a.anchor+':'+a.hunger+':'+a.energy).join('|'); }
-for(const seed of SEEDS){
-  const r=run(seed);
-  if(!r) continue;
-  const w=r.w;
-  ok(true,'['+seed+'] 30 天生存不变量');
-  const ent=r.durAct.map(d=>PURE.entropy(d));
-  const entCnt=w.agents.map(a=>PURE.entropy((w.stats.act||{})[a.id]||{}));
-  ok(ent.every(e=>e>=ENTROPY_MIN),'['+seed+'] 动作熵（时长口径）每人≥'+ENTROPY_MIN+'：'+ent.map(e=>e.toFixed(2)).join('/')
-     +'（旧的次数口径 '+entCnt.map(e=>e.toFixed(2)).join('/')+'）');
-  const g=PURE.gini(w.agents.map(a=>a.money));
-  ok(g<=GINI_MAX,'['+seed+'] 财富基尼≤'+GINI_MAX+'：'+g.toFixed(3));
-  const pairs=Object.keys(w.stats.pair||{});
-  const chats=pairs.reduce((s,k)=>s+w.stats.pair[k],0);
-  ok(chats>=CHAT_MIN && pairs.length>=PAIR_MIN,'['+seed+'] 社交：'+chats+' 次 · '+pairs.length+' 对');
-  const rf=r.rainMin/(DAYS*1440);
-  ok(rf>=RAIN_FRAC_MIN && rf<=RAIN_FRAC_MAX,'['+seed+'] 雨占全时长 '+(rf*100).toFixed(2)+'%（'+r.rainMin+' 分钟 · '
-     +w.stats.rain+' 场 · 场均 '+(w.stats.rain?Math.round(r.rainMin/w.stats.rain):0)+' 分钟）');
-  ok(w.stats.pay>=PAY_MIN,'['+seed+'] 发薪 '+w.stats.pay+' 次');
-  ok(w.stats.rentPaid===RENT_EXACT,'['+seed+'] 交租 '+w.stats.rentPaid+' 次');
-  ok(r.marketMin>=MARKET_MIN_MIN,'['+seed+'] 街市滞留 '+r.marketMin+' 人·分钟（'+w.stats.market+' 人次 · 趟均 '
-     +(w.stats.market?Math.round(r.marketMin/w.stats.market):0)+' 分钟）');
-  const sf=r.silentMin/(DAYS*1440);
-  ok(sf<=SILENT_FRAC_MAX,'['+seed+'] 静默超过 '+SILENT_K+' 分钟的时长占 '+(sf*100).toFixed(2)+'%（'+r.silentMin
-     +' 分钟 · 旧口径最长无戏间隔 '+w.stats.maxGap+' 分钟）');
-}
-{
-  const A=Sim.makeWorld(SEEDS[0]), B=Sim.makeWorld(SEEDS[0]);
-  for(let i=0;i<DAYS*144;i++){ Sim.step(A,10); Sim.step(B,10); }
-  ok(sig(A)===sig(B),'同种子 30 天确定性');
+
+// 第 26 单：两种模式**同等对待**——'fresh'＝从零跑 30 天（第 1 单起的原口径，一字未动）；
+// 'catchup'＝从存档补算 30 天（离线追帧的真实形态）。十条判据逐条各跑一遍，任一条红即整闸红。
+// 两种模式的读数不会逐字节相同，也不要求相同：补算会按「AI 挂掉时那条路」多落一轮模板日记
+// （每晚 1 条 sys ＋ 4 条 diary），而 advance10 尾部那句 `last=w.log[len-1]` 会读到它们，
+// 于是 w.lastSpark 的刷新时机变了、导演层下雨的 rng 时机随之位移——**这正是页面开着时本来就有的
+// 那条轨迹**（runReflection 在线时同样往 w.log 里落这五条），故补算模式量的才是玩家真会经历的世界。
+const MODES=[['fresh','从零跑'],['catchup','从存档补算']];
+for(const [mode,label] of MODES){
+  console.log('\n── '+label+' '+DAYS+' 天 ──────────────────────────────────────────');
+  for(const seed of SEEDS){
+    const r=run(seed, mode);
+    if(!r) continue;
+    const w=r.w;
+    const tag='['+label+'·'+seed+'] ';
+    ok(true,tag+DAYS+' 天生存不变量'+(mode==='catchup'?('（补算落了 '+r.nights+' 轮模板日记）'):''));
+    const ent=r.durAct.map(d=>PURE.entropy(d));
+    const entCnt=w.agents.map(a=>PURE.entropy((w.stats.act||{})[a.id]||{}));
+    ok(ent.every(e=>e>=ENTROPY_MIN),tag+'动作熵（时长口径）每人≥'+ENTROPY_MIN+'：'+ent.map(e=>e.toFixed(2)).join('/')
+       +'（旧的次数口径 '+entCnt.map(e=>e.toFixed(2)).join('/')+'）');
+    const g=PURE.gini(w.agents.map(a=>a.money));
+    ok(g<=GINI_MAX,tag+'财富基尼≤'+GINI_MAX+'：'+g.toFixed(3));
+    const pairs=Object.keys(w.stats.pair||{});
+    const chats=pairs.reduce((s,k)=>s+w.stats.pair[k],0);
+    ok(chats>=CHAT_MIN && pairs.length>=PAIR_MIN,tag+'社交：'+chats+' 次 · '+pairs.length+' 对');
+    const rf=r.rainMin/(DAYS*1440);
+    ok(rf>=RAIN_FRAC_MIN && rf<=RAIN_FRAC_MAX,tag+'雨占全时长 '+(rf*100).toFixed(2)+'%（'+r.rainMin+' 分钟 · '
+       +w.stats.rain+' 场 · 场均 '+(w.stats.rain?Math.round(r.rainMin/w.stats.rain):0)+' 分钟）');
+    ok(w.stats.pay>=PAY_MIN,tag+'发薪 '+w.stats.pay+' 次');
+    ok(w.stats.rentPaid===RENT_EXACT,tag+'交租 '+w.stats.rentPaid+' 次');
+    ok(r.marketMin>=MARKET_MIN_MIN,tag+'街市滞留 '+r.marketMin+' 人·分钟（'+w.stats.market+' 人次 · 趟均 '
+       +(w.stats.market?Math.round(r.marketMin/w.stats.market):0)+' 分钟）');
+    const sf=r.silentMin/(DAYS*1440);
+    ok(sf<=SILENT_FRAC_MAX,tag+'静默超过 '+SILENT_K+' 分钟的时长占 '+(sf*100).toFixed(2)+'%（'+r.silentMin
+       +' 分钟 · 旧口径最长无戏间隔 '+w.stats.maxGap+' 分钟）');
+  }
+  // 第十条：同种子确定性。补算模式下两份同源存档各补 30 天，落点必须逐字节相同
+  // （rngState 随档落盘，故这一条同时也是「补算可复现」的判据）。
+  {
+    const mk=()=>{ const x=Sim.makeWorld(SEEDS[0]); return mode==='catchup' ? Sim.hydrate(Sim.serialize(x,null)).world : x; };
+    const A=mk(), B=mk();
+    if(mode==='catchup'){ Sim.catchUp(A,DAYS*144,0); Sim.catchUp(B,DAYS*144,0); }
+    else for(let i=0;i<DAYS*144;i++){ Sim.step(A,10); Sim.step(B,10); }
+    ok(sig(A)===sig(B),'['+label+'] 同种子 '+DAYS+' 天确定性');
+  }
 }
 console.log(fails?('\n'+fails+' FAILURES'):'\n30D ALL PASS');
 process.exit(fails?1:0);
