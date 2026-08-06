@@ -519,5 +519,233 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   }
   for(const ag of w.agents) ag.anchor=ag.bed;                 // 复原，免污染后续（本块已是文末）
 }
+// --- 每日剪辑·选材层（第 21 单） ---
+{
+  const fs=require('fs'), path=require('path');
+  const src=fs.readFileSync(path.resolve(__dirname,'city-life-framework.html'),'utf8');
+  const clipRaw=(src.match(/\/\*CLIP-START\*\/[\s\S]*?\/\*CLIP-END\*\//)||[''])[0];
+  ok(clipRaw.length>2000,'CLIP 段可抽取（'+clipRaw.length+' 字）');
+  // 断言的是**代码**不是注释：本段注释里成段写着「零 rng」「不写 w.stats」，
+  // 不剥注释的话这几条断言会被自己的说明文字命中（首次编写时实测踩中）。
+  const clipSrc=clipRaw.replace(/\/\*[\s\S]*?\*\//g,'').replace(/(^|[^:'"])\/\/.*$/gm,'$1');
+  ok(/function clipTick\(w\)\{/.test(clipSrc) && /function clipClose\(w,sh\)\{/.test(clipSrc),
+     '剥注释后代码仍完整（剥过头会让下面几条断言变成空转）');
+
+  // 硬口径 3 · 只许读、不许摇：判据立在源码原文上（照走位规矩三先例——行为断言挡不住下一单再写一次）
+  ok(!/\brng\b/.test(clipSrc),'剪辑层代码零 rng 引用（含 w.rng／pick／pickV 一概不得出现）');
+  ok(!/\bpickV?\s*\(/.test(clipSrc),'剪辑层代码零抽词调用');
+  ok(!/w\.stats/.test(clipSrc),'剪辑层代码零 w.stats 触碰（指纹里 stats 逐字节参与哈希）');
+  ok(!/\bag\.[A-Za-z]+\s*=[^=]/.test(clipSrc),'剪辑层代码零住户字段写入（只读住户，账挂世界）');
+
+  // 硬口径 3 · 运行期隔离实验：同种子两个世界推到日切前一拍，只让 A 结算、B 不结算，
+  // 比较那一拍各自摇了几次 rng。相等即证明「结算」这件事本身零消耗。
+  {
+    const S=4242, A=Sim.makeWorld(S), B=Sim.makeWorld(S);
+    let guard=0;
+    while(PURE.minuteOfDay(A.t+10)!==Sim.CLIP_CUT && guard++<3000){ Sim.step(A,10); Sim.step(B,10); }
+    ok(guard<3000,'推到日切前一拍');
+    B.clipDay.d=Sim.clipDayOf(B.t+10);                 // 对照组：日表已是新一窗，那一拍不会触发结算
+    const nA=A.clips.length, nB=B.clips.length;
+    let ca=0, cb=0;
+    const ra=A.rng, rb=B.rng;
+    A.rng=function(){ ca++; return ra(); };
+    B.rng=function(){ cb++; return rb(); };
+    Sim.step(A,10); Sim.step(B,10);
+    ok(A.clips.length===nA+1 && B.clips.length===nB,'实验成立：实验组结算了 1 条、对照组 0 条');
+    ok(ca===cb,'日切结算那一拍零额外 rng 消耗（实验组 '+ca+' 次 vs 对照组 '+cb+' 次）');
+    ok(A.rngState===B.rngState,'那一拍过后随机源状态逐位相同（rng 流零位移）');
+  }
+
+  // 日切口径：4 点必须落在「全城最晚就寝」与「最早起床」之间，否则谁的夜里会被切成两半
+  {
+    const w=Sim.makeWorld(20260803);
+    const prev={}, onset={}, wake={};
+    for(const a of w.agents) prev[a.id]=a.activity.type;
+    for(let i=0;i<30*144;i++){
+      Sim.step(w,10);
+      const cd=Sim.clipDayOf(w.t);
+      for(const a of w.agents){
+        const s=a.activity.type==='sleep', p=prev[a.id]==='sleep';
+        if(s&&!p) onset[a.id+'|'+cd]=(onset[a.id+'|'+cd]||0)+1;
+        if(!s&&p)  wake[a.id+'|'+cd]=(wake[a.id+'|'+cd]||0)+1;
+        prev[a.id]=a.activity.type;
+      }
+    }
+    const oBad=Object.keys(onset).filter(k=>onset[k]!==1), wBad=Object.keys(wake).filter(k=>wake[k]!==1);
+    ok(oBad.length===0,'每个剪辑窗每人恰好一次入睡（日切没把谁的夜里切成两半，'+Object.keys(onset).length+' 个人天）');
+    ok(wBad.length===0,'每个剪辑窗每人恰好一次醒来（'+Object.keys(wake).length+' 个人天）');
+  }
+
+  // 权重口径：任务书硬约束「有戏的偏离权重显著高于纯行为频次偏离」
+  {
+    const ids=Object.keys(Sim.CLIP_W);
+    const aW=ids.filter(k=>Sim.clipTier(k)==='a').map(k=>Sim.CLIP_W[k]);
+    const aMin=Math.min.apply(null,aW), aMax=Math.max.apply(null,aW), fw=Sim.CLIP_W.freq;
+    ok(Sim.clipTier('freq')==='c','纯行为频次登记为丙级');
+    ok(aMin>=fw*3,'甲级最低权重 '+aMin+' ≥ 丙级单条 '+fw+' 的 3 倍（实为 '+(aMin/fw).toFixed(1)+' 倍）');
+    ok(aMin>Sim.CLIP_FREQ_CAP*2,'甲级最低权重 '+aMin+' > 丙级当日封顶 '+Sim.CLIP_FREQ_CAP+' 的 2 倍（实为 '+(aMin/Sim.CLIP_FREQ_CAP).toFixed(1)+' 倍）');
+    ok(aMax/Sim.CLIP_FREQ_CAP>=5,'甲级最高权重 '+aMax+' ≥ 丙级封顶的 5 倍（实为 '+(aMax/Sim.CLIP_FREQ_CAP).toFixed(1)+' 倍）');
+    ok(ids.every(k=>Sim.clipWeight(k)===Sim.CLIP_W[k]),'权重取值函数与登记表一致');
+    // 每个登记的偏离项都要有固定模板文案，且一个字不带旁白口吻
+    let blank=0;
+    for(const k of ids){
+      const t=Sim.clipItemText({id:(k==='freq'?'freq:eat':k), v:{from:'X',tx:'Y',n:1,k:1,lo:0,d:1,m:1,s:'D1 00:00',at:'D1 00:00',h:1,e:1,names:'甲'}});
+      if(!t) blank++;
+    }
+    ok(blank===0,'登记表里每个偏离项都有固定模板文案（缺 '+blank+' 条）');
+  }
+
+  // 30 天双种子跑一遍，验结构口径
+  for(const seed of [20260803,424242]){
+    const w=Sim.makeWorld(seed);
+    for(let i=0;i<31*144;i++) Sim.step(w,10);
+    const cs=w.clips;
+    ok(cs.length===31,'['+seed+'] 31 窗产出 31 条剪辑（实测 '+cs.length+'）');
+    ok(cs.every((c,i)=>i===0||c.d===cs[i-1].d+1),'['+seed+'] 剪辑逐日连续无缺日（页面倒序渲染的前提）');
+    ok(cs[0].full===0 && cs.slice(1).every(c=>c.full===1),'['+seed+'] 仅开局首日标记窗口不完整');
+    // 丙级封顶
+    let capBad=0, onlyFreq=0, noA=0;
+    for(const c of cs){
+      const f=c.items.filter(it=>Sim.clipTier(it.id)==='c').reduce((s,it)=>s+it.k,0);
+      if(f>Sim.CLIP_FREQ_CAP+1e-9) capBad++;
+      if(c.items.length && c.items.every(it=>Sim.clipTier(it.id)==='c')) onlyFreq++;
+      if(c.items.length && !c.items.some(it=>Sim.clipTier(it.id)==='a')) noA++;
+    }
+    ok(capBad===0,'['+seed+'] 丙级当日合计从不越过封顶 '+Sim.CLIP_FREQ_CAP+'（越界 '+capBad+' 天）');
+    ok(onlyFreq===0,'['+seed+'] 没有一天是靠纯行为频次入选的（'+onlyFreq+' 天）——权重口径的行为侧证据');
+    // 共性折减确实在动，且折减后权重＝原权重×系数
+    let cut=0, cutBad=0;
+    for(const c of cs) for(const it of c.items){ if(it.c){ cut++; if(Math.abs(it.k-Sim.clipWeight(it.id)*Sim.CLIP_COMMON_MUL)>1e-6) cutBad++; } }
+    ok(cut>0,'['+seed+'] 共性折减实际发生过（'+cut+' 次）');
+    ok(cutBad===0,'['+seed+'] 折减后权重＝原权重×'+Sim.CLIP_COMMON_MUL+'（偏差 '+cutBad+' 处）');
+    // 引用的必须是当窗、且确实是日志原文（逐字比对城市日志里同 t 同名的条目）
+    let qOut=0, qEmpty=0;
+    for(const c of cs){
+      const t0=Sim.clipT0(c.d);
+      for(const q of c.q){ if(!(q.t>=t0 && q.t<t0+1440)) qOut++; if(!q.text) qEmpty++; }
+      if(c.name && !c.q.length) qEmpty++;
+    }
+    ok(qOut===0,'['+seed+'] 引用的日志条目全部落在当天窗口内（越界 '+qOut+' 条）');
+    ok(qEmpty===0,'['+seed+'] 每条剪辑都引到了原文、且无空正文（异常 '+qEmpty+' 处）');
+    // 单窗日志量必须远小于 w.log 容量，否则结算时当窗条目会被裁掉、引不全
+    const per={};
+    for(const e of w.log) per[Sim.clipDayOf(e.t)]=(per[Sim.clipDayOf(e.t)]||0)+1;
+    const peak=Math.max.apply(null,Object.keys(per).map(k=>per[k]));
+    ok(peak<400*0.5,'['+seed+'] 单窗日志峰值 '+peak+' 条 < 日志墙容量 400 的一半（引用取材不会被裁掉）');
+    // 霸榜看门：任务书口径「某一人长期霸榜即判据偏了」
+    const by={};
+    for(const c of cs) if(c.name) by[c.name]=(by[c.name]||0)+1;
+    const top=Math.max.apply(null,Object.keys(by).map(k=>by[k]));
+    ok(Object.keys(by).length===w.agents.length,'['+seed+'] 四人都被挑中过：'+JSON.stringify(by));
+    ok(top<=cs.length*0.5,'['+seed+'] 无人霸榜（最多一人 '+top+'/'+cs.length+' 天 ≤ 五成）');
+    // 剪辑层零住户字段：账全挂在世界上
+    ok(w.agents.every(a=>!Object.keys(a).some(k=>k.indexOf('clip')===0)),'['+seed+'] 剪辑层零住户字段');
+    // 日志分类覆盖率：30 天里每条 act 条目都得归到某一类（谁改了 logText，这条即红）
+    let unc=0;
+    for(const e of w.log) if(e.type==='act' && !Sim.clipCat(e)) unc++;
+    ok(unc===0,'['+seed+'] 日志分类表覆盖全部 act 条目（未归类 '+unc+' 条）');
+  }
+
+  // 基线口径：今天从不参与评自己（结算在前、并账在后）
+  {
+    const w=Sim.makeWorld(777);
+    for(let i=0;i<10*144;i++) Sim.step(w,10);
+    const b=w.clipBase[w.agents[0].id]||{};
+    const days=(b.days||{}).n||0;
+    const closed=w.clips.length;
+    ok(days===closed-1,'基线天数 '+days+' ＝ 已结算 '+closed+' 条 − 首日不完整窗 1（今天不评自己、半截窗不入基线）');
+    ok(w.clips.every(c=>!c.name||c.base<=c.d-1),'每条剪辑用的基线天数都少于当天天号（结算时今天还没并账）');
+  }
+
+  // 存档：随存档序列化、旧档缺省兼容、篡改档不抛错（照 chatTopics／sit 先例）
+  {
+    const w=Sim.makeWorld(555);
+    for(let i=0;i<6*144;i++) Sim.step(w,10);
+    const d=JSON.parse(Sim.serialize(w,null));
+    ok(Array.isArray(d.world.clips) && d.world.clips.length>0,'clips 随存档序列化（'+d.world.clips.length+' 条）');
+    ok(!!d.world.clipDay && !!d.world.clipBase,'clipDay／clipBase 随存档序列化');
+    const r0=Sim.hydrate(Sim.serialize(w,null));
+    for(let i=0;i<3*144;i++) Sim.step(r0.world,10);
+    ok(r0.world.clips.length>w.clips.length,'存档续跑照常出剪辑');
+    // 旧档：三个字段全无
+    const old=JSON.parse(Sim.serialize(w,null));
+    delete old.world.clips; delete old.world.clipDay; delete old.world.clipBase;
+    const r1=Sim.hydrate(JSON.stringify(old));
+    ok(!!r1,'旧档（无 clips/clipDay/clipBase）可反序列化');
+    for(let i=0;i<3*144;i++) Sim.step(r1.world,10);
+    ok(Array.isArray(r1.world.clips) && isFinite(r1.world.t),'旧档续跑 3 天自动补建、无异常');
+    ok(r1.world.clips.length>0 && r1.world.clips[0].full===0,'旧档接上的那一窗标记为不完整（不计入基线）');
+    // 篡改档：三个字段全是畸形值
+    const bad=JSON.parse(Sim.serialize(w,null));
+    bad.world.clips='x'; bad.world.clipDay=5; bad.world.clipBase=[];
+    const r2=Sim.hydrate(JSON.stringify(bad));
+    for(let i=0;i<2*144;i++) Sim.step(r2.world,10);
+    ok(Array.isArray(r2.world.clips),'篡改档 clips 非数组 → 就地重建，不抛错');
+    ok(!!r2.world.clipDay && typeof r2.world.clipDay==='object' && !!r2.world.clipDay.a,'篡改档 clipDay 非对象 → 就地重建');
+    ok(!Array.isArray(r2.world.clipBase) && typeof r2.world.clipBase==='object','篡改档 clipBase 为数组 → 就地重建');
+    // 篡改档：日表里塞进畸形住户行、住户名单被改
+    const bad2=JSON.parse(Sim.serialize(w,null));
+    bad2.world.clipDay.a={a1:'x', zzz:{}};
+    const r3=Sim.hydrate(JSON.stringify(bad2));
+    for(let i=0;i<144;i++) Sim.step(r3.world,10);
+    ok(isFinite(r3.world.t) && r3.world.agents.every(a=>isFinite(a.hunger)),'篡改档畸形日表行 → 补建，续跑无异常');
+    // 存档体积看门：剪辑最多留 CLIP_KEEP 天
+    const big=Sim.makeWorld(556);
+    for(let i=0;i<(Sim.CLIP_KEEP+6)*144;i++) Sim.step(big,10);
+    ok(big.clips.length===Sim.CLIP_KEEP,'剪辑最多留 '+Sim.CLIP_KEEP+' 天（实测 '+big.clips.length+'）');
+  }
+
+  // 常态化折除：判据是「最不像平常的自己」，长期状态不算落差
+  {
+    const w=Sim.makeWorld(20260803);
+    for(let i=0;i<31*144;i++) Sim.step(w,10);
+    let habitual=0, leaked=0;
+    for(const ag of w.agents){
+      const b=w.clipBase[ag.id]||{};
+      for(const id of ['money_broke','social_all','sit_bad','hunger_peak','worn_out']){
+        const r=b['hit:'+id];
+        if(r && r.n>=Sim.CLIP_BASE_MIN && r.s/r.n>=0.5){
+          habitual++;
+          // 一旦判为常态，此后就不该再靠这条把他挑出来
+          const late=w.clips.filter(c=>c.id===ag.id && c.d>Sim.CLIP_BASE_MIN+3 && c.items.some(it=>it.id===id));
+          leaked+=late.length;
+        }
+      }
+    }
+    ok(habitual>0,'实测存在「平常就这样」的绝对判据（'+habitual+' 项人×判据）');
+    ok(leaked===0,'常态化的绝对判据不再计入落差（漏算 '+leaked+' 处）');
+  }
+
+  // 反向自查：上面三条源码断言不是摆设——把病态写法复演一遍，断言它们确实判违规
+  // （照走位三铁律「闸立完必须反向自查」的先例：一条恒绿的闸等于没立）
+  {
+    const strip=s=>s.replace(/\/\*[\s\S]*?\*\//g,'').replace(/(^|[^:'"])\/\/.*$/gm,'$1');
+    const sick1=strip("/* 本段零 rng 消耗 */\nfunction clipSample(w,sh){ const x=w.rng(); }");
+    const sick2=strip("/* 不写 w.stats */\nfunction clipClose(w,sh){ w.stats.rain++; }");
+    const sick3=strip("/* 只读住户 */\nfunction clipSample(w,sh){ for(const ag of w.agents) ag.money=0; }");
+    const well =strip("/* 零 rng、不写 w.stats、零住户字段写入 */\nfunction clipSample(w,sh){ const r=sh.a[ag.id]; r.m1=ag.money; }");
+    ok(/\brng\b/.test(sick1),'反向：CLIP 段真写了 w.rng() 会被判违规');
+    ok(/w\.stats/.test(sick2),'反向：CLIP 段真碰了 w.stats 会被判违规');
+    ok(/\bag\.[A-Za-z]+\s*=[^=]/.test(sick3),'反向：CLIP 段真写了住户字段会被判违规');
+    ok(!/\brng\b/.test(well) && !/w\.stats/.test(well) && !/\bag\.[A-Za-z]+\s*=[^=]/.test(well),
+       '反向不误伤：只在注释里提到这几个词的合规写法一律放行（三条断言各自空过）');
+  }
+
+  // 页面：新页与既有五页并排，切页环也带上
+  {
+    ok(/data-tab="clip"/.test(src) && /id="scr-clip"/.test(src),'剪辑页的页签与页面都已就位');
+    const m=src.match(/const TAB_ORDER=\[([^\]]*)\]/);
+    ok(!!m && m[1].indexOf("'clip'")>=0,'TAB_ORDER 含 clip（Q/E 与 LB/RB 切页可达）');
+    const order=(src.match(/<button class="tab" data-tab="(\w+)"/g)||[]).map(s=>s.match(/data-tab="(\w+)"/)[1]);
+    ok(JSON.stringify(order)===JSON.stringify(['live','roles','log','clip','phone','settings']),
+       '页签排列＝现场／角色／日志／剪辑／短信／设置（实测 '+order.join('／')+'）');
+    ok(/if\(id==='clip'\) renderClips\(\);/.test(src),'切到剪辑页会渲染');
+    // 本页零 AI：渲染层不得碰任何 LLM 挂点
+    const uiSrc=(src.match(/function clipRows\(\)[\s\S]*?\nfunction traitChips/)||[''])[0];
+    ok(uiSrc.length>1000,'剪辑渲染层可抽取（'+uiSrc.length+' 字）');
+    ok(!/callClaude|enhance|runReflection|llm\.on/.test(uiSrc),'剪辑渲染层零 LLM 挂点（本单一个字都不过 AI）');
+    ok(/PURE\.fmtStamp/.test(uiSrc),'剪辑引用条目走 fmtStamp 打日期戳（第 19 单追加一口径）');
+  }
+}
 console.log(fails? ('\n'+fails+' FAILURES') : '\nALL PASS');
 process.exit(fails?1:0);

@@ -26,3 +26,17 @@ python3 build_assets.py --pack-dir /路径/解包目录 --out ./out
 ## 挑剔通道（单点重生成）
 
 决策者上线目验后,对任一住户形象或房间观感用自然语言下达修改。施工只改本脚本顶部的配方区(`RESIDENTS` 部件表 / `FLOOR`、家具坐标),重跑流水线出新图,铁律与布局表零改动。
+
+## 实机截图（走 playwright，与素材流水线无依赖关系，只是共用本目录）
+
+```
+npm i playwright            # node_modules/ 已入 .gitignore，浏览器用预装 Chromium
+node preview_shots.mjs . <输出目录>     # 三区实机预览（补充指令四，素材验收用）
+node clip_shots.mjs    . <输出目录>     # 每日剪辑页七张（第 21 单，选材验收用）
+```
+
+两个脚本都起一个本地静态站直接跑仓库里的 `city-life-framework.html`，故拍到的就是生产代码本身。
+`clip_shots.mjs` 两处口径写死在脚本里，改动前先读注释：**①抢在第一次 AI 挂点之前关掉 `state.llm.on`**
+（沙箱不通网时晚一步日志墙上就会留一条 ⚠ 连线失败，那是环境噪声不是产品行为）；
+**②`fullPage` 对本作无效**——`#app` 是 100dvh 定高、各屏内部自己滚，整页截图与视口截图逐字节相同，
+要拍「往回翻的历史」只能真滚一段再拍（`shootScrolled`）。
