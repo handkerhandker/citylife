@@ -1,2 +1,8 @@
 tools/voice-check/.work/
 node_modules/
+# 门禁临时产物（交接说明「固定验证门」区：app.js 与 relay-check.mjs 为临时产物，禁止提交）
+app.js
+relay-check.mjs
+# 取证截图脚本按 tools/asset-pipeline/README 走 `npm i playwright` 装出来的
+package.json
+package-lock.json
