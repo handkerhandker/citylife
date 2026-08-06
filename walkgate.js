@@ -297,5 +297,159 @@ console.log('\n── 反向自查 · 三条闸不是摆设 ──────�
   ok(!/standSpot|STAND_SPOTS/.test('let tx=v.x, ty=v.y;'), '规矩三不误伤：单一来源的取位写法不命中');
 }
 
+/* ═══ 第 25 单 · 渲染停摆普查：铁律一二的采样范围扩张 ═══
+   第 20 单立的三条铁律判据本身没错，错在**采样范围**：上面的 sample() 每一帧都紧跟着
+   updateWalkers 调一次 stepDisplay，等于默认「显示推进从不停摆」。而生产代码里 stepDisplay
+   原本长在 draw() 内，draw() 又挂在 `#scr-live.active` 判据下 —— 一切页，显示推进就停了，
+   真实位却照走。这段落差不在任何单帧里体现为超限位移，而是攒成「真实位与显示位之差」，
+   切回时被平滑器按直线一路补掉（实测差最大 36.35 格，补线扫穿家具最多 35 帧）。
+   故第 25 单补两样：
+     ① 判据加一条**真显差恒零**——落差本身就是病，不必等它变成超限位移才报；
+     ② 采样范围覆盖七种「渲染停摆而 SIM 继续」的情形，每种都逐帧验规矩一与规矩二。
+
+   本节不写死任何「已修好」的常数：DISP_IN_LOOP 是从生产源码读出来的。
+   谁把显示推进挪回 draw()，它立刻翻成 false，切页情形的停摆模型随之改变，三条断言当场变红。 */
+console.log('\n── 第 25 单 · 渲染停摆普查（铁律一二的采样范围扩张）────────');
+const loopSrc=grab(/function loop\(now\)\{[\s\S]*?\n\}/,'loop()');
+const drawAll=grab(/function draw\(now\)\{[\s\S]*?\n\}\n\/\/ 画布：拖动/,'draw()').replace(/\n\/\/ 画布：拖动$/,'');
+// 判据：显示推进必须由**无条件执行的** loop() 驱动，且不得再挂在有条件的 draw() 里
+const dispJudge=s=>({inLoop:/stepAllDisplays\(/.test(s.loop), inDraw:/stepDisplay\(/.test(s.draw)});
+const J=dispJudge({loop:loopSrc,draw:drawAll});
+const DISP_IN_LOOP = J.inLoop && !J.inDraw;
+console.log(`   源码判读：loop() 调 stepAllDisplays ${J.inLoop?'是':'否'} · draw() 调 stepDisplay ${J.inDraw?'是':'否'}`
+  +` ⇒ 显示推进${DISP_IN_LOOP?'不随':'随'}切页停摆`);
+
+const AGN=4;                       // 住户人数（warp 白名单的计数基准，与第 20 单「恰好等于四人」同源）
+const STALL_PERIOD=1800, STALL_LEN=600;   // 每 30 秒停摆 10 秒：一天内反复穿插，覆盖大量「离开→返回」交界
+const inStall=f=>(f%STALL_PERIOD)>=(STALL_PERIOD-STALL_LEN);
+
+/* 逐帧驱动器：driver(f) 说明这一帧主循环的哪几步跑、哪几步不跑。
+   sim/walk/disp 三个开关分别对应 Sim.step、updateWalkers、显示推进；dt 与 speed 可逐帧变。
+   位移只在**相邻两个真正出画的帧**之间量 —— 玩家看见的正是这个差，停摆期间没有画面，不构成一步。 */
+function driveScenario(seed, frames, driver){
+  let w=boot(seed), acc=0;
+  const prev={};
+  const r={worstRatio:0,worstStep:0,worstCap:0,worstAt:-1,solidFrames:0,solidCells:{},
+           maxGap:0,maxGapAt:-1,drawn:0,reboots:0,kinds:{first:0,reduceMotion:0,other:0}};
+  for(let f=0;f<frames;f++){
+    const m=driver(f)||{};
+    if(m.reboot){ w=boot(seed); acc=0; r.reboots++; for(const k of Object.keys(prev)) delete prev[k]; }
+    if(m.speed!==undefined) w.speed=m.speed;
+    state.reduceMotion=!!m.reduceMotion;
+    const dt=(m.dt===undefined)?(1/FPS):m.dt;
+    if(m.sim!==false && w.speed>0){
+      acc+=dt*10*w.speed;
+      if(acc>=10){ const c=Math.floor(acc/10)*10; Sim.step(w,c); acc-=c; }
+    }
+    if(m.walk!==false) V.updateWalkers(dt);
+    if(m.disp===false) continue;                       // 这一帧显示推进不跑（＝ draw 被跳过且推进还长在 draw 里）
+    for(const ag of w.agents){
+      const v=state.vis[ag.id];
+      const isFirst=(v.dspX===undefined), hadWarp=!!v.warp;
+      V.stepDisplay(ag,dt,true);
+      // ① 直置白名单普查（第 20 单先例的加强版）：直置只许出自「首帧落位」或「reduceMotion」，第三种一律违规
+      if(isFirst) r.kinds.first++;
+      else if(hadWarp){ if(state.reduceMotion) r.kinds.reduceMotion++; else r.kinds.other++; }
+      // ② 真显差：本帧推进完毕后显示位必须已等于真实位（兜底钳制恒为空操作，故可取严格判据）
+      const gap=Math.hypot(v.x-v.dspX, v.y-v.dspY);
+      if(gap>r.maxGap){ r.maxGap=gap; r.maxGapAt=f; }
+      // ③ 规矩一：相邻两画面之间的位移上限（直置帧按第 20 单口径豁免，已由 ① 单独把关）
+      const p=prev[ag.id];
+      if(!isFirst && !hadWarp && p){
+        const cap=WALK*(w.speed||1)*dt*STEP_SLACK;
+        const d=Math.hypot(v.dspX-p.x, v.dspY-p.y);
+        if(d/cap>r.worstRatio){ r.worstRatio=d/cap; r.worstStep=d; r.worstCap=cap; r.worstAt=f; }
+      }
+      // ④ 规矩二：逐帧脚底格不得落进实体格
+      const cell=footCell(v.dspX,v.dspY);
+      if(V.PIX_SOLID.has(cell)){ r.solidFrames++; r.solidCells[cell]=(r.solidCells[cell]||0)+1; }
+      prev[ag.id]={x:v.dspX,y:v.dspY};
+    }
+    r.drawn++;
+  }
+  state.reduceMotion=false;
+  return r;
+}
+
+const DAY=144*60;                   // 一天＝144 拍×60 帧
+/* 七种情形，逐条写明「停摆的是哪一步」。前两问的取证结论是：
+   除切页外，其余六种要么整条主循环一起停（真实位与显示位同步冻结），要么根本不停摆，
+   故它们本来就不飞 —— 但仍逐条立断言，因为「本来不飞」这件事以后可能被别的改动打破。 */
+const SCENARIOS=[
+  {name:'① 切页（现场↔日志）', note:'draw 停；Sim.step 与 updateWalkers 照跑 —— 本单病症所在',
+   driver:f=>({disp: DISP_IN_LOOP ? true : !inStall(f)})},
+  {name:'② 标签页切走/最小化', note:'rAF 整条停摆；恢复首帧 dtFrame 被 Math.min(0.1,…) 封顶',
+   driver:f=>inStall(f) ? {sim:false,walk:false,disp:false}
+                        : {dt: (f%STALL_PERIOD===0 && f>0) ? COARSE_DT : 1/FPS}},
+  {name:'③ 窗口失焦（rAF 被节流）', note:'最坏情形按 10fps 节流建模：三步照跑但 dt 拉大到封顶值',
+   driver:f=>({dt: inStall(f) ? COARSE_DT : 1/FPS})},
+  {name:'④ 存档载入', note:'location.reload ⇒ 整个世界重新 boot，state.vis 重建、首帧落位打 warp',
+   driver:f=>({reboot: f===DAY>>1})},
+  {name:'⑤ 暂停后恢复', note:'w.speed=0 ⇒ Sim.step 与 updateWalkers 双双冻结，draw 照跑',
+   driver:f=>({speed: inStall(f) ? 0 : 1})},
+  {name:'⑥ reduceMotion 开', note:'不停摆；锚变时走直置豁免（第 20 单白名单二），故本就不存在补间',
+   driver:f=>({reduceMotion: inStall(f)})},
+  {name:'⑦ 快进倍速切换', note:'不停摆；速度在 1×/2× 间来回切，限速上限随之变',
+   driver:f=>({speed: inStall(f) ? 2 : 1})},
+];
+{
+  let allGap=0, allSolid=0, allOther=0, worst=0, worstName='';
+  for(const sc of SCENARIOS){
+    const r=driveScenario(SEEDS[0], DAY, sc.driver);
+    allGap=Math.max(allGap,r.maxGap); allSolid+=r.solidFrames; allOther+=r.kinds.other;
+    if(r.worstRatio>worst){ worst=r.worstRatio; worstName=sc.name; }
+    console.log(`   ${sc.name}：出画 ${r.drawn} 帧 · 最大真显差 ${r.maxGap.toExponential(1)} 格 · `
+      +`位移用掉阈值 ${(r.worstRatio*100).toFixed(1)}% · 实体格 ${r.solidFrames} 帧 · `
+      +`直置[首帧 ${r.kinds.first}／reduceMotion ${r.kinds.reduceMotion}／其它 ${r.kinds.other}]`);
+    console.log(`      停摆的是：${sc.note}`);
+    ok(r.maxGap<=1e-9, `${sc.name} 真显差恒零（最大 ${r.maxGap.toExponential(2)} 格`
+      +(r.maxGapAt>=0?`，最紧在第 ${r.maxGapAt} 帧`:'')+'）—— 显示位从不落后，故无从补间');
+    ok(r.worstRatio<=1, `${sc.name} 相邻两画面位移 ≤ 行走速率×速度×dt×${STEP_SLACK}`
+      +`（实测 ${r.worstStep.toFixed(5)} / 阈值 ${r.worstCap.toFixed(5)} 格）`);
+    ok(r.solidFrames===0, `${sc.name} 逐帧脚底零落入实体格（命中 ${r.solidFrames} 帧`
+      +(r.solidFrames?` [${Object.entries(r.solidCells).sort((a,b)=>b[1]-a[1]).slice(0,6).map(([k,n])=>k+'×'+n).join(' ')}]`:'')+'）');
+    ok(r.kinds.other===0, `${sc.name} 直置零出白名单（首帧落位 ${r.kinds.first} 次、reduceMotion ${r.kinds.reduceMotion} 次、`
+      +`第三种 ${r.kinds.other} 次）—— 这条堵的是「打个标就能瞬移」的后门`);
+    if(sc.name.startsWith('④')) ok(r.kinds.first===AGN*2 && r.reboots===1,
+      `④ 存档载入后首帧落位恰 ${AGN*2} 次＝开局 ${AGN} 人＋重载 ${AGN} 人（实测 ${r.kinds.first} 次／重载 ${r.reboots} 回）`);
+    else if(!sc.name.startsWith('⑥')) ok(r.kinds.first===AGN,
+      `${sc.name} 首帧落位恰 ${AGN} 次＝每人一次（实测 ${r.kinds.first} 次），全程未新增任何直置通道`);
+  }
+  console.log(`   汇总：七种情形合计 真显差最大 ${allGap.toExponential(1)} 格 · 实体格 ${allSolid} 帧 · `
+    +`白名单外直置 ${allOther} 次 · 最紧一档「${worstName}」用掉阈值 ${(worst*100).toFixed(1)}%`);
+}
+
+/* ═══ 反向自查 · 第 25 单新增的闸不是恒绿 ═══
+   把病态写法（显示推进随 draw 一起停）原样复演一遍，三条新断言必须真的判它违规；
+   再喂治后写法，必须不误伤。源码判据同样正反各喂一次。 */
+console.log('\n── 反向自查 · 停摆闸拦得住病态写法 ──────────────────────');
+{
+  // 病态：显示推进随切页停摆（＝ 本单治前的生产写法，与 DISP_IN_LOOP 无关，此处强制复演）
+  const bad=driveScenario(SEEDS[0], DAY, f=>({disp: !inStall(f)}));
+  ok(bad.maxGap>3, `拦得住：显示推进随 draw 停摆时，真显差涨到 ${bad.maxGap.toFixed(2)} 格`
+    +`（治后同口径 ≤1e-9 格）—— 「真显差恒零」这条判它违规`);
+  ok(bad.worstRatio>1, `拦得住：切回那一段的相邻两画面位移 ${bad.worstStep.toFixed(5)} 格`
+    +`＝阈值 ${bad.worstCap.toFixed(5)} 格的 ${bad.worstRatio.toFixed(2)} 倍 —— 规矩一判它违规`);
+  ok(bad.solidFrames>0, `拦得住：那条补线扫穿实体格 ${bad.solidFrames} 帧`
+    +` [${Object.entries(bad.solidCells).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([k,n])=>k+'×'+n).join(' ')}]`
+    +` —— 规矩二判它违规（这就是决策者看见的「穿墙穿家具」）`);
+  ok(bad.kinds.other===0, `读数（非断言）：病态写法里白名单外直置仍是 ${bad.kinds.other} 次`
+    +' —— 证明这一类病根本不走 warp 豁免，参谋「落进豁免分支」的假说据此证伪');
+
+  // 合规：显示推进不随停摆（＝ 本单治后写法）
+  const good=driveScenario(SEEDS[0], DAY, ()=>({}));
+  ok(good.maxGap<=1e-9 && good.worstRatio<=1 && good.solidFrames===0,
+    `不误伤：显示推进每帧照跑时三条断言全绿（真显差 ${good.maxGap.toExponential(1)} 格 · `
+    +`位移用掉 ${(good.worstRatio*100).toFixed(1)}% · 实体格 ${good.solidFrames} 帧）`);
+
+  // 源码判据的正反两喂：换个写法就能绕过判据的话，这条闸等于没立
+  const shapeBad ={loop:'updateWalkers(dtFrame);\n  updateCamera(dtFrame);', draw:'const v=stepDisplay(ag,dtFrame,pixOn);'};
+  const shapeGood={loop:'updateWalkers(dtFrame);\n  stepAllDisplays(dtFrame);', draw:'const v=state.vis[ag.id];'};
+  const jb=dispJudge(shapeBad), jg=dispJudge(shapeGood);
+  ok(!(jb.inLoop&&!jb.inDraw), '源码判据拦得住旧写法：「loop 不推进＋draw 里 stepDisplay」被判为「随切页停摆」');
+  ok(jg.inLoop&&!jg.inDraw,   '源码判据不误伤：「loop 里 stepAllDisplays＋draw 只取用」被判为合规');
+  ok(DISP_IN_LOOP, '生产源码现处于合规形态（显示推进在 loop 内，draw 对 stepDisplay 零调用）');
+}
+
 console.log(fails? ('\n'+fails+' FAILURES') : '\n走位三铁律 ALL PASS');
 process.exit(fails?1:0);
