@@ -19,7 +19,10 @@ const INJECT = `
 window.__pv={
   get state(){return state}, get Sim(){return Sim},
   freeze(){ window.requestAnimationFrame=function(){return 0}; },
-  step(dt,now){ dtFrame=dt; updateWalkers(dt); draw(now); },
+  // 第 25 单：显示位推进已从 draw() 提到 loop()，手动驱动须照样补上这一步。
+  // typeof 判定是为了同一支脚本能同时驱动治前/治后两份源码（治前没有 stepAllDisplays，
+  // 推进仍在 draw() 内）—— before/after 取证靠的就是这个兼容写法。
+  step(dt,now){ dtFrame=dt; updateWalkers(dt); if(typeof stepAllDisplays==='function') stepAllDisplays(dt); draw(now); },
   reset(id,anchor){ const ag=state.world.agents.find(a=>a.id===id); ag.anchor=anchor;
     const a=Sim.ANCHORS[anchor];
     state.vis[id]={x:a.x+0.5,y:a.y+0.5,path:[],anchor:anchor,dir:3,moving:false}; },

@@ -3018,6 +3018,27 @@ function stepDisplay(ag,dtSec,pixOn){
   }
   return v;
 }
+/* ---------- 第 25 单：显示坐标的推进与「哪一页在前台」彻底解耦 ----------
+   病根（本单取证实测）：stepDisplay 原先只在 draw() 内被调用，而 draw() 挂在
+   `#scr-live.active` 判据下；updateWalkers 与 Sim.step 却在 loop() 里无条件跑。
+   于是切到日志页的那一刻，真实位 v.x/v.y 照常沿寻路折线前进、显示位 v.dspX/v.dspY 就地冻住，
+   两者越拉越远（实测停摆 60 秒后差 36.24 格＝横跨整张地图）。切回时 draw() 恢复，
+   平滑器把这段积压当普通追赶补——按直线、以 (5.5×速度+6) 格/秒 一路划过去，
+   不寻路、不绕障碍：实测最坏单帧 0.28333 格＝铁律一阈值的 1.99 倍，
+   且脚底逐帧落进 PIX_SOLID 实体格最多 35 帧（如 13,7→19,7 一整排家具被直线扫穿）。
+
+   治法：把显示推进从 draw() 提到 loop() 里，紧跟 updateWalkers 之后无条件执行。
+   —— 不是「切回时补一次直置」，而是让显示位压根没有机会落后：
+   每帧 |真实位−显示位| 恒为 0（限速器 cap=(5.5×速度+6)×dt 恒大于 updateWalkers 单帧步长
+   5.5×速度×dt，故 len≤cap 恒成立、走的是精确赋值那一支）。
+   这样切回页面时人本来就在该在的地方，无跳变、无补间、无假动画，
+   也**不新增任何直置通道**——v.warp 的两处白名单（首帧落位 / reduceMotion）逐字未动，
+   门禁「warp 恰等于住户人数」那条硬断言因此仍然成立（第 20 单先例，不留「打个标就能瞬移」的后门）。
+   draw() 自此只读 v.dspX/v.dspY，对显示位零写入（规矩三的写入点普查照旧只数出 stepDisplay 一处）。 */
+function stepAllDisplays(dtSec){
+  const pixOn=pix.on&&pix.ready;
+  for(const ag of state.world.agents) stepDisplay(ag,dtSec,pixOn);
+}
 let rainSeed=0;
 function draw(now){
   const {s,ox,oy}=state.view;
@@ -3107,9 +3128,11 @@ function draw(now){
   }
   // 小人与高件家具:按脚底 y 统一排序绘制(补充指令三:靠下者后画形成正确遮挡;旧渲染路径不变)
   // 第 20 单·规矩三：绘制期不碰位移。显示坐标全部出自 stepDisplay 一处，此处只取用。
+  // 第 25 单：显示位已由 loop() 的 stepAllDisplays 推进完毕，绘制期只取用、不推进
+  //（推进若留在这里，就会随本函数一起被 #scr-live 判据关掉 —— 那正是切页飞越的病根）
   const dispPos={};
   for(const ag of state.world.agents){
-    const v=stepDisplay(ag,dtFrame,pixOn);
+    const v=state.vis[ag.id];
     dispPos[ag.id]={x:v.dspX,y:v.dspY};
   }
   const ents=state.world.agents.map(ag=>({kind:'a',ag,fy:dispPos[ag.id].y+0.5}));
@@ -3231,6 +3254,7 @@ function loop(now){
     }
   }
   updateWalkers(dtFrame);
+  stepAllDisplays(dtFrame);        // 第 25 单：显示位每帧必推，与当前在哪一页无关（下面 draw() 是有条件的，这里不许有条件）
   updateCamera(dtFrame);
   drainLog();
   const tick=Math.floor(w.t/10);
