@@ -1119,7 +1119,7 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
        '三种占位符一个不剩');
     ok(S(w)===0,'再收一次为 0 条（幂等，重开多少次都不会重复补「已读不回」）');
     // 位置：必须排在补算与水位线之前，否则补出来的条目会被当成「在途」或漏进 AI
-    const iOrph=src.indexOf('const orphanLLM=bootWorld ? settleOrphanLLM'),
+    const iOrph=src.indexOf('if(bootWorld) settleOrphanLLM(state.world);'),
           iCatch=src.indexOf('Sim.catchUp(state.world'), iFloor=src.indexOf('const aiFloorLid=');
     ok(iOrph>0 && iOrph<iCatch && iCatch<iFloor,'收尾 → 补算 → 落水位线，三步顺序写死在源码里');
   }

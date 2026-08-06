@@ -1820,7 +1820,7 @@ function settleOrphanLLM(w){
   for(let i=0;i<pend.length;i++) pushLog(w,{type:'player',sms:'noreply',agent:pend[i].agent,name:pend[i].name,text:SMS_NOREPLY});
   return n;
 }
-const orphanLLM=bootWorld ? settleOrphanLLM(state.world) : 0;
+if(bootWorld) settleOrphanLLM(state.world);   // 返回的条数只供门禁按真值断言，运行期不消费
 let catchup=null;
 if(bootWorld){
   const plan=Sim.catchUpPlan(state.world, (bootMeta && isFinite(bootMeta.at)) ? (Date.now()-bootMeta.at) : 0);
