@@ -1079,8 +1079,34 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
     ok(diary.every(e=>!e.llm && !e.llmPending),'补算日记不留 llmPending ⇒ 回来后 drainLog 也不会去补生成');
     ok(w.log.some(e=>e.type==='sys' && e.text.indexOf('夜深了')>=0),'「🌙 夜深了」那条系统日志照落（回来推剪辑页的判据即由它计数）');
     ok((w.clips||[]).length>clips0,'补算期间剪辑照常结算（'+clips0+' → '+(w.clips||[]).length+' 条）');
+    ok(r.clipsNew===true && r.clipTop1>r.clipTop0,'补算 3 天 ⇒ clipsNew 为真（最新剪辑日 '+r.clipTop0+' → '+r.clipTop1+'）');
     const s2=Sim.serialize(w,{selected:'a1',lastReflectDay:r.lastReflectDay,at:1});
     ok(!!Sim.hydrate(s2),'补算后的世界仍可序列化／反序列化');
+  }
+  // —— 决策者裁定三：判据＝跨过夜 且 真出了新卡。「出没出新卡」只能问最新剪辑日，不能问条数 ——
+  {
+    // ① 跨过「夜深了」但没跨过 04:00 结算点 ⇒ 有夜、无新卡（＝ 实机 B-away-60min 那一档）
+    const w=Sim.makeWorld(4242);
+    for(let i=0;i<82;i++) Sim.step(w,10);           // 开城 D1 08:00 起推 820 分 ⇒ D1 21:40，尚未跨 21:50
+    const before=Sim.clipTopDay(w);
+    ok(PURE.minuteOfDay(w.t)===21*60+40,'构造成立：起点停在 D1 21:40（实测 '+PURE.fmtTime(w.t)+'）');
+    const r=Sim.catchUp(w, 6, 0);                   // 再推 1 小时 ⇒ D1 22:40：跨过 21:50，离次日 04:00 还远
+    ok(r.nights===1,'构造成立：这一段确实跨过 1 个「夜深了」（实测 '+r.nights+' 个）');
+    ok(r.clipsNew===false && Sim.clipTopDay(w)===before,
+       '跨过夜但没跨 04:00 ⇒ clipsNew 为假（最新剪辑日仍是 '+before+'）—— 这一档不推剪辑页');
+    // ② CLIP_KEEP 饱和后，「条数增量」这条判据会永远失效，故判据只能取最新剪辑日
+    const w2=Sim.makeWorld(77);
+    Sim.catchUp(w2, (Sim.CLIP_KEEP+3)*144, 0);      // 先跑满保留上限，把 w.clips 顶到 CLIP_KEEP
+    ok(w2.clips.length===Sim.CLIP_KEEP,'构造成立：clips 已顶到保留上限 '+Sim.CLIP_KEEP+' 条（实测 '+w2.clips.length+'）');
+    const r2=Sim.catchUp(w2, 3*144, 0);
+    ok(r2.clipsAdded===0,'饱和之后「条数增量」恒为 0（实测 '+r2.clipsAdded+'）—— 拿它当判据会在第 '+(Sim.CLIP_KEEP+1)+' 个剪辑日起悄悄失效');
+    ok(r2.clipsNew===true && r2.clipTop1===r2.clipTop0+3,
+       '同一段里最新剪辑日照常前进 '+(r2.clipTop1-r2.clipTop0)+' 天（'+r2.clipTop0+' → '+r2.clipTop1+'）⇒ 判据取它才不会自锁');
+    // ③ 畸形档不抛错
+    const w3=Sim.makeWorld(5); w3.clips=[null,{d:'x'},{d:7},{}];
+    ok(Sim.clipTopDay(w3)===7,'畸形 clips 里跳过坏条目取最大日号（实测 '+Sim.clipTopDay(w3)+'）');
+    w3.clips='坏档';
+    ok(Sim.clipTopDay(w3)===0,'clips 整个不是数组 ⇒ 返回 0，绝不抛错');
   }
   // 临走前发的那条短信：补算期间被读掉 ⇒ 必须补一条「已读不回」，不许石沉大海
   {
@@ -1134,9 +1160,9 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   // 回来第一眼：跨过夜才推剪辑页，没跨过就不打扰
   {
     const ui=src.slice(src.indexOf('/* ---------- 启动 ---------- */'));
-    ok(/if\(catchup && catchup\.nights>0\)\{[\s\S]*?setScreen\('clip'\);/.test(ui),
-       '跨过至少一个「夜深了」⇒ 直接把剪辑页推到玩家面前');
-    ok(/\}else\{\n  setScreen\('live'\);/.test(ui),'没跨过夜 ⇒ 照旧进现场页，不打扰');
+    ok(/if\(catchup && catchup\.nights>0 && catchup\.clipsNew\)\{[\s\S]*?setScreen\('clip'\);/.test(ui),
+       '跨过至少一个「夜深了」**且**真出了新剪辑 ⇒ 直接把剪辑页推到玩家面前（决策者裁定三）');
+    ok(/\}else\{\n  setScreen\('live'\);/.test(ui),'两条不同时满足 ⇒ 照旧进现场页，不打扰（没有新卡就别推）');
     ok(/catchup\.nights\+' 个夜晚/.test(ui) && /fmtAgo\(catchup\.mins\*60000\)/.test(ui),
        '横幅逐字标明覆盖了多久、跨了几个夜晚');
     ok(/catchup\.capped \?/.test(ui) && /没有补算，那段日子没有发生/.test(ui),

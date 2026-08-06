@@ -1646,11 +1646,22 @@ function reflectFallback(w){
   logSys(w,'🌙 夜深了，住户们各自写下今天的日记。');
   for(const ag of w.agents) pushLog(w,{type:'diary',agent:ag.id,name:ag.name,text:'睡前日记',thought:DIARY_FALLBACK});
 }
+// 「最新一张剪辑是哪一天」。判「补算期间有没有出新卡」用的是**这个数变没变大**，不是 w.clips 的条数——
+// 条数被 CLIP_KEEP=60 封着（html:1474 `while(w.clips.length>CLIP_KEEP) w.clips.shift()`），
+// 城市过了 60 个剪辑日之后条数就恒为 60，「条数比离开时多」从此**永远为假**，
+// 拿它当判据等于让「回来推剪辑页」这件事在第 61 天悄悄失效。畸形档（d 非有限）跳过不算，绝不抛错。
+function clipTopDay(w){
+  const a=Array.isArray(w.clips)?w.clips:[];
+  let top=-Infinity;
+  for(let i=0;i<a.length;i++){ const c=a[i]; if(c && isFinite(c.d) && c.d>top) top=c.d; }
+  return isFinite(top)?top:0;
+}
 // 一口气推进 ticks 拍。lastReflectDay 进出同一个口径（＝主循环的 state.lastReflectDay），调用方把返回值收回去。
 // **逐拍调用与一次调用等价**：catchUp(w,1,rd) 串 n 次的结果与 catchUp(w,n,rd) 逐字节相同——
 // 门禁「从存档补算 30 天」靠这条按拍观测（sim30 要逐拍读雨/街市/静默，不能只看终局）。
 function catchUp(w, ticks, lastReflectDay){
   const t0=w.t;
+  const clipTop0=clipTopDay(w), clipN0=Array.isArray(w.clips)?w.clips.length:0;
   let rd=isFinite(lastReflectDay) ? lastReflectDay : (PURE.dayOf(w.t)-1);
   let nights=0, done=0;
   const n=(isFinite(ticks) && ticks>0) ? Math.floor(ticks) : 0;
@@ -1672,7 +1683,10 @@ function catchUp(w, ticks, lastReflectDay){
     if(d!==rd && PURE.minuteOfDay(w.t)>=REFLECT_MIN){ rd=d; reflectFallback(w); nights++; }
     done++;
   }
-  return {ticks:done, nights, t0, t1:w.t, mins:w.t-t0, lastReflectDay:rd};
+  const clipTop1=clipTopDay(w);
+  return {ticks:done, nights, t0, t1:w.t, mins:w.t-t0, lastReflectDay:rd,
+          clipTop0, clipTop1, clipsNew:clipTop1>clipTop0,
+          clipsAdded:(Array.isArray(w.clips)?w.clips.length:0)-clipN0};   // 读数：条数增量（满 CLIP_KEEP 后会饱和，故不作判据）
 }
 /*CATCHUP-END*/
 
@@ -1703,7 +1717,7 @@ const Sim={makeWorld, step, sendMessage, sendCustomMessage, decide, MSGS, ANCHOR
   RHY_HUNGER_FLOOR, RHY_ENERGY_FLOOR, RHY_LUNCH_AFTER, rhyOf, rhyRest, rhyEatAt, rhyNapAt, rhyWakeAt,
   rhyBedClock, rhyDur, rhyPressed,
   CATCHUP_MIN_PER_MIN, CATCHUP_MAX_DAYS, REFLECT_MIN, DIARY_FALLBACK, SMS_NOREPLY,
-  catchUpPlan, catchUp, reflectFallback,
+  catchUpPlan, catchUp, reflectFallback, clipTopDay,
   CLIP_CUT, CLIP_KEEP, CLIP_QUOTE_MAX, CLIP_BASE_MIN, CLIP_COMMON_N, CLIP_COMMON_MUL, CLIP_FREQ_CAP,
   CLIP_BROKE, CLIP_STARVE, CLIP_DRAINED, CLIP_W, CLIP_TIER, CLIP_LOGCAT, CLIP_CATNAME, CLIP_FREQ_CATS,
   clipDayOf, clipT0, clipCat, clipTier, clipWeight, clipItemText};
@@ -3426,10 +3440,13 @@ function loop(now){
 /* ---------- 启动 ---------- */
 applyLayout();
 applyScale();
-/* 离线追帧·回来第一眼（第 26 单，决策者裁定）：离开期间跨过至少一个「夜深了」，
-   就直接把剪辑页推到玩家面前，不让他自己去点；没跨过夜就照旧进现场页，不打扰。
+/* 离线追帧·回来第一眼（第 26 单，决策者裁定四项之三）：
+   判据＝**跨过至少一个「夜深了」 且 补算期间真出了新剪辑**，两条都满足才直接把剪辑页推到面前；
+   否则照旧进现场页，不打扰——「没有新卡就别推」，把人送到一页旧卡前面等于白打扰一次。
+   （「出了新卡」问的是 clipsNew＝最新剪辑日变没变大，不是条数增量：条数被 CLIP_KEEP 封着，
+     满 60 天后增量恒为 0，拿它当判据会让这条在第 61 天悄悄失效。见 clipTopDay 注释。）
    横幅逐字说明覆盖了多久、封顶跳过了多少——「跳过」这件事必须自己说出来，不许闷着。 */
-if(catchup && catchup.nights>0){
+if(catchup && catchup.nights>0 && catchup.clipsNew){
   const el=$('#clip-back');
   el.textContent='⏱ 你不在的时候，城市自己过了 '+fmtAgo(catchup.mins*60000)
     +'（'+PURE.fmtStamp(catchup.t0)+' → '+PURE.fmtStamp(catchup.t1)+'，跨过 '+catchup.nights+' 个夜晚）。'
