@@ -219,6 +219,9 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
   margin:var(--sp3) 0 var(--sp1); font-weight:600; }
 .clip-foot{ margin:var(--sp2) 0 0; font-size:.72rem; color:var(--ink-faint); overflow-wrap:anywhere; }
 .clip-empty{ color:var(--ink-faint); font-size:.82rem; margin:var(--sp2) 0 0; }
+/* 离线追帧（第 26 单）：回来第一眼的那条横幅。样式照 .clip 的卡片口径，只把描边换成金色以示这是「刚发生的事」 */
+.clip-back{ background:var(--bg1); border:2px solid var(--gold); border-radius:var(--r);
+  padding:var(--sp2) var(--sp3); margin:0 0 var(--sp3); font-size:.82rem; overflow-wrap:anywhere; }
 .ph-input{ background:var(--bg2); border:2px solid var(--line); border-radius:var(--r);
   color:var(--ink); padding:.45em .6em; font-size:16px; min-width:0; font-family:inherit;
   -webkit-user-select:text; user-select:text; }
@@ -315,6 +318,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
 
     <section class="screen" id="scr-clip">
       <h2 class="sec">每日剪辑 · 一天挑一个人</h2>
+      <p class="clip-back" id="clip-back" hidden></p>
       <p class="faint" style="font-size:.74rem;margin:.2rem 0 .6rem">每天凌晨 4 点结算前一天，挑出「谁今天最不像平常的自己」——落差最大的那位。落差项按各人自己的往日均值算；全城当天都一样的（发薪、交租）算城市的事，要打折。下面引的日志原文一字未改，都是城市日志里的原句。</p>
       <div id="clip-list"></div>
     </section>
@@ -1585,6 +1589,93 @@ function sendCustomMessage(w, agentId, text){
   pushLog(w,{type:'player',sms:'out',name:'你',text:'给'+ag.name+'发了短信「'+t+'」',thought:'剩余 ✉×'+w.credits});
   return true;
 }
+
+/*CATCHUP-START*/
+/* ===== 第 26 单·离线追帧一期：城市一直在走 ==================================
+   页面关着的那段真实时间，回来时一口气补算上去。补算＝反复调 step()，不多不少。
+
+   —— 为什么整段长在 SIM 块里 ——
+   SIM 块里没有 fetch、没有 callClaude、没有任何 DOM（门禁「SIM 块纯净检查」为其背书），
+   故「补算期间一次 AI 都不调」不是靠自觉，是**结构上够不着**；渲染层同理——
+   补算的调用点在 state.vis 建表之前、第一帧 rAF 之前（见 DOM 层「离线追帧」段），
+   那时连显示位都还不存在，一帧都画不出来。
+
+   —— 换算口径（两条，写死） ——
+   ① **1 真实分钟 ＝ 1 模拟分钟**，不是页面开着时的那个速率（1 真秒＝10 模拟分钟 × 速度）。
+      缘由：待办第 2 条早已议定的形状是「**同步时长**不同步钟点」——这句只有在 1:1 时才成立；
+      决策者原话「关十分钟，回来看到『刚才这十分钟』；关三天，回来看到『这三天』」两句也只有
+      在 1:1 时才逐字为真。若改按页面速率折算，离开 7.2 分钟就顶到封顶线，
+      「关十分钟看到这十分钟」那半句从此无处落地，封顶线成了唯一还在生效的口径。
+   ② **暂停中离开 ＝ 城市也停**。存档里 speed===0 是玩家自己把城市按停了，补算不得替他松手。
+
+   —— 补算期间除了 step 还补两样，都是「AI 挂掉时本来也会发生」的事（任务书：走既有模板兜底） ——
+   · 跨过「夜深了」⇒ 落一轮模板日记。不落的话离开期间的日志墙上会整整几天没有夜，
+     而「跨没跨过夜深了」正是回来要不要把剪辑页推到玩家面前的判据，不落就无从计数。
+   · 离开期间被读掉的短信 ⇒ 补一条「已读不回」。回信全站只有 enhanceMessage 一个落款处，
+     而它带 AI；不补的话，玩家临走前发的那条会在手机页上石沉大海。
+   两样都不调 AI、不新增一个字的文案（两条文案原文即下面两个常量，从 DOM 层原样搬来集中）。
+========================================================================== */
+// 口径：离开期间 1 真实分钟折算几模拟分钟（见上①）。改此值等于改玩法，须决策者拍板。
+const CATCHUP_MIN_PER_MIN=1;
+// 可调：一次补算的上限（模拟日）。取 3 的理由——**不是因为算不动**：
+//   第 3 问实测「hydrate 一份跑满 30 天的存档再推 30 天」中位 12.8ms／最坏 18.4ms（node v22），
+//   一次补算的耗时在任何档位上都低于一帧的预算，成本从来不是这里的约束。真正的四条理由是：
+//   ① 待办第 2 条早已议定「封顶两三天（集中可调）」，本值取其上沿；
+//   ② 决策者原话点名的就是「关三天，回来看到这三天」；
+//   ③ **验证边界**：sim30 只验到 30 天，30 天以外的生存不变量无人背书。取 3 天＝给门禁留 10 倍余量；
+//   ④ 玩家侧：3 天＝3 张剪辑卡，一坐能看完；30 天＝30 张，没人看（第 21 单结项裁定「玩家该看的是剪辑」）。
+const CATCHUP_MAX_DAYS=3;
+// 口径：「夜深了」节点＝21:50。原为主循环里的一个裸数字，本单集中到此，主循环与补算两处同引。
+const REFLECT_MIN=1310;
+// AI 挂掉时的两条兜底文案。原文分别长在 runReflection 与 enhanceMessage 里，本单只是集中，**一字未改**。
+const DIARY_FALLBACK='（写了两行，没写下去，合上了本子。）';
+const SMS_NOREPLY='看了你的短信，没有回。';
+
+// 真实经过毫秒 → 本次该补几拍。纯算术、零副作用，DOM 层与门禁共用同一个函数（避免两处各算一遍）。
+// 边界一律向「少补」倒：坏 meta／时钟倒流／暂停中一律得 0 拍，绝不倒着推、绝不替玩家松手。
+function catchUpPlan(w, elapsedMs){
+  const paused=!(w && isFinite(w.speed) && w.speed>0);
+  const ms=(isFinite(elapsedMs) && elapsedMs>0) ? elapsedMs : 0;
+  const want=paused ? 0 : Math.floor(ms/60000*CATCHUP_MIN_PER_MIN/10);   // 一拍＝10 模拟分钟
+  const cap=CATCHUP_MAX_DAYS*144;
+  const ticks=Math.min(want, cap);
+  return {paused, wantTicks:want, ticks, cap, capped:want>cap, skipTicks:want-ticks};
+}
+// 「夜深了」那一轮的模板形态：与 runReflection 的「AI 全灭」分支逐字同文，只是不调 AI、也不留 llmPending。
+function reflectFallback(w){
+  logSys(w,'🌙 夜深了，住户们各自写下今天的日记。');
+  for(const ag of w.agents) pushLog(w,{type:'diary',agent:ag.id,name:ag.name,text:'睡前日记',thought:DIARY_FALLBACK});
+}
+// 一口气推进 ticks 拍。lastReflectDay 进出同一个口径（＝主循环的 state.lastReflectDay），调用方把返回值收回去。
+// **逐拍调用与一次调用等价**：catchUp(w,1,rd) 串 n 次的结果与 catchUp(w,n,rd) 逐字节相同——
+// 门禁「从存档补算 30 天」靠这条按拍观测（sim30 要逐拍读雨/街市/静默，不能只看终局）。
+function catchUp(w, ticks, lastReflectDay){
+  const t0=w.t;
+  let rd=isFinite(lastReflectDay) ? lastReflectDay : (PURE.dayOf(w.t)-1);
+  let nights=0, done=0;
+  const n=(isFinite(ticks) && ticks>0) ? Math.floor(ticks) : 0;
+  for(let i=0;i<n;i++){
+    const lid0=w.lidSeq;
+    step(w,10);
+    // 离开期间被读掉的短信 → 补「已读不回」。先收集再落条目：pushLog 会动 w.log／w.lidSeq，边扫边推会串位。
+    const added=w.lidSeq-lid0;
+    if(added>0){
+      const read=[];
+      for(let j=Math.max(0,w.log.length-added); j<w.log.length; j++){
+        const e=w.log[j];
+        if(e && e.type==='player' && e.sms==='read' && e.agent) read.push(e);
+      }
+      for(let k=0;k<read.length;k++) pushLog(w,{type:'player',sms:'noreply',agent:read[k].agent,name:read[k].name,text:SMS_NOREPLY});
+    }
+    // 「夜深了」：判据与主循环 loop() 逐字同源（日号变了 且 已过 REFLECT_MIN）
+    const d=PURE.dayOf(w.t);
+    if(d!==rd && PURE.minuteOfDay(w.t)>=REFLECT_MIN){ rd=d; reflectFallback(w); nights++; }
+    done++;
+  }
+  return {ticks:done, nights, t0, t1:w.t, mins:w.t-t0, lastReflectDay:rd};
+}
+/*CATCHUP-END*/
+
 const SAVE_V=1;
 function serialize(w, meta){
   const world={};
@@ -1611,6 +1702,8 @@ const Sim={makeWorld, step, sendMessage, sendCustomMessage, decide, MSGS, ANCHOR
   RHY_BASE, RHY_TRAIT, RHY_BED_MIN, RHY_BED_MAX, RHY_WAKE_MIN, RHY_WAKE_MAX, RHY_DUR_MIN, RHY_DUR_MAX,
   RHY_HUNGER_FLOOR, RHY_ENERGY_FLOOR, RHY_LUNCH_AFTER, rhyOf, rhyRest, rhyEatAt, rhyNapAt, rhyWakeAt,
   rhyBedClock, rhyDur, rhyPressed,
+  CATCHUP_MIN_PER_MIN, CATCHUP_MAX_DAYS, REFLECT_MIN, DIARY_FALLBACK, SMS_NOREPLY,
+  catchUpPlan, catchUp, reflectFallback,
   CLIP_CUT, CLIP_KEEP, CLIP_QUOTE_MAX, CLIP_BASE_MIN, CLIP_COMMON_N, CLIP_COMMON_MUL, CLIP_FREQ_CAP,
   CLIP_BROKE, CLIP_STARVE, CLIP_DRAINED, CLIP_W, CLIP_TIER, CLIP_LOGCAT, CLIP_CATNAME, CLIP_FREQ_CATS,
   clipDayOf, clipT0, clipCat, clipTier, clipWeight, clipItemText};
@@ -1693,7 +1786,7 @@ const state={
   llm:{on:true, calls:0, pending:0, status:'待机', lastErr:'', warned:false, channel:''},
   lastReflectDay:bootWorld
     ? ((bootMeta && isFinite(bootMeta.lastReflectDay)) ? bootMeta.lastReflectDay
-       : (PURE.minuteOfDay(bootWorld.t)>=1310 ? PURE.dayOf(bootWorld.t) : PURE.dayOf(bootWorld.t)-1))
+       : (PURE.minuteOfDay(bootWorld.t)>=Sim.REFLECT_MIN ? PURE.dayOf(bootWorld.t) : PURE.dayOf(bootWorld.t)-1))
     : 0,
   reduceMotion:matchMedia('(prefers-reduced-motion:reduce)').matches,
   scale:1,
@@ -1702,6 +1795,59 @@ const state={
   vis:{},           // 每个小人的可视位置与路径
   dpr:1, cvW:0, cvH:0, view:{s:1,ox:0,oy:0},
 };
+/* ---------- 离线追帧（第 26 单）：存档记时刻，回来补算差额 ----------------------
+   **位置就是判据**：本段跑在 state.vis 建表之前、第一帧 requestAnimationFrame 之前，
+   故补算期间一帧都没有——不画帧、不推日志墙、不可能触发瞬移（第 25 单三条铁律要采样的
+   显示位那时还不存在）。walkgate.js 逐条把这个位置关系读成断言。
+   AI 同理够不着：本段整块是同步代码，中间没有一个 await，llm 队列一次都轮不到；
+   下面的 catchupActive 是**可计数的硬断言**——补算窗口内任何 AI 入口都记一笔违规并当场落空。 */
+let catchupActive=false, catchupAiHits=0;    // 补算窗口标记／窗口内的 AI 入口命中数（恒应为 0）
+/* 正向审计带出来的一处（宪法第 20 条「从本次改动出发检索全部关联处，一次改齐」）：
+   关页会把在途的 AI 调用一起带走，而那些条目的 llmPending 是随存档落盘的。
+   本单立了「回来后也不补生成」的水位线之后，它们既等不到回包、也不会被重新点着，
+   占位符「（聊得正起劲⋯）」就会**永远**挂在墙上——本单不收这个尾，等于自己造一个缺陷。
+   关页＝那次调用死了，故照「AI 挂掉时的那条路」原样收尾：回落各自的模板兜底、清掉在途标；
+   被读掉却没等到回信的短信补一条「已读不回」。三条兜底全部沿用既有常量，零新增文案。 */
+function settleOrphanLLM(w){
+  let n=0; const pend=[];
+  for(const e of w.log){
+    if(!e || !e.llmPending) continue;
+    e.llmPending=false; n++;
+    if(e.type==='diary') e.thought=DIARY_FALLBACK;
+    else if(e.fb) e.thought=e.fb;
+    if(e.type==='player' && e.sms==='read' && e.agent) pend.push(e);
+  }
+  for(let i=0;i<pend.length;i++) pushLog(w,{type:'player',sms:'noreply',agent:pend[i].agent,name:pend[i].name,text:SMS_NOREPLY});
+  return n;
+}
+const orphanLLM=bootWorld ? settleOrphanLLM(state.world) : 0;
+let catchup=null;
+if(bootWorld){
+  const plan=Sim.catchUpPlan(state.world, (bootMeta && isFinite(bootMeta.at)) ? (Date.now()-bootMeta.at) : 0);
+  if(plan.ticks>0){
+    const ai0=state.llm.calls;
+    catchupActive=true;
+    let r=null;
+    try{ r=Sim.catchUp(state.world, plan.ticks, state.lastReflectDay); }
+    finally{ catchupActive=false; }
+    if(r){
+      state.lastReflectDay=r.lastReflectDay;
+      catchup=Object.assign({}, plan, r, {aiCalls:state.llm.calls-ai0, aiHits:catchupAiHits});
+      logSys(state.world, '⏱ 你不在的时候，城市自己过了 '+fmtAgo(r.mins*60000)+'。'
+        +(plan.capped ? '（离开更久，只补到封顶的 '+Sim.CATCHUP_MAX_DAYS+' 天，更早的没有补算。）' : ''));
+      if(catchup.aiCalls!==0 || catchup.aiHits!==0){        // 硬断言：破了就把这一局的 AI 关掉并如实上墙，绝不闷声花钱
+        state.llm.on=false;
+        logSys(state.world, '⚠ 补算期间出现了 '+(catchup.aiCalls+catchup.aiHits)+' 次 AI 调用，已就地关闭本局 AI。');
+      }
+    }
+  }
+}
+/* 回来后也不补生成：补算之前就已存在的日志条目（含刚补算出来的这一批）一律只上墙、不送 AI。
+   没有这道水位线，光「补算时不调 AI」是拦不住的——drainLog 的开局游标是 -Infinity，
+   读档后会把 w.log 里每一条没打 ✨ 的闲聊重新点一次 AI（实测跑满 30 天的存档 44–62 条，
+   见 tools/offline-catchup/probe.cjs 附问）。水位线只挡 AI，不挡上墙：历史照旧显示。 */
+const aiFloorLid=state.world.lidSeq;
+
 for(const ag of state.world.agents){
   const a=Sim.ANCHORS[ag.anchor];
   state.vis[ag.id]={x:a.x+0.5,y:a.y+0.5,path:[],anchor:ag.anchor,dir:3,moving:false};
@@ -1932,7 +2078,9 @@ function drainLog(){
   while(i<w.log.length){
     const e=w.log[i++];
     if(lidOk(e.lid) && e.lid>state.logSeenLid) state.logSeenLid=e.lid;
-    if(state.llm.on && !e.llm && !e.llmPending){
+    // 第 26 单：aiFloorLid 是「回来后也不补生成」的水位线——开局既有条目与补算产物一律只上墙不送 AI。
+    // 判据取严：lid 畸形（篡改档过闸）时 `undefined > 数` 恒为 false，宁可不送 AI，也不给可疑条目开口子。
+    if(state.llm.on && e.lid>aiFloorLid && !e.llm && !e.llmPending){
       if(e.type==='player' && e.msg){ e.fb=e.thought; e.thought='（对着屏幕想了想⋯）'; enhanceMessage(e); }
       else if(e.type==='chat' && e.with){ e.fb=e.thought; e.thought='（聊得正起劲⋯）'; enhanceChat(e); }
     }
@@ -2508,6 +2656,9 @@ function fetchWithDeadline(url, opts, ms){
   return Promise.race([attempt, timeout]).finally(()=>clearTimeout(tid));
 }
 async function rawCallClaude(prompt, batch){
+  // 第 26 单·可计数硬断言：补算窗口内一次 AI 都不许调。这一句既是闸也是计数器——
+  // 结构上本就到不了（补算整块同步、无 await），万一日后有人把补算挪进异步路径，这里当场记账并落空。
+  if(catchupActive){ catchupAiHits++; return null; }
   const L=state.llm;
   L.calls++; L.pending++; L.status='思考中'; syncLLMStat();
   let j=null, hardFail=false;
@@ -2601,7 +2752,7 @@ async function enhanceMessage(e){
     const rep=(j && typeof j.reply==='string')?j.reply.trim():'';
     noteUtter(ag, rep||(e.llm?e.thought:''));   // 回信原文优先，已读不回取 ✨ 内心独白；模板兜底不记
     if(rep) pushLog(w,{type:'player',sms:'reply',agent:ag.id,name:ag.name,text:'回了你的短信',thought:rep,llm:true});
-    else pushLog(w,{type:'player',sms:'noreply',agent:ag.id,name:ag.name,text:'看了你的短信，没有回。'});
+    else pushLog(w,{type:'player',sms:'noreply',agent:ag.id,name:ag.name,text:SMS_NOREPLY});   // 第 26 单：原文集中到 SIM 块常量，一字未改
   }
   e.llmPending=false;
 }
@@ -2680,7 +2831,7 @@ async function runReflection(){
     const e=entries[ag.id];
     const txt=(j && typeof j[ag.id]==='string') ? j[ag.id].trim() : '';
     if(txt){ e.thought=txt; e.llm=true; noteUtter(ag, txt); }
-    else { e.thought='（写了两行，没写下去，合上了本子。）'; }
+    else { e.thought=DIARY_FALLBACK; }   // 第 26 单：原文集中到 SIM 块常量，一字未改（补算走的也是这一条）
     e.llmPending=false;
     patchLid(e);
   }
@@ -3261,7 +3412,7 @@ function loop(now){
   if(tick!==lastTick){ lastTick=tick; renderTopbar();
     if(state.llm.on){
       const d=PURE.dayOf(w.t);
-      if(d!==state.lastReflectDay && PURE.minuteOfDay(w.t)>=1310){ state.lastReflectDay=d; runReflection(); }
+      if(d!==state.lastReflectDay && PURE.minuteOfDay(w.t)>=REFLECT_MIN){ state.lastReflectDay=d; runReflection(); }
     }
     if($('#scr-roles').classList.contains('active')) renderRoles();
     if($('#scr-clip').classList.contains('active')) renderClips();
@@ -3275,7 +3426,21 @@ function loop(now){
 /* ---------- 启动 ---------- */
 applyLayout();
 applyScale();
-setScreen('live');
+/* 离线追帧·回来第一眼（第 26 单，决策者裁定）：离开期间跨过至少一个「夜深了」，
+   就直接把剪辑页推到玩家面前，不让他自己去点；没跨过夜就照旧进现场页，不打扰。
+   横幅逐字说明覆盖了多久、封顶跳过了多少——「跳过」这件事必须自己说出来，不许闷着。 */
+if(catchup && catchup.nights>0){
+  const el=$('#clip-back');
+  el.textContent='⏱ 你不在的时候，城市自己过了 '+fmtAgo(catchup.mins*60000)
+    +'（'+PURE.fmtStamp(catchup.t0)+' → '+PURE.fmtStamp(catchup.t1)+'，跨过 '+catchup.nights+' 个夜晚）。'
+    +'这段时间的对白与日记都没有过 AI，只有剪辑照常挑。'
+    +(catchup.capped ? '　离开更久，只补到封顶的 '+Sim.CATCHUP_MAX_DAYS+' 天，更早的 '
+        +fmtAgo(catchup.skipTicks*10*60000)+'没有补算，那段日子没有发生。' : '');
+  el.hidden=false;
+  setScreen('clip');
+}else{
+  setScreen('live');
+}
 Input.setMode('ontouchstart' in window ? 'touch':'kbm');
 renderTopbar(); renderRoles(); renderPhone();
 requestAnimationFrame(loop);
