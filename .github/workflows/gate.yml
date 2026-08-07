@@ -40,8 +40,11 @@ jobs:
           node --check relay-check.mjs
       - name: 涨号铁律门禁（第 28 单）
         env:
-          # PR 事件下把基线 sha 直接交给门禁；push: main 时为空，门禁自行退回 merge-base。
+          # PR 事件：基线＝PR 的 base sha。
           VERSIONGATE_BASE: ${{ github.event.pull_request.base.sha }}
+          # push 事件：基线＝这一推之前的 tip。没有它的话 push:main 时
+          # merge-base(HEAD, origin/main) 就是 HEAD 自己、差分恒为空，第二层在 main 上等于空转。
+          VERSIONGATE_PREV: ${{ github.event.before }}
         run: node versiongate.js
       - name: SIM 块纯净检查
         run: |
