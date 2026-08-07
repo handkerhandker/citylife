@@ -628,12 +628,228 @@ const PEER_CHANCE=0.35;
 // 而睡前日记（四人一次打包生成）正是本单假说的主要观察窗口，丢三成样本会让假说验不干净。
 // 到点自然消失（按 w.t 判活，不做定时清扫）。
 const SIT_TTL=14*60;
-const CHAT_LINES=[
-  ['最近那家外卖涨价了你发现没？','发现了！蛋炒饭都要35了。'],
-  ['周日要不要一起去街市看看？','行啊，听说有新摊位。'],
-  ['你们公司最近忙吗？','别提了，比上个月还卷。'],
-  ['我攒的钱又没到目标。','慢慢来，别学我月光。'],
-];
+/* ===== 第 27 单·兜底文案扩池 =============================================
+   这三个池是**AI 缺席时的替身，不是占位符**。第 26 单让城市在玩家离开时继续走，
+   而离开期间一次 AI 都不调（红线，可计数断言），故玩家离开三天回来，
+   日志墙上那三天的日记与闲聊**全部**出自下面这些写死的字。
+   离线期间本来就不该有 AI —— 那不是缺失，那就是那天的日子。故文案一律写成
+   真的日记、真的对白：不带括号外框、不自述「没写下去」、不告诉玩家「这里本该有内容」。
+
+   —— 三条口径写死在这里 ——
+   ① **逐人分池，按 workKind 挂表**（照 WORK_THOUGHTS 先例：四人 workKind 互异，语义等于按人）。
+      挂 id 会被篡改档打穿——`svAgentUsable` 只校验 `a.id` 是非空字符串，却**白名单校验了
+      `a.workKind`**（`SV_WORK_KINDS`，缘由原文「WORK_THOUGHTS 索引，非法→pickV 崩」），
+      故挂 workKind 是全站唯一一条已经有闸守着的索引。
+   ② **内容只许用结构上必然为真的素材**：一天到了尾声、各人的长期心愿与担忧、
+      职业的日常质地、性格特质、住处与去处、身体的一般感觉。
+      **不许提任何具体事件**（组长／店长／客户／编辑说了做了什么、涨薪退稿、发薪交租、
+      今天下没下雨、买了吃了什么、另外三位住户的言行）。缘由与第 18 单「角色卡上
+      给标签不给事件」同一条：兜底文案是写死的，一旦提具体事件必然有某天对不上，当场穿帮。
+   ③ **文案自己也过第 18／19 单的语气词起手闸**（`leadsWithInterj`，DOM 层）。
+      闸本来只查模型产出；模板若自己带语气词起手，等于闸外开了个后门。harness 逐条断言。
+========================================================================== */
+
+// 睡前日记的兜底池：逐人 15 条。
+// —— 容量口径（实测，不是拍脑袋）——
+//   日记一天只落一轮，**「当日去重」对它恒为空转**，故这一池不能走 pickV，走 pickFresh（见下）。
+//   真正管事的是「最近几条不再派」那个窗口 DIARY_FB_RECENT，它按**玩家一眼能看见多少条**定：
+//   `pushLog` 把 w.log 封在 400 条（本文件 `if(w.log.length>400) w.log.splice(...)` 那一行），
+//   故日志墙上同时挂得住的同一人日记条数有上限。
+//   实测（15000 颗种子 × 30 天，补算模式＝AI 缺席那条路，见 tools/fallback-pool/capacity.cjs）：
+//     峰值 9 条占 14966 颗、10 条占 34 颗，**最大 10**；均值 9.002／sd 0.0476／均值+5σ=9.24。
+//   两把尺子同时指向 10（极值取 10；±5σ 向外取整到自然刻度也是 10），故取 10。
+//   注意这是**极值量**，第 24 单已立在案「±5σ 口径只对和式量成立」，故此处以实测最大值为准，
+//   ±5σ 只作旁证，不作依据。
+// 池容量＝窗口＋候选数：候选数照 pickTopic 先例（该处 9 池记 4 条、每次至少留 5 个候选）取 5，
+//   故 15＝10＋5。候选恒 ≥5 ⇒ 下一条写什么仍是随机的，不会退化成固定轮转。
+// 于是「连着 11 晚不重样」由构造保证（窗口 10 ⇒ 任意 11 条连抽互不相同），
+//   而玩家一眼至多看见 10 条 ⇒ **墙上看得见的日记，一条也不会重样**。
+const DIARY_FB_RECENT=10;   // 可调：最近 N 条派过的不再派（必须 < 各池长度，否则无候选可派）
+const DIARY_FB={
+  // 顾云帆（程序员）
+  work:[
+    '夜里脑子才转得开，这毛病改不了，也不太想改。',
+    '新电脑的钱还差一截，夜里算一遍，算完照样睡不着。',
+    '绩效那事，想多了没用，想少了又不安心，就这么耗着。',
+    '累是长期的，补觉也补不回来，我早就不指望了。',
+    '摸鱼这词听着不体面，其实是给脑子留口气。',
+    '滨江公园的长椅适合什么都不干，这点正对我的路子。',
+    '写代码这活，多半时间在等，等它跑完，等它复现。',
+    '困是困，倒下前总要再看会儿别的，多年如此。',
+    '钱包这东西进得慢出得快，新机器只能再往后排。',
+    '江边步道走一趟能把人走空，可惜多数夜里懒得动。',
+    '周日街市热闹归热闹，出门这一步我一向跳过。',
+    '合租这屋，夜里最安静的那段归我，挺划算。',
+    '明早的闹钟大概又是白设，夜里这几个小时太好用了。',
+    '又到这个点才想起来饿，这时候吃什么都算晚。',
+    '这行讲究把话写成机器能懂的，人话反而生疏了。',
+  ],
+  // 沈小满（便利店店员）
+  clerk:[
+    '一天站下来脚总是麻的，可柜台前人来人往，我还是喜欢这份活儿。',
+    '房租这事一到月底就在心里晃，白天笑归笑，夜里还是得自己扛。',
+    '柜台前一天能过多少张脸，散了也就散了，我还是想有个常聊的人。',
+    '灯一关屋里就静得很，我这人偏偏怕静，白天的话都攒在嗓子眼。',
+    '一天下来手里过的都是零钱，自己那份却总攒不下。',
+    '理货把一排排摆整齐，心里也跟着顺，这是我少有的耐心了。',
+    '江边那条步道我总想多走两步，路上碰上人还能搭两句呀。',
+    '周日街市那种人挤人的动静，我是真爱凑，热闹里人才活泛！',
+    '灶台擦干净才踏实，厨房这点地方，是我一天里最松快的角落啦。',
+    '一天的话说到头，嗓子总是发紧，明天开了门还得笑着招呼。',
+    '收银台那声嘀，一天到晚在耳朵里，闭上眼还没散。',
+    '滨江公园那条长椅我惦记好久了，等哪天松快些，去坐个够。',
+    '便利店的灯亮一整宿，回到家里，眼里还留着那层白。',
+    '明天还得早起理货，可我这人一到夜里，哎呀，就容易饿。',
+    '有点闲钱就想请大家喝点什么，轮到自己又抠得很，哈哈这毛病改不掉。',
+  ],
+  // 陆知秋（交易员）
+  trade:[
+    '一天到此结算。该记的记完，剩下的留给明天开盘。',
+    '习惯把一天分成几段来记。最后一段留给自己，通常只剩困意。',
+    '盯一天数字，眼睛总比脑子先累。夜里安静，正好把账对齐。',
+    '奖金翻倍这件事，概率不高，但也不是零。记下来，继续。',
+    '行情大跌总在没准备的日子来。所以我尽量让自己一直有准备。',
+    '节俭不是苦，是把不该花的留住。这条记了很久，还在执行。',
+    '回程习惯走江边那段，省两块车钱，也把脑子里的数放一放。',
+    '工位坐久了，回到卧室反而不知道该干什么。大概是习惯问题。',
+    '饿的时候容易做错判断。所以晚上尽量在厨房解决，成本也低。',
+    '周日街市的价，总比平时省一截。这种小账我一直在算。',
+    '滨江公园那条长椅坐过几次，不为休息，只为把仓位想清楚。',
+    '一天里真正属于自己的时间不到两小时。剩下的都在盘面上。',
+    '收盘之后仍在想开盘。这毛病改不掉，也没打算改。',
+    '预案常备三条，用不上最好。真用得上时，不会有时间再写。',
+    '困了。明早的开盘不会因为我睡得晚就往后推。',
+  ],
+  // 白一鸣（自由撰稿）
+  write:[
+    '这个钟点，稿子里的句子还在脑子里排队，只好先躺下，让它们自己站好。',
+    '早睡是我唯一守得住的规矩，别的规矩多半在期限面前先降了旗。',
+    '专栏那桩事一直压在月底那头，像一封迟迟没寄出去的信。',
+    '不出门的日子居多，从写作角走到厨房，来回几步也就算散步了。',
+    '写字的人怕的从来不是长夜，是催稿这件事总悬着不肯落地。',
+    '明早大约又要醒在闹钟前头，这毛病改了许多年，始终没改成。',
+    '江边那条步道走过许多回，句子不肯往前时，去那里总比干坐着强。',
+    '困意来得比灵感准时，这大概是写字这行给我的唯一确切之物。',
+    '屋里到这个点渐渐静下来，慢性子的人这才敢把步子放到最慢。',
+    '稿费按字算，日子却不肯按字过，这笔账我至今没算明白。',
+    '向来怕人多，周日的街市远远看一眼便够，热闹留给爱热闹的人。',
+    '睡前总要把明天的开头想好，多半到了明天又推翻重来。',
+    '滨江公园那把长椅坐着并不舒服，可琢磨句子时，硬一点反倒清醒。',
+    '写得入神便忘了吃饭，等想起来，饿意已经排到了夜里。',
+    '到了一天末尾，最踏实的念头是字还在，人还在，期限也还在。',
+  ],
+};
+// 闲聊的兜底池：**开口的那句按开口人抽、接话的那句按接话人抽**，两句各自带各自的语言指纹。
+// 旧形态是 4 组写死的 A/B 对白全城共用（`CHAT_LINES`，第 26 单实测 3 天摊 15–25 场、
+// 最高频一组占 40–60%），四个人共一个腔调，且用 `pick` 而非 `pickV` 故无当日去重。
+// —— 容量口径（实测，同上）——
+//   照第 13 单既有口径「上墙池容量须 ≥ 全城单日抽取峰值」，逐人逐日实测（同一份 15000 颗样本）：
+//     开口峰值：最大 9（5 颗）、均值 5.435／sd 0.7394／均值+5σ=9.13 ⇒ 向外取整 **10**；
+//     接话峰值：最大 8（6 颗）、均值 4.527／sd 0.6824／均值+5σ=7.94 ⇒ 向外取整 **8**。
+//   两处都是「最大值」与「±5σ 向外取整」同时落在同一个数上，故直接取该数。
+//   池尽仍照 pickV 原样重置（宁可重复不可沉默），故超出峰值的极端日子只是重一句，不会哑掉。
+const CHAT_FB_OPEN={
+  // 顾云帆（程序员）
+  work:[
+    '我这人白天不太醒，晚上才上线。',
+    '新机器的钱还在攒，别问进度。',
+    '屋里比工位安逸。这就是我不太想动的原因。',
+    '你饿不饿。厨房那边我一般只找水。',
+    '别看我一天坐着不动，跑通一件事要费不少工夫。',
+    '有空可以去江边走走。我说了三年了。',
+    '绩效这两个字，一想起来人就清醒。',
+    '我这边永远差不多。好也这样，坏也这样。',
+    '我摸鱼摸得挺熟练了，别学。',
+    '睡得晚不算毛病，起得来就行。',
+  ],
+  // 沈小满（便利店店员）
+  clerk:[
+    '还没歇着呢，哪天晚上要不要一块下楼溜一圈。',
+    '今天累不累呀，我这人站惯了柜台，腿脚总不听话。',
+    '饭吃了没呀，我这人一天到晚惦记着吃。',
+    '周日街市我打算去逛逛，一块儿去呗，人多才热闹。',
+    '你说这钱怎么就不经花呢，我天天在心里算。',
+    '我最近老想着多认识几个人，哈哈这算不算毛病。',
+    '我这人见着谁都想搭两句，你可别嫌我话密啦。',
+    '干这行忙起来脚不沾地，哎呀，坐下才觉出累。',
+    '我这人攒不住钱，手一松就没了，月底又发愁。',
+    '公园那条长椅坐着舒服，改天一块儿去坐坐。',
+  ],
+  // 陆知秋（交易员）
+  trade:[
+    '吃过了没。空着肚子做判断，容易出错。',
+    '忙不忙。我这边一向是这个节奏。',
+    '省下的钱和赚到的钱，等值。这是我的看法。',
+    '周日街市要去的话，早市那趟最划算。',
+    '江边那条步道我走过几回，比坐车省。',
+    '行情这东西，涨的时候没人担心，跌起来才有人问。',
+    '灯这种东西，不用就关。一年下来是个数。',
+    '我一天说不上十句话，今天算超额了。',
+    '楼下便利店那趟我常走，需要什么可以捎。',
+    '睡前把明天要做的列一遍，效率高三成。',
+  ],
+  // 白一鸣（自由撰稿）
+  write:[
+    '写起字来常常忘了吃饭，你那边顾得上吗。',
+    '难得在屋里碰上，我一天多半困在写作角。',
+    '周日的街市要是去，替我看看有没有便宜的纸笔。',
+    '江边那条步道走过没有，我时常去那儿想句子。',
+    '写稿这活说自由也自由，说被拴着也确实拴着。',
+    '我这边永远是月底那笔稿债在追，躲也躲不开。',
+    '平日不大开口，碰上了倒想多说两句。',
+    '累这件事，好像不问它，它也不会自己走开。',
+    '楼下街面这几步路，算是我一天里全部的远行。',
+    '醒得早是老毛病，一天里大半时候脑子都是钝的。',
+  ],
+};
+// 接话句是**万能承接**：它与开口句分两次独立抽取，故每一条都必须能接在任意一句开口之后仍读得通，
+// 一律不许在接话里回应某个具体内容（写死的「外卖确实涨了」配上任何一句别的开口都会驴唇不对马嘴）。
+const CHAT_FB_REPLY={
+  // 顾云帆（程序员）
+  work:[
+    '行。脑子这会儿还没跑通，先这样。',
+    '先不说这个。攒钱那事，我还在原地。',
+    '我也差不多，白天基本靠惯性在走。',
+    '被这么一说，我更想躺着了。',
+    '这倒是。我这人低功耗运行，快不起来。',
+    '有道理。我在这屋里基本没什么动静，这样也好。',
+    '也是。反正我一想绩效就睡不着。',
+    '算是吧。我吃饭从来不挑，填饱了就算完成。',
+  ],
+  // 沈小满（便利店店员）
+  clerk:[
+    '可不是嘛，我这一天下来嘴就没停过。',
+    '说得也是，反正我这人闲不住，坐着都想找人说话。',
+    '你这么一说，我也想出去转转，人多我才来劲。',
+    '听着就有道理，我这人耳根子软，哈哈从来不会说不。',
+    '话是这么说，可房租那点数一压过来，人就老实了。',
+    '说起来也是，我总盼着能多认识几个人，热闹点好。',
+    '我懂我懂，我这人一忙起来就容易饿得慌。',
+    '反正呢，我这活儿累是累，干着心里还挺乐呵呀。',
+  ],
+  // 陆知秋（交易员）
+  trade:[
+    '确实。我这边一天下来，只想少花点力气。',
+    '记下了。我这人话少，不表态不代表不同意。',
+    '明白。我脑子里剩的多半还是那些数字。',
+    '大致如此。我这边就一条准则，能省则省。',
+    '同感。我这行每天都在等一个跌，等习惯了。',
+    '可以。我一般八成时间在工位上，剩下两成在路上。',
+    '都一样。我这边照旧，早睡不了也得睡。',
+    '不好说。我只清楚一件事，钱不经花，时间也是。',
+  ],
+  // 白一鸣（自由撰稿）
+  write:[
+    '这话不假，我近来大半时间都耗在纸上。',
+    '经这么一提，倒觉得该起身走动两步了。',
+    '大抵如此，写字的人日子都过得含糊。',
+    '想来也是，我不太会接话，还望别嫌我闷。',
+    '倒也是，我这边总有一份稿子还没交出去。',
+    '这倒提醒了我，该给自己留口气，歇一歇。',
+    '说来惭愧，除了赶稿，我实在没什么正经消遣。',
+    '细想也是，跟句子较劲这件事，倒是一年比一年熟。',
+  ],
+};
 // —— 第 18 单·病症三：闲聊话题由代码派定（不再交给模型自选）——
 // 缘由（决策者实证，v28 线上）：七段闲聊全部围着冰箱转——酸奶／蛋炒饭／冰箱贴／速冻饺子／
 // 第三格鸡蛋／半盒奶；同一盒酸奶还跨三天反复过期（D26「刚扔了空瓶」→ D27「过期两天了」→
@@ -895,7 +1111,8 @@ function logSys(w,text){ pushLog(w,{type:'sys',name:'城市',text}); }
 function logAct(w,ag,text,thought,type){ pushLog(w,{type:type||'act',agent:ag.id,name:ag.name,text,thought}); }
 
 function roomOf(anchorId){ const a=ANCHORS[anchorId]; return a?a.room:'street'; }
-function pick(w,arr){ return arr[Math.floor(w.rng()*arr.length)]; }
+// （第 27 单：等概率抽的 `pick` 随本单一并撤掉——它最后一个调用点是 `pick(w,CHAT_LINES)`，
+//   本单把那一处换成 pickV 之后就再无人调用，留着即死码。全站抽词自此只剩 pickV／pickFresh 两支。）
 function pickV(w,arr,ag,key){
   // 当日去重（第 13 单挑剔升级）：全城一本账——按 key 记账于 w.saidDay（随存档序列化），
   // 一句当天任何人说过即不再抽；跨天自动重置；池尽重置再抽（宁可重复不可沉默）。
@@ -912,6 +1129,35 @@ function pickV(w,arr,ag,key){
   const idx=free[Math.floor(w.rng()*free.length)];
   rec.used.push(idx);
   return arr[idx];
+}
+// 第 27 单·「最近 keep 条不再抽」的抽法（睡前日记兜底专用）。
+// 为什么日记不能直接用 pickV：pickV 是**当日**去重（`rec.d!==day` 即清账），
+// 而睡前日记一天只落一轮、每人只抽一次 ⇒ 当日去重对它恒为空转，一次也拦不住跨天重样。
+// 第 26 单交付件第七章接受项 1 那「三天 12 条逐字全同」正是这个形状：换成 pickV 也还是 12 条全同。
+// 故照 pickV 的 free 表原样搬一份，只把**按天重置**换成**只记最近 keep 条**（记账形状照 pickTopic
+// 的「最近 N 次派过的不再派」先例，只是这里从 free 表里等概率抽，不走 pickTopic 那种撞上顺延，
+// 免得顺延把概率往被挡区段后面堆）。于是「任意 keep+1 条连抽互不相同」由构造保证，不靠概率。
+// 记账挂世界（全城一本账，照 w.saidDay 先例）：w.fbRecent 按 key 存最近用过的下标，随 serialize 入档；
+// 旧档无此字段 → 从空账起；畸形值（篡改档过闸）就地重建，绝不判坏档。恰好消耗 1 次 rng，与 pickV 等量。
+function pickFresh(w,arr,key,keep){
+  const fr=w.fbRecent;
+  const bag=(fr && typeof fr==='object' && !Array.isArray(fr)) ? fr : (w.fbRecent={});
+  let rec=bag[key];
+  if(!Array.isArray(rec)) rec=bag[key]=[];
+  let free=[];
+  for(let i=0;i<arr.length;i++){ if(rec.indexOf(i)<0) free.push(i); }
+  if(!free.length){ rec.length=0; for(let i=0;i<arr.length;i++) free.push(i); }   // 池 ≤ keep 时兜底：清账重来（宁可重复不可沉默）
+  const idx=free[Math.floor(w.rng()*free.length)];
+  rec.push(idx);
+  while(rec.length>keep) rec.shift();
+  return arr[idx];
+}
+// 睡前日记兜底的唯一取字处（SIM 的 reflectFallback 与 DOM 的 runReflection／settleOrphanLLM 三处同引）。
+// 陌生 workKind 只可能来自「日志条目落款的那个人已经不在 w.agents 里」这一种篡改档
+// （住户自己的 workKind 有 SV_WORK_KINDS 白名单守着），此时借第一池出字，绝不返回空、绝不抛错。
+function diaryFallback(w,ag){
+  const k=(ag && DIARY_FB[ag.workKind]) ? ag.workKind : 'work';
+  return pickFresh(w, DIARY_FB[k], 'fd:'+k, DIARY_FB_RECENT);
 }
 
 // 第 17 单·处境状态：外围角色事件命中后挂在该住户身上，带时效（SIT_TTL），到点自然消失。
@@ -1043,7 +1289,7 @@ function decide(w, ag){
     if(ptbl && ptbl.length && ag.flags.peerDay!==today && w.rng()<PEER_CHANCE){
       ag.flags.peerDay=today;
       // 防连日复读：撞上次抽中的那条则顺延一条（照 styleAssign 撞类顺延先例）。
-      // sit 过期不清扫，故 sit.i 天然留着上一次的下标可比；恰好消耗 1 次 rng，与 pick 等量。
+      // sit 过期不清扫，故 sit.i 天然留着上一次的下标可比；恰好消耗 1 次 rng，与 pickV 等量。
       const prev=(ag.sit && typeof ag.sit==='object') ? ag.sit.i : -1;
       let idx=Math.floor(w.rng()*ptbl.length);
       if(idx===prev) idx=(idx+1)%ptbl.length;
@@ -1065,7 +1311,13 @@ function decide(w, ag){
     && (o.activity.type==='idle'||o.activity.type==='stroll')
     && (w.t-(ag.flags['cw_'+o.id]||-1e9))>90);
   if(mate && (ag.traits.includes('外向') || w.rng()<0.35)){
-    const line=pick(w,CHAT_LINES);
+    // 第 27 单：开口的那句按开口人抽、接话的那句按接话人抽，两句各自带各自的语言指纹。
+    // 抽法由 pick 换成 pickV（当日去重，全城一本账）——全站其余抽词点本来就都走 pickV，
+    // 这一处是遗漏。key 照 `lw:'+ag.workKind` 先例并入 workKind；开口与接话是两个不同数组，
+    // 故前缀必须分开（pickV 注释：不同数组严禁共键，used 存的是下标，共键会串账）。
+    // 本条把每场闲聊的 rng 消耗由 1 次抬到 2 次，世界指纹必变——任务书已授权并要求复报新旧值。
+    const said=pickV(w,CHAT_FB_OPEN[ag.workKind],ag,'co:'+ag.workKind);
+    const back=pickV(w,CHAT_FB_REPLY[mate.workKind],mate,'cr:'+mate.workKind);
     ag.flags['cw_'+mate.id]=w.t; mate.flags['cw_'+ag.id]=w.t;
     ag.activity={type:'chat',label:'和'+mate.name+'聊天'}; ag.busyUntil=w.t+20;
     mate.activity={type:'chat',label:'和'+ag.name+'聊天'}; mate.busyUntil=w.t+20;
@@ -1076,7 +1328,7 @@ function decide(w, ag){
     // 恰好消耗 1 次 rng——本条会位移 rng 流、sim30 指纹必变，任务书已授权并要求复报新旧值。
     const topic=pickTopic(w);
     pushLog(w,{type:'chat',agent:ag.id,name:ag.name,with:mate.id,topic,
-      text:'和'+mate.name+'聊了几句',thought:'「'+line[0]+'」「'+line[1]+'」'});
+      text:'和'+mate.name+'聊了几句',thought:'「'+said+'」「'+back+'」'});
     return;
   }
   // 6. 周日街市 / 傍晚散步 / 在家待着
@@ -1627,8 +1879,9 @@ const CATCHUP_MIN_PER_MIN=1;
 const CATCHUP_MAX_DAYS=3;
 // 口径：「夜深了」节点＝21:50。原为主循环里的一个裸数字，本单集中到此，主循环与补算两处同引。
 const REFLECT_MIN=1310;
-// AI 挂掉时的两条兜底文案。原文分别长在 runReflection 与 enhanceMessage 里，本单只是集中，**一字未改**。
-const DIARY_FALLBACK='（写了两行，没写下去，合上了本子。）';
+// AI 挂掉时的短信兜底文案。原文长在 enhanceMessage 里，第 26 单只是集中，**一字未改**。
+// （日记那条原为一条常量 `DIARY_FALLBACK`，第 27 单已换成逐人池 `DIARY_FB` ＋ `diaryFallback()`，
+//   见上面「兜底文案扩池」段；原文与病症记在 docs/交付/第27单-兜底文案扩池.md。）
 const SMS_NOREPLY='看了你的短信，没有回。';
 
 // 真实经过毫秒 → 本次该补几拍。纯算术、零副作用，DOM 层与门禁共用同一个函数（避免两处各算一遍）。
@@ -1644,7 +1897,8 @@ function catchUpPlan(w, elapsedMs){
 // 「夜深了」那一轮的模板形态：与 runReflection 的「AI 全灭」分支逐字同文，只是不调 AI、也不留 llmPending。
 function reflectFallback(w){
   logSys(w,'🌙 夜深了，住户们各自写下今天的日记。');
-  for(const ag of w.agents) pushLog(w,{type:'diary',agent:ag.id,name:ag.name,text:'睡前日记',thought:DIARY_FALLBACK});
+  // 第 27 单：逐人从自己那一池取字（旧形态是四人共用一条常量，故离开三天＝12 条逐字全同）。
+  for(const ag of w.agents) pushLog(w,{type:'diary',agent:ag.id,name:ag.name,text:'睡前日记',thought:diaryFallback(w,ag)});
 }
 // 「最新一张剪辑是哪一天」。判「补算期间有没有出新卡」用的是**这个数变没变大**，不是 w.clips 的条数——
 // 条数被 CLIP_KEEP=60 封着（html:1474 `while(w.clips.length>CLIP_KEEP) w.clips.shift()`），
@@ -1716,8 +1970,9 @@ const Sim={makeWorld, step, sendMessage, sendCustomMessage, decide, MSGS, ANCHOR
   RHY_BASE, RHY_TRAIT, RHY_BED_MIN, RHY_BED_MAX, RHY_WAKE_MIN, RHY_WAKE_MAX, RHY_DUR_MIN, RHY_DUR_MAX,
   RHY_HUNGER_FLOOR, RHY_ENERGY_FLOOR, RHY_LUNCH_AFTER, rhyOf, rhyRest, rhyEatAt, rhyNapAt, rhyWakeAt,
   rhyBedClock, rhyDur, rhyPressed,
-  CATCHUP_MIN_PER_MIN, CATCHUP_MAX_DAYS, REFLECT_MIN, DIARY_FALLBACK, SMS_NOREPLY,
+  CATCHUP_MIN_PER_MIN, CATCHUP_MAX_DAYS, REFLECT_MIN, SMS_NOREPLY,
   catchUpPlan, catchUp, reflectFallback, clipTopDay,
+  DIARY_FB, DIARY_FB_RECENT, CHAT_FB_OPEN, CHAT_FB_REPLY, pickV, pickFresh, diaryFallback,   // 第 27 单·兜底文案扩池
   CLIP_CUT, CLIP_KEEP, CLIP_QUOTE_MAX, CLIP_BASE_MIN, CLIP_COMMON_N, CLIP_COMMON_MUL, CLIP_FREQ_CAP,
   CLIP_BROKE, CLIP_STARVE, CLIP_DRAINED, CLIP_W, CLIP_TIER, CLIP_LOGCAT, CLIP_CATNAME, CLIP_FREQ_CATS,
   clipDayOf, clipT0, clipCat, clipTier, clipWeight, clipItemText};
@@ -1827,8 +2082,10 @@ function settleOrphanLLM(w){
   for(const e of w.log){
     if(!e || !e.llmPending) continue;
     e.llmPending=false; n++;
-    if(e.type==='diary') e.thought=DIARY_FALLBACK;
-    else if(e.fb) e.thought=e.fb;
+    // 第 27 单：日记条目自本单起也随身带 e.fb（落条目那一刻就抽好），故与对白／短信同走一条分支。
+    // 旧档里的在途日记条目没有 e.fb（v33 及以前落的盘），就地从该人那一池现抽一条兜住。
+    if(e.fb) e.thought=e.fb;
+    else if(e.type==='diary') e.thought=diaryFallback(w, w.agents.find(a=>a.id===e.agent));
     if(e.type==='player' && e.sms==='read' && e.agent) pend.push(e);
   }
   for(let i=0;i<pend.length;i++) pushLog(w,{type:'player',sms:'noreply',agent:pend[i].agent,name:pend[i].name,text:SMS_NOREPLY});
@@ -2815,7 +3072,11 @@ async function runReflection(){
   logSys(w,'🌙 夜深了，住户们各自写下今天的日记。');
   const entries={};
   for(const ag of w.agents){
-    const e={type:'diary',agent:ag.id,name:ag.name,text:'睡前日记',thought:'（在台灯下写着⋯）',llmPending:true};
+    // 第 27 单：兜底那一条**在落条目这一刻就抽好**放进 e.fb（照对白／短信 e.fb 先例），不等 AI 回包再抽。
+    // 缘由：抽字要掷骰子，而 AI 回包的时刻由网络说了算——若等失败时再抽，rng 流的位移就跟着网络快慢走，
+    // 同一份存档两次跑出两个世界。落条目这一刻是主循环里的同步点，抽在这里才是确定性的。
+    const e={type:'diary',agent:ag.id,name:ag.name,text:'睡前日记',thought:'（在台灯下写着⋯）',
+             fb:diaryFallback(w,ag),llmPending:true};
     pushLog(w,e); entries[ag.id]=e;
   }
   const cards=w.agents.map(ag=>{
@@ -2845,7 +3106,7 @@ async function runReflection(){
     const e=entries[ag.id];
     const txt=(j && typeof j[ag.id]==='string') ? j[ag.id].trim() : '';
     if(txt){ e.thought=txt; e.llm=true; noteUtter(ag, txt); }
-    else { e.thought=DIARY_FALLBACK; }   // 第 26 单：原文集中到 SIM 块常量，一字未改（补算走的也是这一条）
+    else { e.thought=e.fb; }   // 第 27 单：回落到落条目时就抽好的那一条（补算走的也是同一个池）
     e.llmPending=false;
     patchLid(e);
   }

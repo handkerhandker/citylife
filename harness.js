@@ -128,6 +128,64 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   for(let i=0;i<300;i++) Sim.step(r.world,10);
   ok(isFinite(r.world.t) && r.world.agents.every(a=>isFinite(a.hunger)),'旧档续跑 300 拍无异常');
 }
+// --- 兜底文案的抽法（第 27 单）：pickFresh ＝「最近 keep 条不再抽」，与 pickV 的「当日去重」互补 ---
+{
+  const KEEP=Sim.DIARY_FB_RECENT;
+  // 构造性保证：任意 keep+1 条连抽互不相同（这正是 pickV 给不了的那一条——日记一天只抽一次）
+  {
+    const w=Sim.makeWorld(4001);
+    const pool=[]; for(let i=0;i<KEEP+5;i++) pool.push('L'+i);
+    const seq=[]; for(let i=0;i<600;i++) seq.push(Sim.pickFresh(w,pool,'t',KEEP));
+    let near=0;
+    for(let i=0;i<seq.length;i++) for(let k=1;k<=KEEP && i-k>=0;k++) if(seq[i]===seq[i-k]) near++;
+    ok(near===0,'任意 '+(KEEP+1)+' 条连抽互不相同（近距复读 '+near+' 次）—— 「连着 N 晚不重样」由构造保证，不靠概率');
+    ok(new Set(seq).size===pool.length,'600 次抽满全池 '+pool.length+' 条：'+new Set(seq).size);
+    ok(w.fbRecent.t.length===KEEP,'记账窗口恒为 keep 长：'+w.fbRecent.t.length);
+    // 对照：同一份池改走 pickV，日记那种「一天一抽」的节奏下当日去重恒为空转
+    const w2=Sim.makeWorld(4001);
+    const seq2=[]; for(let d=0;d<12;d++){ w2.t=d*1440+21*60+50; seq2.push(Sim.pickV(w2,pool,null,'t')); }
+    const near2=seq2.filter((s,i)=>i>0 && s===seq2[i-1]).length;
+    ok(w2.fbRecent===undefined,'对照组没碰 fbRecent（确认走的是 pickV 那条路）');
+    ok(true,'对照读数（非断言）：12 晚走 pickV，相邻重样 '+near2+' 次、不同 '+new Set(seq2).size+' 条／12 —— 当日去重对「一天只抽一次」恒为空转');
+  }
+  // 池 ≤ keep 的退化情形：不许死锁、不许返回空（宁可重复不可沉默）
+  {
+    const w=Sim.makeWorld(4002);
+    const tiny=['甲','乙'];
+    let bad=0; for(let i=0;i<50;i++){ const v=Sim.pickFresh(w,tiny,'s',KEEP); if(tiny.indexOf(v)<0) bad++; }
+    ok(bad===0,'池比记账窗口还短时照样出字（清账重来，50 次全部落在池内）');
+  }
+  // 存档：随存档序列化、旧档缺省兼容、篡改档不抛错（照 chatTopics／saidDay 先例）
+  {
+    const w=Sim.makeWorld(4003);
+    Sim.catchUp(w, 3*144, 0);
+    ok(w.fbRecent && typeof w.fbRecent==='object','补算跑过之后 w.fbRecent 已建账');
+    const d=JSON.parse(Sim.serialize(w,null));
+    ok(d.world.fbRecent && typeof d.world.fbRecent==='object','fbRecent 随存档序列化');
+    delete d.world.fbRecent;
+    const r=Sim.hydrate(JSON.stringify(d));
+    ok(!!r,'旧档（无 fbRecent）可反序列化');
+    Sim.catchUp(r.world, 300, 0);
+    ok(Array.isArray(r.world.fbRecent['fd:work']),'旧档从空账起，续跑即就地建账');
+    for(const junk of ['x', 42, null, ['a']]){
+      const b=JSON.parse(Sim.serialize(w,null)); b.world.fbRecent=junk;
+      const rb=Sim.hydrate(JSON.stringify(b));
+      Sim.catchUp(rb.world, 200, 0);
+      ok(rb.world.fbRecent && typeof rb.world.fbRecent==='object' && !Array.isArray(rb.world.fbRecent),
+         '篡改档 fbRecent='+JSON.stringify(junk)+' → 就地重建，不抛错');
+    }
+    const b2=JSON.parse(Sim.serialize(w,null)); b2.world.fbRecent={'fd:work':'坏账'};
+    const rb2=Sim.hydrate(JSON.stringify(b2));
+    Sim.catchUp(rb2.world, 200, 0);
+    ok(Array.isArray(rb2.world.fbRecent['fd:work']),'篡改档单条账目非数组 → 就地重建，不抛错');
+  }
+  // 陌生 workKind（日志条目落款的人已不在 w.agents 里）：借第一池出字，不返回空、不抛错
+  {
+    const w=Sim.makeWorld(4004);
+    const s1=Sim.diaryFallback(w, undefined), s2=Sim.diaryFallback(w, {workKind:'不存在的活'});
+    ok(Sim.DIARY_FB.work.indexOf(s1)>=0 && Sim.DIARY_FB.work.indexOf(s2)>=0,'陌生／缺席住户借第一池出字，绝不返回空');
+  }
+}
 // --- 外围角色与事件表（第 17 单） ---
 {
   const roleOf=Sim.PEER_ROLE, tbl=Sim.PEER_EVENTS;
@@ -247,7 +305,29 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
     ok(chats.length>0 && chats.every(e=>POOL.indexOf(e.topic)>=0),'闲聊条目一律携带池内话题（'+chats.length+' 条）');
     const cnt={}; chats.forEach(e=>{ cnt[e.topic]=(cnt[e.topic]||0)+1; });
     const top=Math.max(...Object.values(cnt));
-    ok(top<=Math.ceil(chats.length/POOL.length)+2,'无话题霸屏：最多一类 '+top+' 次 / 共 '+chats.length+' 次');
+    // —— 第 27 单换量尺（本单撞出来的既有缺陷，缘由与实测写在这里备查）——
+    // 旧判据是 `top <= ceil(n/9)+2`，量的是「最高频一类的次数」＝**极值量**。第 24 单已立在案：
+    // 极值量的尾巴按极值分布走，拿它当闸必然要么恒绿要么随机翻红，治法是**换成和式量**。
+    // 实测（1500 颗种子，见交付件第五章）：**旧判据在改动前的老代码上就已经 4.00% 击穿**
+    // （60/1500），本单换了 rng 流之后 4.33%（65/1500）——两者分布几乎重合
+    // （最高频一类均值 7.75 vs 7.78），故这不是本单造成的，是这条闸本来就红，只是种子 2027 没抽中。
+    // 另一条修法「改数全 30 天而不只数日志墙尾窗」实测更红（4000 颗 55.35% 击穿：n 大了，+2 这点余量根本不跟着涨），已弃。
+    // 换用的和式量＝话题分布的**熵**（`PURE.entropy`，sim30 第②项本来就在用这把尺子）。
+    // 闸值 2.90 比特不是按 ±5σ 定的——熵在这个窗口上有上界 log2(9)=3.1699、左偏，最小值落 −9.9σ，
+    // ±5σ 对它同样不成立（与第 24 单 GAP_MAX 同一个毛病）。闸值由**两头夹**定：
+    //   本体侧：4000 颗实测 均值 3.1395／sd 0.0173／**最小 2.9670**，取 2.90 ⇒ 零击穿、余量 0.067 比特；
+    //   判红侧：人为把 25% 的闲聊塞给同一类 ⇒ 熵均值 2.826，判红 92%；塞 30% ⇒ 2.711，判红 100%。
+    // 窗口仍取日志墙尾窗（w.log 封 400 条）而不是全 30 天：这条闸问的就是「玩家眼前这一屏会不会被一类霸住」。
+    const TOPIC_ENT_MIN=2.90;   // 可调：话题分布熵下限（比特）
+    const ent=PURE.entropy(cnt);
+    ok(ent>=TOPIC_ENT_MIN,'无话题霸屏：话题熵 '+ent.toFixed(4)+' ≥ '+TOPIC_ENT_MIN.toFixed(2)
+       +' 比特（满值 '+Math.log2(POOL.length).toFixed(4)+'；最高频一类 '+top+' 次 / 共 '+chats.length+' 次）');
+    // 判红能力就地自证：把 25% 的条目改派给同一类，这条闸必须变红（否则等于没立）
+    {
+      const c2={}; let moved=0; const want=Math.round(chats.length*0.25);
+      chats.forEach(e=>{ let t=e.topic; if(moved<want && t!==POOL[0]){ t=POOL[0]; moved++; } c2[t]=(c2[t]||0)+1; });
+      ok(PURE.entropy(c2)<TOPIC_ENT_MIN,'同一条闸对「一类占掉 25%」判红（人为对照熵 '+PURE.entropy(c2).toFixed(4)+'）');
+    }
     // 旧档（无 chatTopics）兼容
     const d=JSON.parse(Sim.serialize(w,null));
     ok(Array.isArray(d.world.chatTopics),'chatTopics 随存档序列化');
@@ -400,6 +480,49 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
     ok(withT.indexOf('不许跑到别的类去')>=0,'对白提示词把话题定为硬边界');
     const noT=build({label:'客厅'}, {}, card, A, B);
     ok(noT.indexOf('本次话题由系统指定')<0,'旧档条目无 topic → 整句省略，回落 v28 行为');
+  }
+  // —— 第 27 单·兜底文案自己也得守规矩 ——
+  // 缘由：第 18／19 单立的语气词起手闸（leadsWithInterj）本来只查**模型产出**。
+  // 兜底文案是写死的，闸压根碰不到它；模板若自己带语气词起手，等于在闸旁边开了个后门，
+  // 而离线期间玩家看到的**全部**是这些模板。故此处把同一把闸原样架到三个兜底池上。
+  {
+    const KINDS=['work','clerk','trade','write'];
+    const NAMES=['顾云帆','沈小满','陆知秋','白一鸣'];
+    const pools=[['日记',Sim.DIARY_FB],['闲聊·开口',Sim.CHAT_FB_OPEN],['闲聊·接话',Sim.CHAT_FB_REPLY]];
+    for(const [label,P] of pools){
+      ok(KINDS.every(k=>Array.isArray(P[k]) && P[k].length>0),label+'池按 workKind 四人齐备（照 WORK_THOUGHTS 先例挂表）');
+      const all=[].concat(...KINDS.map(k=>P[k]||[]));
+      ok(all.every(s=>typeof s==='string' && s.trim().length>0),label+'池每条均为非空字符串（'+all.length+' 条）');
+      ok(new Set(all).size===all.length,label+'池四人之间零撞句（'+all.length+' 条全不相同）');
+      const lead=all.filter(s=>V.leadsWithInterj(s));
+      ok(lead.length===0,label+'池零语气词起手（与模型产出同一把闸）'+(lead.length?'：'+lead[0]:''));
+      ok(all.every(s=>s.indexOf('✨')<0 && !/[A-Za-z]/.test(s)),label+'池无 ✨ 标与英文字母');
+    }
+    // 日记专属：第 18 单五条铁律里**机械可判**的四条，逐条扫全池
+    {
+      const all=[].concat(...KINDS.map(k=>Sim.DIARY_FB[k]));
+      const hit=(re)=>all.filter(s=>re.test(s));
+      ok(hit(/？/).length===0,'日记兜底池零问号（铁律③ 不得提问）'+(hit(/？/)[0]||''));
+      ok(hit(/[你您咱]/).length===0,'日记兜底池零第二人称（铁律② 你／你们／您／咱）'+(hit(/[你您咱]/)[0]||''));
+      ok(hit(/[「」『』“”"]/).length===0,'日记兜底池零引号（铁律⑤ 不得出现对白结构）'+(hit(/[「」『』“”"]/)[0]||''));
+      const nm=hit(new RegExp(NAMES.join('|')));
+      ok(nm.length===0,'日记兜底池不称呼任何人（铁律② 后半）'+(nm[0]||''));
+      ok(hit(/^（[\s\S]*）$/).length===0,'日记兜底池无「整条包在括号里」的旁白外框');
+      const ph=hit(/没写下去|写不下去|合上了本子|没什么好写|一片空白/);
+      ok(ph.length===0,'日记兜底池零占位符腔（本单要根除的正是「这里本该有内容」那种话）'+(ph[0]||''));
+      // 逐人容量与去重
+      for(let i=0;i<KINDS.length;i++){
+        const p=Sim.DIARY_FB[KINDS[i]];
+        ok(new Set(p).size===p.length,NAMES[i]+'的日记池内零重复（'+p.length+' 条）');
+        ok(p.length>Sim.DIARY_FB_RECENT,
+           NAMES[i]+'的日记池容量 '+p.length+' > 记账窗口 '+Sim.DIARY_FB_RECENT+'（否则无候选可派）');
+      }
+    }
+    // 闲聊专属：容量须 ≥ 单日抽取峰值（第 13 单既有口径），实测见 tools/fallback-pool/capacity.cjs
+    for(let i=0;i<KINDS.length;i++){
+      ok(Sim.CHAT_FB_OPEN[KINDS[i]].length>=10,NAMES[i]+'的开口池 '+Sim.CHAT_FB_OPEN[KINDS[i]].length+' 条 ≥ 单日开口峰值上界 10');
+      ok(Sim.CHAT_FB_REPLY[KINDS[i]].length>=8,NAMES[i]+'的接话池 '+Sim.CHAT_FB_REPLY[KINDS[i]].length+' 条 ≥ 单日接话峰值上界 8');
+    }
   }
 }
 // --- 时间戳全站排查（第 19 单追加一）：按时间排列的列表一律不得只印 HH:MM ---
@@ -1075,7 +1198,10 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
     ok(r.ticks===432 && r.mins===4320 && r.t1-r.t0===4320,'补算 3 天：432 拍 ＝ 4320 模拟分钟');
     const diary=w.log.filter(e=>e.type==='diary');
     ok(diary.length===r.nights*w.agents.length,'每个「夜深了」落满四人日记（'+r.nights+' 夜 × '+w.agents.length+' 人 = '+diary.length+' 条）');
-    ok(diary.every(e=>e.thought===Sim.DIARY_FALLBACK),'补算期间的日记逐条走模板兜底（AI 挂掉时那条路），无一条打 ✨');
+    // 第 27 单：兜底不再是一条常量而是逐人一池，故判据由「逐字等于那条常量」改为「出自该人自己那一池」
+    const kindOf={}; w.agents.forEach(a=>{ kindOf[a.id]=a.workKind; });
+    ok(diary.every(e=>(Sim.DIARY_FB[kindOf[e.agent]]||[]).indexOf(e.thought)>=0),
+       '补算期间的日记逐条走模板兜底，且每条都出自**该住户自己那一池**（AI 挂掉时那条路），无一条打 ✨');
     ok(diary.every(e=>!e.llm && !e.llmPending),'补算日记不留 llmPending ⇒ 回来后 drainLog 也不会去补生成');
     ok(w.log.some(e=>e.type==='sys' && e.text.indexOf('夜深了')>=0),'「🌙 夜深了」那条系统日志照落（回来推剪辑页的判据即由它计数）');
     ok((w.clips||[]).length>clips0,'补算期间剪辑照常结算（'+clips0+' → '+(w.clips||[]).length+' 条）');
@@ -1120,23 +1246,55 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
     ok(nore-before===read,'每条被读到的短信都补了一条「已读不回」（'+(nore-before)+' ／ '+read+' 条）');
     ok(w.log.filter(e=>e.sms==='noreply').every(e=>e.text===Sim.SMS_NOREPLY),'补的那条逐字沿用既有兜底文案');
   }
+  // —— 第 27 单的验收面：离开三天回来，那段日子读起来不许是复读机 ——
+  // 双种子（与 sim30／worldsig 同一组）各离线 3 天，日志墙上的日记与闲聊逐条比对。
+  // 全文实录见 tools/fallback-pool/wall.cjs 与 docs/交付/第27单-兜底文案扩池.md 第一章。
+  for(const seed of [20260803, 424242]){
+    const w=Sim.hydrate(Sim.serialize(Sim.makeWorld(seed),{selected:'a1',lastReflectDay:0,at:1})).world;
+    const r=Sim.catchUp(w, 3*144, 0);
+    const diary=w.log.filter(e=>e.type==='diary'), chat=w.log.filter(e=>e.type==='chat' && e.with);
+    ok(r.nights===3 && diary.length===12,'['+seed+'] 离线 3 天 ＝ 3 个「夜深了」× 4 人 ＝ '+diary.length+' 条日记');
+    ok(new Set(diary.map(e=>e.thought)).size===12,
+       '['+seed+'] 12 条日记**两两不同**（改前：逐字全同 12 条，第 26 单接受项 1）');
+    const kindOf={}; w.agents.forEach(a=>{ kindOf[a.id]=a.workKind; });
+    ok(diary.every(e=>Sim.DIARY_FB[kindOf[e.agent]].indexOf(e.thought)>=0),
+       '['+seed+'] 每条日记都出自该住户自己那一池（四人不共用一池）');
+    ok(chat.length>0 && new Set(chat.map(e=>e.thought)).size===chat.length,
+       '['+seed+'] '+chat.length+' 场闲聊**逐场不同**（改前：4 组模板摊 15–25 场，最高频一组占 40–60%）');
+    // 两句各自出自各自那一池 —— 「开口的那句按开口人抽、接话的那句按接话人抽」
+    let mis=0;
+    for(const e of chat){
+      const m=/^「([\s\S]*?)」「([\s\S]*?)」$/.exec(e.thought||'');
+      if(!m || Sim.CHAT_FB_OPEN[kindOf[e.agent]].indexOf(m[1])<0 || Sim.CHAT_FB_REPLY[kindOf[e.with]].indexOf(m[2])<0) mis++;
+    }
+    ok(mis===0,'['+seed+'] 每场闲聊上句出自开口人的开口池、下句出自接话人的接话池（错位 '+mis+' 场）');
+  }
   // —— 正向审计带出来的一处：关页把在途 AI 调用带走的那些条目，重开时照「AI 挂掉那条路」收尾 ——
   {
     const fn=grab(/function settleOrphanLLM\(w\)\{[\s\S]*?\n\}/,'settleOrphanLLM');
-    const S=new Function('DIARY_FALLBACK','SMS_NOREPLY','pushLog','return '+fn)(
-      Sim.DIARY_FALLBACK, Sim.SMS_NOREPLY, (w,e)=>{ e.t=w.t; e.lid=++w.lidSeq; w.log.push(e); });
+    const S=new Function('diaryFallback','SMS_NOREPLY','pushLog','return '+fn)(
+      Sim.diaryFallback, Sim.SMS_NOREPLY, (w,e)=>{ e.t=w.t; e.lid=++w.lidSeq; w.log.push(e); });
     const w=Sim.makeWorld(555);
     // 造一份「关页时正好三条在途」的世界：对白／日记／短信各一条，形态与生产落盘时逐字相同
     w.log.push({type:'chat',agent:'a1',name:'甲',with:'a2',text:'和乙聊了几句',
                 thought:'（聊得正起劲⋯）',fb:'「模板上句」「模板下句」',llmPending:true,lid:++w.lidSeq});
+    // 第 27 单起日记条目也随身带 e.fb；旧档（v33 及以前）落的盘没有，两种形态各造一条
     w.log.push({type:'diary',agent:'a2',name:'乙',text:'睡前日记',thought:'（在台灯下写着⋯）',llmPending:true,lid:++w.lidSeq});
+    w.log.push({type:'diary',agent:'a4',name:'丁',text:'睡前日记',thought:'（在台灯下写着⋯）',
+                fb:'新形态：落条目那一刻就抽好的那条。',llmPending:true,lid:++w.lidSeq});
     w.log.push({type:'player',sms:'read',agent:'a3',name:'丙',msg:'eat',msgLabel:'记得吃饭',
                 text:'读到了你的短信「记得吃饭」',thought:'（对着屏幕想了想⋯）',fb:'（看了眼短信）好好好，这就去解决一顿。',llmPending:true,lid:++w.lidSeq});
     const n=S(w);
-    ok(n===3,'三条在途条目全部收尾（实测 '+n+' 条）');
+    ok(n===4,'四条在途条目全部收尾（实测 '+n+' 条）');
     ok(w.log.every(e=>!e.llmPending),'收尾后全场零「在途」标 ⇒ 占位符不会永远挂在墙上');
     ok(w.log.find(e=>e.type==='chat').thought==='「模板上句」「模板下句」','对白回落到自己的模板兜底 e.fb');
-    ok(w.log.find(e=>e.type==='diary').thought===Sim.DIARY_FALLBACK,'日记回落到 DIARY_FALLBACK（它没有 e.fb，故单独一条分支）');
+    {
+      const dOld=w.log.find(e=>e.type==='diary' && e.agent==='a2');
+      const dNew=w.log.find(e=>e.type==='diary' && e.agent==='a4');
+      ok(dNew.thought==='新形态：落条目那一刻就抽好的那条。','新形态日记回落到自己的 e.fb（与对白／短信同走一条分支）');
+      ok(Sim.DIARY_FB.clerk.indexOf(dOld.thought)>=0,
+         '旧档日记（无 e.fb）就地从该住户自己那一池现抽一条兜住，不留占位符（抽中「'+dOld.thought+'」）');
+    }
     ok(w.log.find(e=>e.sms==='read').thought.indexOf('好好好')>=0,'短信内心独白回落到 e.fb');
     const nr=w.log.filter(e=>e.sms==='noreply');
     ok(nr.length===1 && nr[0].text===Sim.SMS_NOREPLY && nr[0].agent==='a3',
@@ -1149,10 +1307,28 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
           iCatch=src.indexOf('Sim.catchUp(state.world'), iFloor=src.indexOf('const aiFloorLid=');
     ok(iOrph>0 && iOrph<iCatch && iCatch<iFloor,'收尾 → 补算 → 落水位线，三步顺序写死在源码里');
   }
-
-  // 两条兜底文案在全站只有一处定义（改一处即两条路一起改，不会再分叉）
+  // —— 第 27 单：日记兜底那一条必须在**落条目那一刻**就抽好，不许等 AI 失败了再抽 ——
+  // 缘由：抽字要掷骰子，而 AI 回包的时刻由网络说了算。若等失败时再抽，rng 流的位移就跟着网络快慢走，
+  // 同一份存档两次能跑出两个世界。落条目那一刻在主循环里是同步点，抽在那里才是确定性的。
   {
-    ok((src.match(/（写了两行，没写下去，合上了本子。）/g)||[]).length===1,'日记兜底文案全站只有一处字面量');
+    const rf=grab(/async function runReflection\(\)\{[\s\S]*?\n\}/,'runReflection');
+    const iFb=rf.indexOf('fb:diaryFallback(w,ag)'), iAwait=rf.indexOf('await ');
+    ok(iFb>0,'runReflection 落日记条目时就把兜底那条写进 e.fb');
+    ok(iAwait>0 && iFb<iAwait,'e.fb 抽在第一个 await 之前 ⇒ rng 流不随网络快慢漂移');
+    ok(/else \{ e\.thought=e\.fb; \}/.test(rf),'AI 出不来时回落到落条目时就抽好的那一条（与对白／短信同一形态）');
+    ok((rf.match(/diaryFallback\(/g)||[]).length===1,'runReflection 内只有一处取字（不会一晚抽两次）');
+  }
+
+  // 兜底文案在全站只有一处定义（改一处即两条路一起改，不会再分叉）
+  {
+    // 第 27 单：日记兜底由单条常量换成逐人池，判据随之由「那条常量只出现一次」改为
+    // 「池里每一条在全站源码里都只出现一次」——同一条在两处各写一份，正是当年会分叉的那种形状。
+    {
+      const all=[].concat(...Object.keys(Sim.DIARY_FB).map(k=>Sim.DIARY_FB[k]));
+      const dup=all.filter(s=>(src.split(s).length-1)!==1);
+      ok(dup.length===0,'日记兜底池 '+all.length+' 条，每条在全站源码里都只有一处字面量'+(dup.length?'（重复：'+dup[0]+'）':''));
+      ok(!/（写了两行，没写下去，合上了本子。）/.test(src),'旧的单条日记兜底常量已从全站清干净（占位符腔根除）');
+    }
     ok((src.match(/看了你的短信，没有回。/g)||[]).length===1,'短信兜底文案全站只有一处字面量');
     ok((src.match(/1310/g)||[]).length===1 && /const REFLECT_MIN=1310;/.test(src),
        '「夜深了」节点 21:50 已集中为 REFLECT_MIN，主循环与补算两处同引，全站无第二个裸 1310');

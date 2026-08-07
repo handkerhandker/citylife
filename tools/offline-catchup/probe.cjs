@@ -82,15 +82,19 @@ hr('问 3 · 纯世界逻辑推进 N 拍的耗时（零 AI、零渲染）');
 hr('问 4 · 模板兜底路径的形状（闲聊／日记／短信回信）');
 {
   const grab=(re)=>{ const m=SRC.match(re); return m?m[0]:''; };
+  // ⚠ 本节量的两处形态**已由第 27 单改掉**（闲聊 CHAT_LINES → 逐人开口/接话池＋pickV；
+  //   日记单条常量 DIARY_FALLBACK → 逐人池 DIARY_FB＋pickFresh）。本脚本是第 26 单的取证记录，
+  //   刻意保持当时的抽取口径不动（改了就等于把那一单的读数改成事后追认），故这两行现会印「未取到」。
+  //   现行形态与新读数见 tools/fallback-pool/capacity.cjs 与 docs/交付/第27单-兜底文案扩池.md。
   const chatPool=grab(/const CHAT_LINES=\[[\s\S]*?\n\];/);
   const nChat=(chatPool.match(/\n  \[/g)||[]).length;
-  line('  【闲聊】SIM 落条目时就写死模板：decide() 第 5 分支 `pick(w,CHAT_LINES)`');
-  line('    · 池容量：'+nChat+' 组对白（每组两句，A/B 各一句）');
+  line('  【闲聊】（第 26 单当时）SIM 落条目时就写死模板：decide() 第 5 分支 `pick(w,CHAT_LINES)`');
+  line('    · 池容量：'+(chatPool?nChat+' 组对白（每组两句，A/B 各一句）':'（未取到 —— 已由第 27 单换成逐人开口/接话池）'));
   line('    · 抽法：`pick`（等概率），**不是 `pickV`** —— 故无「当日去重」，同一天可反复抽中同一组');
   line('    · AI 在线时由 DOM 层 enhanceChat 事后覆写 e.thought；AI 挂掉则这句模板留在墙上');
   const dfb=(grab(/e\.thought='（写了两行[^']*'/)||'').replace(/^e\.thought=/,'');
   line('  【日记】只由 DOM 层 runReflection() 产出（SIM 侧压根不写日记）');
-  line('    · 兜底文案：'+(dfb||'（未取到）')+'  ← **单条常量，没有池**');
+  line('    · 兜底文案：'+(dfb||'（未取到 —— 已由第 27 单换成逐人池 DIARY_FB）')+'  ← **单条常量，没有池**');
   line('    · 触发：主循环 loop() 里 `d!==state.lastReflectDay && PURE.minuteOfDay(w.t)>=1310`（21:50）');
   const react=grab(/const REACT=\{[\s\S]*?\n\};/);
   line('  【短信】两段各有各的兜底：');
