@@ -9,6 +9,12 @@ jobs:
     steps:
       - name: 检出代码
         uses: actions/checkout@v4
+        with:
+          # 第 28 单：涨号铁律门禁的第二层要求 HEAD 与 main 的分叉点、
+          # 以及反向自查要拿的六个历史 merge 提交都在本地可达。
+          # actions/checkout 默认 fetch-depth: 1（浅克隆）时两者都取不到，
+          # 那道闸会退化成「只剩第一层 + 合成场景」并如实印 SKIP，不会静默变绿。
+          fetch-depth: 0
       - name: 安装 Node 20
         uses: actions/setup-node@v4
         with:
@@ -32,6 +38,11 @@ jobs:
         run: |
           cp functions/relay.js relay-check.mjs
           node --check relay-check.mjs
+      - name: 涨号铁律门禁（第 28 单）
+        env:
+          # PR 事件下把基线 sha 直接交给门禁；push: main 时为空，门禁自行退回 merge-base。
+          VERSIONGATE_BASE: ${{ github.event.pull_request.base.sha }}
+        run: node versiongate.js
       - name: SIM 块纯净检查
         run: |
           python3 - <<'EOF'
