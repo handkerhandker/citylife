@@ -1315,7 +1315,9 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
     const iFb=rf.indexOf('fb:diaryFallback(w,ag)'), iAwait=rf.indexOf('await ');
     ok(iFb>0,'runReflection 落日记条目时就把兜底那条写进 e.fb');
     ok(iAwait>0 && iFb<iAwait,'e.fb 抽在第一个 await 之前 ⇒ rng 流不随网络快慢漂移');
-    ok(/else \{ e\.thought=e\.fb; \}/.test(rf),'AI 出不来时回落到落条目时就抽好的那一条（与对白／短信同一形态）');
+    // 第 29 单：落字改由 penReady 排队放行（按时间戳），故判据由「直接赋 e.thought」换成
+    // 「取不到 AI 文字时把 e.fb 交给 penReady」——回落到 e.fb 这件事本身一字未改。
+    ok(/penReady\(e, *txt\|\|e\.fb/.test(rf),'AI 出不来时回落到落条目时就抽好的那一条（与对白／短信同一形态）');
     ok((rf.match(/diaryFallback\(/g)||[]).length===1,'runReflection 内只有一处取字（不会一晚抽两次）');
   }
 
@@ -1343,6 +1345,184 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
        '横幅逐字标明覆盖了多久、跨了几个夜晚');
     ok(/catchup\.capped \?/.test(ui) && /没有补算，那段日子没有发生/.test(ui),
        '触封顶时如实告知玩家「跳过了多少、那段日子没有发生」');
+  }
+
+  /* ---------- 第 29 单：落字顺序与占位符收尾（三条闸 ＋ 逐条反向自查） ----------------
+     被验的是生产源码原文：pen 机器整块抠出来，用虚拟时钟跑（真实时间零消耗）。
+     pen 机器自己不设 setTimeout——死线由主循环每帧调 penSweep(now) 来判，故这里只需
+     一个虚拟 NOW 和一个「每 16ms 一帧」的推进器，与生产 loop() 里的调用位置逐字对应。 */
+  {
+    const PEN_SRC=[
+      grab(/const PEN_TTL_MS=\d+;/,'PEN_TTL_MS'),
+      grab(/const penReg=\[\];[^\n]*\n/,'penReg'),
+      grab(/function penNow\(\)\{[^\n]*\n/,'penNow'),
+      grab(/function penCmp\(a,b\)\{[^\n]*\n/,'penCmp'),
+      grab(/function penAdd\(e, fbAfter\)\{[\s\S]*?\n\}/,'penAdd'),
+      grab(/function penReady\(e, text, llm, after\)\{[\s\S]*?\n\}/,'penReady'),
+      grab(/function penFlush\(\)\{[\s\S]*?\n\}/,'penFlush'),
+      grab(/function penSweep\(nowMs\)\{[\s\S]*?\n\}/,'penSweep'),
+    ].join('\n');
+    // mut：把生产原文改成病态写法，供反向自查用；不传即跑生产原文
+    function penLab(mut){
+      let NOW=0; const wall=[];
+      const code=(mut?mut(PEN_SRC):PEN_SRC)
+        +'\nreturn {penAdd,penReady,penSweep,TTL:PEN_TTL_MS,left:()=>penReg.length};';
+      const env={ performance:{now:()=>NOW}, Date:{now:()=>NOW}, isFinite,
+                  patchLid(e){ wall.push({t:e.t, lid:e.lid, at:NOW, thought:e.thought}); } };
+      const M=new Function(...Object.keys(env), code)(...Object.keys(env).map(k=>env[k]));
+      // 虚拟主循环：每 16ms 一帧调 penSweep(now)（生产里这一句在 loop() 的 drainLog 之后）
+      const adv=ms=>{ const end=NOW+ms; while(NOW<end){ NOW=Math.min(NOW+16,end); M.penSweep(NOW); } };
+      return {M, wall, adv, now:()=>NOW};
+    }
+    // 一屏对白，时间戳照决策者实测：D110 19:50 起每 20 分钟一条
+    const PH='（聊得正起劲⋯）';
+    const mkE=i=>({type:'chat',agent:'a1',name:'甲',with:'a2',lid:i,
+                   t:109*1440+19*60+50+(i-1)*20, text:'和乙聊了几句',
+                   thought:PH, fb:'「模板上句#'+i+'」「模板下句」', llmPending:true});
+    const inOrder=wall=>wall.every((x,i)=>i===0 || x.t>wall[i-1].t);
+
+    // 情形一：乱序回包（4→2→3→1 的顺序回来）—— 病症一的形态
+    function runShuffled(mut){
+      const L=penLab(mut), es=[1,2,3,4].map(mkE);
+      es.forEach(e=>L.M.penAdd(e));
+      const mid=[];
+      for(const k of [3,1,2]){ L.M.penReady(es[k],'AI第'+(k+1)+'句',true); L.adv(100); mid.push(L.wall.length); }
+      L.M.penReady(es[0],'AI第1句',true); L.adv(100);
+      return {L, es, midWall:mid};
+    }
+    // 情形二：请求永不返回 —— 一次 penReady 都不调，只让时钟走过死线
+    function runNever(mut){
+      const L=penLab(mut), es=[1,2,3,4].map(mkE);
+      es.forEach(e=>L.M.penAdd(e));
+      L.adv(60800+200);   // 走满改前实测的协议上界（60800ms），看这段时间里到底收没收尾
+      return {L, es};
+    }
+    // 情形三：兜底落定之后回包才到 —— 迟到的那一包
+    function runLate(mut){
+      const L=penLab(mut), e=mkE(1);
+      L.M.penAdd(e); L.adv(L.M.TTL+200);
+      const settled=e.thought, wallN=L.wall.length;
+      const won=L.M.penReady(e,'迟到的 AI 文案：这句不许上墙',true);
+      L.adv(100);
+      return {L, e, settled, wallN, won};
+    }
+
+    // —— 闸一 · 落字顺序：乱序回包，上墙顺序仍须与时间戳一致 ——
+    {
+      const {L,es,midWall}=runShuffled();
+      ok(midWall.every(n=>n===0),
+         '闸一：第 1 条没回来之前，后面三条即便早已回包也一个字都不贴（按住不贴，实测中间态上墙 '+midWall.join('/')+' 条）');
+      ok(L.wall.length===4 && inOrder(L.wall),
+         '闸一：乱序回包（4→2→3→1）下，上墙顺序仍与时间戳一致 · '+L.wall.map(x=>PURE.fmtStamp(x.t)).join(' → '));
+      ok(es.every(e=>!e.llmPending) && L.M.left()===0,'闸一：四条全部落定，登记表清空');
+    }
+    // —— 闸二 · 占位符不长挂：请求永不返回，死线内必须被兜底句取代 ——
+    {
+      const {L,es}=runNever();
+      ok(L.wall.length===4,'闸二：请求永不返回时，四条仍在死线到点后全部落定（实测上墙 '+L.wall.length+' 条）');
+      const last=L.wall.length?L.wall[L.wall.length-1].at:Infinity;
+      ok(last<=L.M.TTL+16,'闸二：最后一条落定于 '+last+'ms ≤ 死线 '+L.M.TTL+'ms（+一帧）—— 改前实测 60800ms');
+      ok(es.every(e=>e.thought===e.fb),'闸二：全部换成该条自带的兜底句 e.fb（不掷骰子，故世界指纹不动）');
+      ok(!L.wall.some(x=>String(x.thought).indexOf(PH)>=0) && !es.some(e=>String(e.thought).indexOf(PH)>=0),
+         '闸二：墙上与条目里都不残留任何占位符文本');
+      ok(es.every(e=>!e.llmPending),'闸二：零「在途」标残留 ⇒ 不会有第二种形态的长挂');
+    }
+    // —— 闸三 · 迟到回包不覆写：已被兜底句落定之后回来的，整包丢弃 ——
+    {
+      const {L,e,settled,wallN,won}=runLate();
+      ok(won===false,'闸三：兜底落定后才到的回包被 penReady 拒收（返回 false）');
+      ok(e.thought===settled && e.thought===e.fb,'闸三：字不变 —— 仍是兜底句「'+e.thought+'」，玩家不会看见字自己变了');
+      ok(L.wall.length===wallN,'闸三：不产生第二次上墙（改前那条会再 patchLid 一次，字当场变掉）');
+      ok(!e.llm,'闸三：迟到的包也不许把这条追认成 AI 文案（e.llm 保持假）');
+    }
+    // —— 闸四 · 反向自查：三条闸各自复演病态写法，必须当场判红；再喂合规写法，必须不误伤 ——
+    // 一条恒绿的闸等于没立（照走位三铁律、第 23／24／27 单先例）。
+    {
+      // 病态一：penFlush 改回「谁 ready 谁就贴」（＝改前那条路，不按队头连续放行）
+      const badOrder=c=>c.replace(/function penFlush\(\)\{[\s\S]*?\n\}/,
+        'function penFlush(){ for(let i=penReg.length-1;i>=0;i--){ const it=penReg[i]; if(!it.ready) continue;'
+        +' penReg.splice(i,1); const e=it.e; if(it.text){ e.thought=it.text; if(it.llm) e.llm=true; }'
+        +' e.llmPending=false; patchLid(e); if(it.after){ try{ it.after(); }catch(_){} } } }');
+      const B1=runShuffled(badOrder);
+      ok(!(B1.L.wall.length===4 && inOrder(B1.L.wall)),
+         '反向·闸一：把落字改回「谁先回来谁先贴」，闸当场判红 · 实测上墙序 '+B1.L.wall.map(x=>PURE.fmtStamp(x.t)).join(' → '));
+      ok(!B1.midWall.every(n=>n===0),'反向·闸一：病态写法下「按住不贴」也当场失守（中间态已上墙 '+B1.midWall.join('/')+' 条）');
+
+      // 病态二：penSweep 空转（＝没有收尾时限，占位符永远挂着）
+      const badSweep=c=>c.replace(/function penSweep\(nowMs\)\{[\s\S]*?\n\}/,'function penSweep(nowMs){ }');
+      const B2=runNever(badSweep);
+      ok(B2.L.wall.length===0,'反向·闸二：拿掉收尾死线后，走满 60800ms 一条都没落定（长挂复现）');
+      ok(B2.es.every(e=>e.thought===PH && e.llmPending),
+         '反向·闸二：四条仍逐字挂着「'+PH+'」且在途标未清 —— 闸当场判红');
+
+      // 病态三：penReady 不认「已落定」，照写不误（＝迟到回包覆写）
+      const badLate=c=>c.replace(/function penReady\(e, text, llm, after\)\{[\s\S]*?\n\}/,
+        'function penReady(e, text, llm, after){ if(typeof text==="string"&&text){ e.thought=text; if(llm) e.llm=true; }'
+        +' const it=penReg.find(x=>x.e===e); if(it){ it.text=text; it.llm=!!llm; it.after=after||null; it.ready=true; penFlush(); }'
+        +' return true; }');
+      const B3=runLate(badLate);
+      ok(B3.won===true && B3.e.thought!==B3.settled,
+         '反向·闸三：让迟到回包照写不误，字当场被覆写成「'+B3.e.thought+'」—— 闸当场判红');
+
+      // 不误伤：同样三段场景喂生产原文（合规写法），三条闸必须全绿，不许把对的判成错的
+      const G1=runShuffled(), G2=runNever(), G3=runLate();
+      ok(G1.L.wall.length===4 && inOrder(G1.L.wall),'反向不误伤·闸一：合规写法下顺序判据照常放行');
+      ok(G2.L.wall.length===4 && G2.es.every(e=>e.thought===e.fb),'反向不误伤·闸二：合规写法下收尾判据照常放行');
+      ok(G3.won===false && G3.e.thought===G3.settled,'反向不误伤·闸三：合规写法下不覆写判据照常放行');
+    }
+    // —— 结构侧：三个挂点必须都登记、都被 try/finally 罩住，死线必须在主循环里判 ——
+    {
+      for(const [name,re] of [['enhanceMessage',/async function enhanceMessage\(e\)\{[\s\S]*?\n\}/],
+                              ['enhanceChat',   /async function enhanceChat\(e\)\{[\s\S]*?\n\}/],
+                              ['runReflection', /async function runReflection\(\)\{[\s\S]*?\n\}/]]){
+        const f=grab(re,name);
+        ok(/penAdd\(/.test(f),name+'：占位符挂上墙的同时就登记进 penReg（等回包或等死线）');
+        ok(/\}catch\(_\)\{ j=null; \}[\s\S]*?finally\{/.test(f),
+           name+'：try/catch/finally 罩住整段 —— 报错也走收尾，llmPending 卡不住（改前三处都没有）');
+        ok(/penReady\(/.test(f) && !/\n *patchLid\(e\);/.test(f),
+           name+'：落字一律经 penReady 排队放行，函数体内不再自己 patchLid（自己贴就绕过了顺序闸）');
+      }
+      const lp=grab(/function loop\(now\)\{[\s\S]*?\n\}/,'loop');
+      ok(/drainLog\(\);\n *penSweep\(now\);/.test(lp),
+         '死线在主循环里按真实时钟判（紧跟 drainLog）—— 不用 setTimeout：后台标签页会把它节流到分钟级');
+      ok(!/setTimeout\([^)]*penSweep|setInterval\([^)]*penSweep/.test(src),'penSweep 全站没有第二个定时器入口（唯一驱动就是主循环）');
+      const sw=grab(/function penSweep\(nowMs\)\{[\s\S]*?\n\}/,'penSweep');
+      ok(/if\(!penReg\.length\) return;/.test(sw),'penSweep 登记表为空即刻返回 —— 不阻塞主循环与渲染');
+      ok(!/diaryFallback\(|pickFresh\(|pickV\(|w\.rng\(/.test(PEN_SRC),
+         'pen 整块一次骰子都不掷（兜底只认落条目那一刻抽好的 e.fb）⇒ rng 流不随网络快慢漂移，世界指纹逐字节不变');
+      ok(!/callClaude\(|fetch\(/.test(PEN_SRC),'pen 整块零 AI 调用入口 ⇒ 第 26 单「离线期间零调用」断言不受影响');
+    }
+    // —— 占位符共三种，每一种都必须与 e.fb 在同一句里成对写出 ——
+    // 死线收尾只认 e.fb（掷骰子会让 rng 流随网络漂移），故「挂上占位符却没留 e.fb」＝ 收不了尾。
+    // 把这件事钉成结构断言，日后有人加第四种占位符而忘了配 e.fb，这里当场判红。
+    {
+      const PHS=['（对着屏幕想了想⋯）','（聊得正起劲⋯）','（在台灯下写着⋯）'];
+      ok(/e\.fb=e\.thought; e\.thought='（对着屏幕想了想⋯）';/.test(src),'短信占位符与 e.fb 同句写出（挂点：drainLog → enhanceMessage）');
+      ok(/e\.fb=e\.thought; e\.thought='（聊得正起劲⋯）';/.test(src),'对白占位符与 e.fb 同句写出（挂点：drainLog → enhanceChat）');
+      ok(/thought:'（在台灯下写着⋯）',\s*\n\s*fb:diaryFallback\(w,ag\)/.test(src),'日记占位符与 e.fb 同一对象字面量写出（挂点：runReflection）');
+      // 全站占位符字面量只该出现在「挂上去」和「收尾时确认清干净」两类地方，不许有第三个野生挂点
+      for(const p of PHS){
+        const n=(src.split(p).length-1);
+        ok(n<=3,'占位符「'+p+'」全站字面量 '+n+' 处（挂点 1 ＋ 收尾断言，无野生第四处）');
+      }
+      ok(PHS.every(p=>src.indexOf(p)>=0),'三种占位符全部在册（第 5 问的清单就是这三条，逐一有兜底路径）');
+    }
+    // —— 篡改档不抛错：t／lid 畸形的条目进了登记表，既不许抛、也不许把队头堵死 ——
+    {
+      const L=penLab();
+      const bad={type:'chat',agent:'a1',name:'甲',with:'a2',lid:'x"]',t:NaN,
+                 thought:'（聊得正起劲⋯）',fb:'「兜底上」「兜底下」',llmPending:true};
+      const good={type:'chat',agent:'a1',name:'甲',with:'a2',lid:9,t:109*1440+20*60,
+                  thought:'（聊得正起劲⋯）',fb:'「正常上」「正常下」',llmPending:true};
+      let threw='';
+      try{ L.M.penAdd(bad); L.M.penAdd(good); L.adv(L.M.TTL+200); }
+      catch(err){ threw=String((err&&err.message)||err); }
+      ok(!threw,'畸形 t／lid 的条目进登记表不抛错'+(threw?('（实测抛了：'+threw+'）'):''));
+      ok(!bad.llmPending && !good.llmPending,'畸形条目不会把队头堵死 —— 两条都在死线内落定');
+      ok(bad.thought==='「兜底上」「兜底下」' && good.thought==='「正常上」「正常下」',
+         '畸形条目照样换成自己的兜底句，墙上不残留占位符');
+      ok(L.M.left()===0,'收尾后登记表清空（畸形条目不会永久占坑）');
+    }
   }
 }
 
