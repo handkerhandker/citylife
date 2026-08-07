@@ -1,0 +1,3 @@
+# 第 28 单：涨号铁律拿这份文件的字节做判据，行尾必须与 blob 逐字节一致，
+# 否则 core.autocrlf 会让工作树哈希与 git blob 哈希对不上，门禁对零改动的单也会红。
+city-life-framework.html -text
