@@ -1203,13 +1203,18 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
     ok(diary.every(e=>(Sim.DIARY_FB[kindOf[e.agent]]||[]).indexOf(e.thought)>=0),
        '补算期间的日记逐条走模板兜底，且每条都出自**该住户自己那一池**（AI 挂掉时那条路），无一条打 ✨');
     ok(diary.every(e=>!e.llm && !e.llmPending),'补算日记不留 llmPending ⇒ 回来后 drainLog 也不会去补生成');
-    ok(w.log.some(e=>e.type==='sys' && e.text.indexOf('夜深了')>=0),'「🌙 夜深了」那条系统日志照落（回来推剪辑页的判据即由它计数）');
+    // 第 30 单更正括注：这条日志计的是 catchup.nights，而 nights **不再**是回城推送的判据
+    // （21:50 与剪辑日切 04:00 不是同一个节点，与在一起造出了死区；见「第 30 单」段）。
+    // 它仍是「离开期间日志墙上不许整整几天没有夜」的判据，故这条断言照留。
+    ok(w.log.some(e=>e.type==='sys' && e.text.indexOf('夜深了')>=0),'「🌙 夜深了」那条系统日志照落（离开期间的日志墙不许整整几天没有夜）');
     ok((w.clips||[]).length>clips0,'补算期间剪辑照常结算（'+clips0+' → '+(w.clips||[]).length+' 条）');
     ok(r.clipsNew===true && r.clipTop1>r.clipTop0,'补算 3 天 ⇒ clipsNew 为真（最新剪辑日 '+r.clipTop0+' → '+r.clipTop1+'）');
     const s2=Sim.serialize(w,{selected:'a1',lastReflectDay:r.lastReflectDay,at:1});
     ok(!!Sim.hydrate(s2),'补算后的世界仍可序列化／反序列化');
   }
-  // —— 决策者裁定三：判据＝跨过夜 且 真出了新卡。「出没出新卡」只能问最新剪辑日，不能问条数 ——
+  // —— 「出没出新卡」只能问最新剪辑日，不能问条数（第 26 单立，仍成立）——
+  // 第 30 单更正：判据里「跨过夜」那一半已去掉，只剩「真出了新卡」。下面 ① 那一档
+  // （有夜、无新卡）改后照旧不摆卡，走弹窗的「乙·没有新卡」形态，故这组构造原样保留。
   {
     // ① 跨过「夜深了」但没跨过 04:00 结算点 ⇒ 有夜、无新卡（＝ 实机 B-away-60min 那一档）
     const w=Sim.makeWorld(4242);
@@ -1219,7 +1224,7 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
     const r=Sim.catchUp(w, 6, 0);                   // 再推 1 小时 ⇒ D1 22:40：跨过 21:50，离次日 04:00 还远
     ok(r.nights===1,'构造成立：这一段确实跨过 1 个「夜深了」（实测 '+r.nights+' 个）');
     ok(r.clipsNew===false && Sim.clipTopDay(w)===before,
-       '跨过夜但没跨 04:00 ⇒ clipsNew 为假（最新剪辑日仍是 '+before+'）—— 这一档不推剪辑页');
+       '跨过夜但没跨 04:00 ⇒ clipsNew 为假（最新剪辑日仍是 '+before+'）—— 这一档没有卡可摆，走弹窗的「乙·没有新卡」形态');
     // ② CLIP_KEEP 饱和后，「条数增量」这条判据会永远失效，故判据只能取最新剪辑日
     const w2=Sim.makeWorld(77);
     Sim.catchUp(w2, (Sim.CLIP_KEEP+3)*144, 0);      // 先跑满保留上限，把 w.clips 顶到 CLIP_KEEP
@@ -1335,14 +1340,24 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
     ok((src.match(/1310/g)||[]).length===1 && /const REFLECT_MIN=1310;/.test(src),
        '「夜深了」节点 21:50 已集中为 REFLECT_MIN，主循环与补算两处同引，全站无第二个裸 1310');
   }
-  // 回来第一眼：跨过夜才推剪辑页，没跨过就不打扰
+  // 回来第一眼：剪辑页那条横幅（第 26 单立；第 30 单换判据、改一句措辞，并把「推剪辑页」换成弹窗）
   {
     const ui=src.slice(src.indexOf('/* ---------- 启动 ---------- */'));
-    ok(/if\(catchup && catchup\.nights>0 && catchup\.clipsNew\)\{[\s\S]*?setScreen\('clip'\);/.test(ui),
-       '跨过至少一个「夜深了」**且**真出了新剪辑 ⇒ 直接把剪辑页推到玩家面前（决策者裁定三）');
-    ok(/\}else\{\n  setScreen\('live'\);/.test(ui),'两条不同时满足 ⇒ 照旧进现场页，不打扰（没有新卡就别推）');
-    ok(/catchup\.nights\+' 个夜晚/.test(ui) && /fmtAgo\(catchup\.mins\*60000\)/.test(ui),
-       '横幅逐字标明覆盖了多久、跨了几个夜晚');
+    // 第 30 单：原判据 `nights>0 && clipsNew` 的前一半是死区的来源（21:50 与 04:00 不是同一个节点），
+    // 已去掉。这三条断言随之改判「新判据在位」＋「旧判据不许回潮」。
+    ok(/if\(catchup && catchup\.newClips\.length\)\{/.test(ui),
+       '横幅判据＝补算期间真出了新卡（newClips 非空），与弹窗同一个数');
+    // 照第 21 单先例先剥注释再判：本单的注释里成句写着旧判据的原文（讲它为什么被去掉），
+    // 不剥的话这条断言会被自己的说明文字命中。剥完再判，判的才是真在跑的那一句。
+    const strip1=x=>x.replace(/\/\*[\s\S]*?\*\//g,'').replace(/(^|[^:'"])\/\/.*$/gm,'$1');
+    const bare=strip1(src);
+    ok(/if\(catchup && catchup\.newClips\.length\)\{/.test(bare),'剥注释后代码仍完整（剥过头会让下一条变成空转）');
+    ok(!/catchup\.nights>0\s*&&\s*catchup\.clipsNew/.test(bare),
+       '旧判据 `nights>0 && clipsNew` 已从代码里清干净（它在 480 格全扫里只做了「把 49 格该推的判成不推」这一件事）');
+    ok(!/setScreen\('clip'\);/.test(ui.slice(0,ui.indexOf('openBackPopup'))) && /\nsetScreen\('live'\);/.test(ui),
+       '开机一律进现场页 —— 不再把人扔到剪辑页，交代改由弹窗给（第 30 单，决策者原话）');
+    ok(/结算了 '\+catchup\.newClips\.length\+' 天/.test(ui) && /fmtAgo\(catchup\.mins\*60000\)/.test(ui),
+       '横幅逐字标明覆盖了多久、结算了几天（原文「跨过 N 个夜晚」会在死区那一类印出「跨过 0 个夜晚」，故换成天数）');
     ok(/catchup\.capped \?/.test(ui) && /没有补算，那段日子没有发生/.test(ui),
        '触封顶时如实告知玩家「跳过了多少、那段日子没有发生」');
   }
@@ -1522,6 +1537,359 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
       ok(bad.thought==='「兜底上」「兜底下」' && good.thought==='「正常上」「正常下」',
          '畸形条目照样换成自己的兜底句，墙上不残留占位符');
       ok(L.M.left()===0,'收尾后登记表清空（畸形条目不会永久占坑）');
+    }
+  }
+}
+
+// ═══ 第 30 单·回城弹窗 ═══════════════════════════════════════════════════
+/* 被验的是**生产源码原文**：BACKPOP 整块连同它用到的 esc／fmtAgo／dlgHead／clipCard／clipQLine
+   一并从 html 里抠出来，在一个只够它们跑起来的假 DOM 上跑（照第 29 单 pen 机器的先例）。
+   假 DOM 只做四件事：createElement 出一个能记住自己文本的节点、appendChild、innerHTML／
+   textContent 存取、以及 openBackPopup 真正查的那三个选择器。节点能把自己摊平成一串文本，
+   「卡的内容在不在弹窗里」这句话才有得判。
+
+   四条闸（任务书「必须补闸」逐条）：
+     闸一 · 该弹时必弹：复演决策者那一次（跨夜、有新卡），断言弹窗出现**且卡的内容在里面**；
+     闸二 · 不该弹时不弹：离开时长低于门槛（＝第 26 单那一个，不是新立的），断言不弹；
+     闸三 · 零 AI 零骰子：源码侧（无调用点）＋运行侧（可计数，出网／rng 一次都不许）双判；
+     闸四 · 反向自查：三条闸各自复演病态写法，断言当场判红；再喂生产原文，断言不误伤。 */
+{
+  const fs=require('fs'), path=require('path');
+  const src=fs.readFileSync(path.resolve(__dirname,'city-life-framework.html'),'utf8');
+  const grab=(re,name)=>{ const m=src.match(re); if(!m){ ok(false,'源码抽取失败:'+name); return ''; } return m[0]; };
+  const BACK_SRC=grab(/\/\*BACKPOP-START\*\/[\s\S]*?\/\*BACKPOP-END\*\//,'BACKPOP 段');
+  const DEPS=[
+    grab(/const esc=s=>[^\n]*\n/,'esc'),
+    grab(/function fmtAgo\(ms\)\{[\s\S]*?\n\}/,'fmtAgo'),
+    grab(/function dlgHead\(title\)\{[\s\S]*?\n\}/,'dlgHead'),
+    grab(/function clipQLine\(q\)\{[\s\S]*?\n\}/,'clipQLine'),
+    grab(/function clipCard\(c\)\{[\s\S]*?\n\}/,'clipCard'),
+  ].join('\n');
+
+  /* 造场景：把世界推到 D<day> <min>，再按 plan 补算，最后照**开机段的原样**装配 catchup 对象。
+     装配口径与生产是否一致，另由下面「结构侧」的源码断言钉住——两边都立，闸才咬得住。 */
+  function scene(day, min, hours, seed){
+    const w=Sim.makeWorld(seed===undefined?20260803:seed);
+    let rd=PURE.dayOf(w.t)-1;
+    const target=(day-1)*1440+min;
+    while(w.t<target){ Sim.step(w,10); const d=PURE.dayOf(w.t);
+      if(d!==rd && PURE.minuteOfDay(w.t)>=Sim.REFLECT_MIN) rd=d; }
+    const plan=Sim.catchUpPlan(w, hours*3600*1000);
+    if(plan.ticks<=0) return {w, plan, catchup:null};
+    const lid0=w.lidSeq;
+    const r=Sim.catchUp(w, plan.ticks, rd);
+    const catchup=Object.assign({}, plan, r, {lid0:lid0, lid1:w.lidSeq,
+      newClips:(Array.isArray(w.clips)?w.clips:[]).filter(c=>c && isFinite(c.d) && c.d>r.clipTop0)});
+    return {w, plan, catchup};
+  }
+
+  // 假 DOM ＋ 生产原文的运行台。mut：把原文改成病态写法，供闸四用；不传即跑生产原文。
+  function backLab(w, mut){
+    const rec={opened:0, html:'', closed:0, screen:null, focus:0};
+    const flat=n=>(n && n.tag) ? (n._html+n._text+n.children.map(flat).join('')) : '';
+    function mkNode(tag){
+      const n={tag:tag, children:[], _html:'', _text:'', className:'', dataset:{}, hidden:false,
+               appendChild(c){ n.children.push(c); return c; },
+               addEventListener(k,f){ (n._on||(n._on={}))[k]=f; },
+               querySelector(){ return null; }};
+      Object.defineProperty(n,'innerHTML',{get:()=>n._html, set(v){ n._html=String(v); n.children.length=0; }});
+      Object.defineProperty(n,'textContent',{get:()=>n._text, set(v){ n._text=String(v); }});
+      return n;
+    }
+    const host=mkNode('div'), btnClip=mkNode('button'), btnClose=mkNode('button');
+    // 只认 openBackPopup 真会查的那三个选择器；查得到与否照生产 html 的字面判，不替它编。
+    const root={ querySelector(sel){
+      if(sel==='#back-card')        return rec.html.indexOf('id="back-card"')>=0 ? host : null;
+      if(sel==='[data-back-clip]')  return rec.html.indexOf('data-back-clip')>=0 ? btnClip : null;
+      if(sel==='[data-back-close]') return rec.html.indexOf('data-back-close')>=0 ? btnClose : null;
+      return null; } };
+    const env={
+      PURE, Sim, state:{world:w}, document:{createElement:mkNode}, isFinite, String, Array, Math, Object, JSON,
+      $:sel=>sel==='#dialog-root'?root:null,
+      openDialog(html){ rec.opened++; rec.html=String(html); },
+      closeDialog(){ rec.closed++; },
+      setScreen(id){ rec.screen=id; },
+      Focus:{refresh(){ rec.focus++; }},
+    };
+    const code=DEPS+'\n'+(mut?mut(BACK_SRC):BACK_SRC)
+      +'\nreturn {openBackPopup, backSummary, BACK_SUM, BACK_SUM_MAX};';
+    const M=new Function(...Object.keys(env), code)(...Object.keys(env).map(k=>env[k]));
+    // 弹窗全文＝ openDialog 收到的 html ＋ 事后 appendChild 进去的那张卡摊平的文本
+    const text=()=>rec.html+flat(host);
+    return {M, rec, text, host, btnClip, btnClose};
+  }
+
+  // ── 闸一 · 该弹时必弹：复演决策者实测（D111 23:30 关页 → 13 小时后回来）──────────
+  {
+    const S=scene(111, 23*60+30, 13);
+    ok(S.catchup && S.catchup.nights===0 && S.catchup.clipsNew===true,
+       '闸一构造成立：正是那片死区 —— nights='+S.catchup.nights+'（没跨 21:50）而 clipsNew=true（跨了 04:00，真出了卡）');
+    ok(S.catchup.newClips.length===1,'闸一构造成立：补算期间真出了 '+S.catchup.newClips.length+' 张新卡');
+    const card=S.catchup.newClips[S.catchup.newClips.length-1];
+    const L=backLab(S.w);
+    const fired=L.M.openBackPopup(S.catchup);
+    const T=L.text();
+    ok(fired===true && L.rec.opened===1,'闸一：跨夜且有新卡 ⇒ 弹窗**出现**（改前这一档一声不吭，只在日志墙里留一行）');
+    ok(T.indexOf('你不在的时候')>=0 && T.indexOf('城市自己过了')>=0 && T.indexOf('13 小时')>=0,
+       '闸一：弹窗写明了离开多久（13 小时）');
+    ok(T.indexOf(PURE.fmtStamp(S.catchup.t0))>=0 && T.indexOf(PURE.fmtStamp(S.catchup.t1))>=0,
+       '闸一：弹窗写明了起讫（'+PURE.fmtStamp(S.catchup.t0)+' → '+PURE.fmtStamp(S.catchup.t1)+'）');
+    ok(T.indexOf('结算了 <b class="num">1</b> 天')>=0,'闸一：弹窗写明了这段时间结算了几天');
+    // —— 「卡的内容在里面」：谁 / 什么落差 / 为什么挑中他，三样逐条判 ——
+    ok(T.indexOf(card.name)>=0,'闸一·谁：卡上那个人的名字在弹窗里（'+card.name+'）');
+    const items=Array.isArray(card.items)?card.items:[];
+    ok(items.length>0,'闸一构造成立：这张卡确有落差项（'+items.length+' 条）');
+    const missing=items.filter(it=>T.indexOf(Sim.clipItemText(it))<0);
+    ok(missing.length===0,'闸一·什么落差：'+items.length+' 条落差项**逐条原文**都在弹窗里'
+       +(missing.length?('（缺：'+Sim.clipItemText(missing[0])+'）'):('，例如「'+Sim.clipItemText(items[0])+'」')));
+    ok(T.indexOf('落差 '+(+card.score||0).toFixed(2))>=0,'闸一·为什么挑中他：他的落差分在弹窗里（'+(+card.score||0).toFixed(2)+'）');
+    ok(T.indexOf('四人落差：')>=0 && S.w.agents.every(a=>T.indexOf(a.name+' ')>=0),
+       '闸一·为什么挑中他：四个人的落差分并排摆着，看得出他是最高的那个');
+    // —— 不许退化成一条提示 ——
+    ok(!/有 \d+ 张新卡/.test(T) && !/请去(剪辑页)?看/.test(T),
+       '闸一：弹窗不是「有 N 张新卡，请去看」那种提示（那等于把弹窗又变回一条日志）');
+    // —— 入口与关法 ——
+    ok(L.rec.html.indexOf('data-back-clip')>=0 && L.rec.html.indexOf('看全部剪辑')>=0,'闸一：有「看全部剪辑」的入口');
+    L.btnClip._on.click();
+    ok(L.rec.closed===1 && L.rec.screen==='clip','闸一：点「看全部剪辑」⇒ 关掉弹窗并跳到剪辑页');
+    const L2=backLab(S.w); L2.M.openBackPopup(S.catchup);
+    L2.btnClose._on.click();
+    ok(L2.rec.closed===1,'闸一：点「知道了」一键关掉（✕ 与点背景走 openDialog 既有的 [data-close]，同一条 closeDialog）');
+  }
+
+  // ── 闸二 · 不该弹时不弹：离开时长低于门槛 ──────────────────────────────
+  {
+    // 门槛＝第 26 单那一个：一拍＝10 模拟分钟，CATCHUP_MIN_PER_MIN=1 ⇒ 离开不满 10 分钟连一拍都补不出来
+    const S9=scene(111, 12*60, 9/60);
+    ok(S9.plan.ticks===0 && S9.catchup===null,'闸二构造成立：离开 9 分钟 → 0 拍，补算根本没发生');
+    const L=backLab(S9.w);
+    ok(L.M.openBackPopup(S9.catchup)===false && L.rec.opened===0,
+       '闸二：离开 9 分钟（低于门槛）⇒ **不弹**，一个弹窗都没造');
+    // 暂停中离开也不弹：城市自己也停了，没有「你不在的时候」可讲
+    const wp=Sim.makeWorld(20260803); for(let i=0;i<144;i++) Sim.step(wp,10); wp.speed=0;
+    const planP=Sim.catchUpPlan(wp, 13*3600*1000);
+    const LP=backLab(wp);
+    ok(planP.ticks===0 && LP.M.openBackPopup(planP.ticks>0?{}:null)===false && LP.rec.opened===0,
+       '闸二：暂停中离开 13 小时 ⇒ 0 拍 ⇒ 不弹（补算不替玩家松手，弹窗也不替它编）');
+    // 门槛只有一个：BACKPOP 段里不许自己再立一个时长常量／裸毫秒数
+    const bare=BACK_SRC.replace(/\/\*[\s\S]*?\*\//g,'').replace(/(^|[^:'"])\/\/.*$/gm,'$1');
+    ok(/if\(!c\) return false;/.test(bare),'闸二：门槛就是那一句 `if(!c) return false;` —— c 由 plan.ticks>0 决定，即第 26 单那一个门槛');
+    ok(!/(MIN|MS|_MINUTES|_SEC)\s*=\s*\d/.test(bare) && !/\d{4,}\s*\*\s*\d/.test(bare),
+       '闸二：BACKPOP 段没有自立的第二个时长门槛（两个数一旦不同步就会长出静默不一致，本单修的 bug 正是这种缝）');
+    // 刚过门槛就该弹（门槛是「补算发生了没有」，不是「久不久」）
+    const S10=scene(111, 12*60, 10/60);
+    ok(S10.plan.ticks===1 && S10.catchup,'闸二对照：离开 10 分钟 → 恰 1 拍');
+    const L10=backLab(S10.w);
+    ok(L10.M.openBackPopup(S10.catchup)===true && L10.rec.opened===1,
+       '闸二对照：刚过门槛就弹 —— 与日志墙那条 ⏱ 同进同退，不存在「日志说城市走了、弹窗不认」的缝');
+  }
+
+  // ── 乙 · 没有新卡时的概括：账恒平、不流水账、什么都没发生就照实说 ──────────
+  {
+    const S=scene(111, 10*60, 2);          // 白天离开 2 小时：跨不过 04:00，没有新卡
+    ok(S.catchup && S.catchup.newClips.length===0,'乙构造成立：离开 2 小时 ⇒ 补算发生了但没出新卡');
+    const L=backLab(S.w);
+    L.M.openBackPopup(S.catchup);
+    const T=L.text(), s=L.M.backSummary(S.catchup);
+    ok(T.indexOf('这段时间没有结算出新的剪辑卡')>=0,'乙：弹窗照实说这段时间没有新卡');
+    ok(T.indexOf('你不在的时候')>=0 && T.indexOf('城市自己过了')>=0 && T.indexOf('2 小时')>=0,'乙：写明了离开多久');
+    // 账恒平：印出来那几桶盖住的条目 ＋「另外还有 N 条」≡ 窗口条目总数
+    ok(s.covered+s.rest===s.total,'乙·账恒平：印出的几桶盖住 '+s.covered+' 条 ＋ 折进末尾的 '+s.rest+' 条 ＝ 窗口总数 '+s.total+' 条');
+    ok(s.lines.length<=L.M.BACK_SUM_MAX,'乙·不流水账：具体项至多 '+L.M.BACK_SUM_MAX+' 条（实测 '+s.lines.length+' 条）');
+    ok(s.lines.length+ (s.rest?1:0) <=L.M.BACK_SUM_MAX+1,'乙·一眼看完：概括总行数 '+(s.lines.length+(s.rest?1:0))+' 行');
+    // 概括只许用已经上墙的字：逐条核对每个数都数得出来
+    const win=S.w.log.filter(e=>e && isFinite(e.lid) && e.lid>S.catchup.lid0 && e.lid<=S.catchup.lid1);
+    ok(win.length===s.total,'乙·只从已发生的数据里挑：窗口条目 '+win.length+' 条，概括数到的也是 '+s.total+' 条');
+    /* 取材表的完整性（宪法第 8 条硬名单补登，立成机器闸）：
+       落进末尾那条「日常记录」的**只许是带住户名的个人记录**。全站 logSys 的七种世界级播报
+       各自有桶，故世界级的事永远不会被悄悄折进「日常」里蒙混过去。日后有人加第八种 logSys
+       而忘了补桶，这条当场判红。扫的是多种子 × 多时长，不是一个点。 */
+    {
+      const stray=[];
+      for(const [d,m,h,sd] of [[111,10*60,2,20260803],[111,20*60,26,20260803],[100,3*60,72,424242],
+                               [100,18*60,50,20260803],[103,8*60,13,424242],[97,23*60,40,20260803]]){
+        const X=scene(d,m,h,sd); if(!X.catchup) continue;
+        for(const e of X.w.log){
+          if(!e || !isFinite(e.lid) || !(e.lid>X.catchup.lid0) || !(e.lid<=X.catchup.lid1)) continue;
+          const tx=String(e.text||'');
+          if(L.M.BACK_SUM.some(b=>b.hit(e,tx))) continue;
+          if(!e.agent) stray.push(e.type+'｜'+tx);          // 没被任何桶接住、又不是个人记录 ⇒ 漏登
+        }
+      }
+      ok(stray.length===0,'乙·取材表完整：六段窗口全扫，没被单列的条目**全部带住户名**（即全是个人记录）'
+         +(stray.length?('；漏登：'+stray[0]):'；世界级播报七种逐条有桶'));
+    }
+    // 什么都没发生就照实说，不硬凑
+    const Q=scene(111, 14*60, 20/60);      // 离开 20 分钟：补算发生了，但这一段确实一条日志都没落
+    const LQ=backLab(Q.w); LQ.M.openBackPopup(Q.catchup);
+    const sq=LQ.M.backSummary(Q.catchup);
+    ok(sq.total===0,'乙构造成立：离开 20 分钟这一段确实一条新记录都没有（实测 '+sq.total+' 条）');
+    ok(LQ.text().indexOf('这段时间城市很安静，一条新记录都没有。')>=0 && sq.lines.length===0,
+       '乙·不硬凑：什么都没发生就照实说，不编一行出来');
+    // 封顶：跳过了多少必须自己说出来
+    const C=scene(111, 10*60, 24*7);
+    ok(C.catchup.capped,'封顶构造成立：离开 7 天 ⇒ 触封顶');
+    const LC=backLab(C.w); LC.M.openBackPopup(C.catchup);
+    ok(LC.text().indexOf('没有补算，那段日子没有发生')>=0,'封顶时弹窗照实告知跳过了多少（沿用第 26 单横幅的口径）');
+  }
+
+  // ── 闸三 · 零 AI 零骰子（源码侧 ＋ 可计数的运行侧，双判）─────────────────
+  {
+    const bare=BACK_SRC.replace(/\/\*[\s\S]*?\*\//g,'').replace(/(^|[^:'"])\/\/.*$/gm,'$1');
+    ok(/function backSummary\(c\)\{/.test(bare) && /function openBackPopup\(c\)\{/.test(bare),
+       '闸三：剥注释后 BACKPOP 段代码仍完整（剥过头会让下面几条变成空转）');
+    ok(!/callClaude|enhanceChat|enhanceMessage|runReflection/.test(bare),'闸三·源码侧：弹窗与概括的生成路径上零 AI 调用点');
+    ok(!/\bfetch\s*\(|XMLHttpRequest|WebSocket|navigator\.sendBeacon/.test(bare),'闸三·源码侧：零出网调用点');
+    ok(!/\.rng\s*\(|Math\.random/.test(bare),'闸三·源码侧：零骰子（w.rng／Math.random 一处都没有）⇒ 世界指纹逐字节不动');
+    ok(!/\bawait\b|async /.test(bare),'闸三·源码侧：整块同步，没有一个 await ⇒ llm 队列一次都轮不到');
+    // 运行侧：真计数器，不是声明（照第 26 单「可计数硬断言」的先例）
+    {
+      const S=scene(111, 23*60+30, 13);
+      let rngHits=0, netHits=0, randHits=0;
+      const realRng=S.w.rng; S.w.rng=function(){ rngHits++; return realRng(); };
+      const bakRand=Math.random; Math.random=function(){ randHits++; return bakRand(); };
+      const bak={f:global.fetch, x:global.XMLHttpRequest, s:global.WebSocket};
+      const trap=n=>function(){ netHits++; throw new Error('弹窗期间出网：'+n); };
+      global.fetch=trap('fetch'); global.XMLHttpRequest=trap('XMLHttpRequest'); global.WebSocket=trap('WebSocket');
+      let err='';
+      try{
+        const L=backLab(S.w);
+        L.M.openBackPopup(S.catchup);                       // 甲 · 有新卡（连 clipCard 一起跑）
+        L.M.openBackPopup(Object.assign({},S.catchup,{newClips:[]}));   // 乙 · 概括那条路
+        L.M.backSummary(S.catchup);
+      }catch(e){ err=String((e&&e.message)||e); }
+      Math.random=bakRand; S.w.rng=realRng;
+      global.fetch=bak.f; global.XMLHttpRequest=bak.x; global.WebSocket=bak.s;
+      ok(!err,'闸三·运行侧：两种形态各跑一遍，没有异常'+(err?('（实测抛了：'+err+'）'):''));
+      ok(rngHits===0 && randHits===0,'闸三·运行侧：w.rng 命中 '+rngHits+' 次、Math.random 命中 '+randHits+' 次 —— 可计数硬断言');
+      ok(netHits===0,'闸三·运行侧：fetch／XMLHttpRequest／WebSocket 命中 '+netHits+' 次');
+    }
+    // 世界指纹的另一半保障：弹窗只读不写，跑完之后世界逐字节不变
+    {
+      const S=scene(111, 23*60+30, 13);
+      const snap=Sim.serialize(S.w,null);
+      const L=backLab(S.w);
+      L.M.openBackPopup(S.catchup);
+      L.M.openBackPopup(Object.assign({},S.catchup,{newClips:[]}));
+      ok(Sim.serialize(S.w,null)===snap,'闸三：弹窗跑完之后世界逐字节不变（只读，一个字段都没写）');
+    }
+  }
+
+  // ── 闸四 · 反向自查：三条闸各自复演病态写法必须判红，再喂生产原文必须不误伤 ──
+  // 一条恒绿的闸等于没立（照走位三铁律、第 23／24／27／29 单先例）。
+  {
+    const S=scene(111, 23*60+30, 13);
+    const card=S.catchup.newClips[S.catchup.newClips.length-1];
+    const items=Array.isArray(card.items)?card.items:[];
+    // 闸一的判据，抽成一个函数，正反两侧喂的是同一段判断
+    const gate1=(L,fired)=>{
+      const T=L.text();
+      return fired===true && L.rec.opened===1
+        && T.indexOf(card.name)>=0
+        && items.every(it=>T.indexOf(Sim.clipItemText(it))>=0)
+        && T.indexOf('落差 '+(+card.score||0).toFixed(2))>=0
+        && !/有 \d+ 张新卡/.test(T);
+    };
+
+    // 病态 1a · 判据退回改前的 `nights>0 && clipsNew`（＝决策者撞上的那一次）
+    {
+      const old=(S.catchup.nights>0 && S.catchup.clipsNew) ? S.catchup.newClips : [];
+      const L=backLab(S.w);
+      const fired=L.M.openBackPopup(Object.assign({},S.catchup,{newClips:old}));
+      ok(!gate1(L,fired),'反向·闸一：判据退回 `nights>0 && clipsNew`，卡当场从弹窗里消失 —— 闸判红（这正是线上那一次的形态）');
+      ok(L.text().indexOf('这段时间没有结算出新的剪辑卡')>=0,
+         '反向·闸一：改前那条路上，明明出了卡，弹窗却在说「没有结算出新的剪辑卡」');
+    }
+    // 病态 1b · 弹窗退化成一条提示（「有 N 张新卡，请去看」，不摆卡）
+    {
+      const tease=s=>s.replace("+'<div id=\"back-card\"></div>'",
+                               "+'<p>有 '+cards.length+' 张新卡，请去剪辑页看。</p>'");
+      ok(tease(BACK_SRC)!==BACK_SRC,'反向·闸一：病态改写命中了生产原文（改写没落空，下一条才算数）');
+      const L=backLab(S.w, tease);
+      const fired=L.M.openBackPopup(S.catchup);
+      ok(!gate1(L,fired),'反向·闸一：弹窗退化成「有 N 张新卡，请去看」，闸当场判红');
+      ok(L.text().indexOf(Sim.clipItemText(items[0]))<0,'反向·闸一：病态写法下卡的落差原文确实不在弹窗里');
+    }
+    // 病态 2 · 拿掉门槛判断（回来总弹一下，哪怕补算根本没发生）
+    {
+      const S9=scene(111, 12*60, 9/60);
+      const noGate=s=>s.replace('if(!c) return false;',
+        'if(!c) c={mins:0,t0:0,t1:0,nights:0,capped:false,skipTicks:0,lid0:0,lid1:0,newClips:[]};');
+      ok(noGate(BACK_SRC)!==BACK_SRC,'反向·闸二：病态改写命中了生产原文');
+      const L=backLab(S9.w, noGate);
+      const fired=L.M.openBackPopup(S9.catchup);
+      ok(!(fired===false && L.rec.opened===0),
+         '反向·闸二：拿掉门槛后，离开 9 分钟也弹了一个（opened='+L.rec.opened+'）—— 闸当场判红');
+    }
+    // 病态 3 · 概括路上掷一次骰子／发一次请求
+    {
+      const badRng=s=>s.replace('  const cnt={};','  const cnt={}; if(w.rng()<2){}');
+      const badNet=s=>s.replace('  const cnt={};','  const cnt={}; fetch("/summary");');
+      ok(badRng(BACK_SRC)!==BACK_SRC && badNet(BACK_SRC)!==BACK_SRC,'反向·闸三：两处病态改写都命中了生产原文');
+      const strip=x=>x.replace(/\/\*[\s\S]*?\*\//g,'').replace(/(^|[^:'"])\/\/.*$/gm,'$1');
+      ok(/\.rng\s*\(/.test(strip(badRng(BACK_SRC))),'反向·闸三·源码侧：掺了 w.rng() 的写法当场判红');
+      ok(/\bfetch\s*\(/.test(strip(badNet(BACK_SRC))),'反向·闸三·源码侧：掺了 fetch() 的写法当场判红');
+      // 运行侧也必须抓得到（源码侧看得见的，计数器也得数得出来）
+      let rngHits=0;
+      const realRng=S.w.rng; S.w.rng=function(){ rngHits++; return realRng(); };
+      const L=backLab(S.w, badRng);
+      L.M.openBackPopup(Object.assign({},S.catchup,{newClips:[]}));
+      S.w.rng=realRng;
+      ok(rngHits>0,'反向·闸三·运行侧：病态写法下 rng 计数器数到了 '+rngHits+' 次 —— 闸当场判红');
+    }
+    // 不误伤：同样几段场景喂生产原文，三条闸必须全绿，不许把对的判成错的
+    {
+      const G1=backLab(S.w); const f1=G1.M.openBackPopup(S.catchup);
+      ok(gate1(G1,f1),'反向不误伤·闸一：合规写法下「卡摆在弹窗里」判据照常放行');
+      const S9=scene(111, 12*60, 9/60);
+      const G2=backLab(S9.w);
+      ok(G2.M.openBackPopup(S9.catchup)===false && G2.rec.opened===0,'反向不误伤·闸二：合规写法下门槛判据照常放行');
+      let rngHits=0; const realRng=S.w.rng; S.w.rng=function(){ rngHits++; return realRng(); };
+      const G3=backLab(S.w); G3.M.openBackPopup(Object.assign({},S.catchup,{newClips:[]}));
+      S.w.rng=realRng;
+      ok(rngHits===0,'反向不误伤·闸三：合规写法下 rng 计数器仍是 0，没把对的判成错的');
+    }
+  }
+
+  // ── 结构侧：开机段与弹窗共用同一份数，且旧档／篡改档不抛错 ──────────────
+  {
+    const boot=src.slice(src.indexOf('/* ---------- 离线追帧（第 26 单）'), src.indexOf('for(const ag of state.world.agents){'));
+    ok(/const lid0=state\.world\.lidSeq;/.test(boot) && /lid1:state\.world\.lidSeq/.test(boot),
+       '开机段用 lid 圈定补算窗口（lid0 在 catchUp 之前、lid1 在它之后）');
+    ok(boot.indexOf('lid1:state.world.lidSeq')<boot.indexOf("logSys(state.world, '⏱"),
+       'lid1 取在那条 ⏱ 系统日志之前 ⇒ 弹窗自己的旁白不会被概括数进去（否则概括会自己数自己）');
+    ok(/newClips:\(Array\.isArray\(state\.world\.clips\)\?state\.world\.clips:\[\]\)\.filter\(c=>c && isFinite\(c\.d\) && c\.d>r\.clipTop0\)/.test(boot),
+       'newClips ＝ 剪辑日比离开时大的那几张（不是条数增量：条数被 CLIP_KEEP 封着，满 60 天后恒为 0）');
+    const ui=src.slice(src.indexOf('/* ---------- 启动 ---------- */'));
+    ok(/openBackPopup\(catchup\);/.test(ui) && ui.indexOf('openBackPopup(catchup);')<ui.indexOf('requestAnimationFrame(loop);'),
+       '弹窗排在渲染之后、rAF 之前 ⇒ 不阻塞主循环（弹窗开着世界照走），更不阻塞补算（补算早在 state.vis 建表前跑完）');
+    ok(!/setTimeout\([^)]*openBackPopup|setInterval\([^)]*openBackPopup/.test(src)
+       && (src.match(/openBackPopup\(/g)||[]).length===2,
+       '全站只有一个 openBackPopup 调用点（定义 1 ＋ 调用 1），且没有定时器入口 ⇒「一次只弹一个、关掉不再弹」是结构保证');
+    ok(/logSys\(state\.world, '⏱ 你不在的时候，城市自己过了 '/.test(src),
+       '日志墙那条 ⏱ 原样保留（作为存档记录），弹窗是新增的一层，不是替换');
+    // 旧档／篡改档：概括与弹窗都不许抛
+    {
+      const S=scene(111, 10*60, 2);
+      const bad=Object.assign({}, S.catchup);
+      const w2=Sim.hydrate(Sim.serialize(S.w,null)).world;
+      w2.log=[null, {lid:'x'}, {lid:NaN,type:'sys'}, {lid:bad.lid0+1,type:'sys'}, {lid:bad.lid0+2,type:'act',text:null}, '坏条目'];
+      w2.clips='坏档';
+      let threw='';
+      try{
+        const L=backLab(w2);
+        L.M.openBackPopup(bad);
+        L.M.openBackPopup(Object.assign({},bad,{newClips:'坏档',lid0:NaN,lid1:'x'}));
+        L.M.openBackPopup(Object.assign({},bad,{mins:NaN,t0:'x',t1:null,skipTicks:NaN,capped:true}));
+      }catch(e){ threw=String((e&&e.message)||e); }
+      ok(!threw,'篡改档（log 里混 null／lid 非数／text 为 null／clips 不是数组／catchup 字段畸形）弹窗一律不抛错'
+         +(threw?('（实测抛了：'+threw+'）'):''));
+      // 旧档：v37 及以前落的盘里没有本单任何新字段 —— 本单不新增随存档序列化的字段，
+      // 弹窗要的 lid0/lid1/newClips 全在内存里当场算出（见交付件「为什么不落盘」一节）
+      const old=Sim.hydrate(Sim.serialize(Sim.makeWorld(4242),{selected:'a1',lastReflectDay:0,at:1}));
+      ok(old && old.world && old.meta,'旧档（不含本单任何新字段）照常 hydrate');
+      const OS=Sim.catchUpPlan(old.world, 2*3600*1000);
+      ok(OS.ticks>0,'旧档照常算得出补算计划（'+OS.ticks+' 拍）⇒ 弹窗对旧档缺省兼容');
     }
   }
 }
