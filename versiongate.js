@@ -9,7 +9,7 @@
 //   铁律 · 只要 city-life-framework.html 的字节变了，界面上的构建版本号必须随之改变。
 //
 // 口径为什么定在「整份文件字节」而不是「只算 <script> 段」：
-//   界面上那个数的标签逐字是「构建版本／旧卡片不会自动更新，请从最新消息打开」（html:404），
+//   界面上那个数的标签逐字是「构建版本／旧卡片不会自动更新，请从最新消息打开」（html:422），
 //   它对玩家的唯一用途就是**认出手里这份产物是哪一版**。故只要产物的字节变了，这个数就该变——
 //   这比任务书说的「游戏代码」更严（连改一句 CSS、改一个标签文案都要涨号），
 //   好处是**在这个文件内部没有任何盲区**：不存在「改了但哈希没变」的缝。
@@ -49,7 +49,7 @@ const skip = m => console.log(' -- :', m);
 const skipOrFail = m => IN_CI ? ok(false, `${m}\n        （CI 内 git 必然可用且 fetch-depth: 0 已设，取不到基线即视为门禁自身故障，判红）`) : skip(m);
 
 // ── 版本号的唯一权威处：city-life-framework.html 里 id="set-build" 那个 span 的文本 ──
-// 正则只认这个 id，故不会误配到 html:2086 那句注释里的「v33 及以前落的盘」——
+// 正则只认这个 id，故不会误配到 html:2104 那句注释里的「v33 及以前落的盘」——
 // 那是叙述历史事实的提及，不是版本号定义处，改它反而是错的。
 // 容忍属性顺序调换、单双引号、等号两侧空格——这些都是等价写法，判红等于误伤。
 const VER_RE = /id\s*=\s*["']set-build["'][^>]*>\s*([^<]*?)\s*</;
@@ -251,7 +251,10 @@ if (process.argv.includes('--登记') || process.argv.includes('--register')) {
   }
   if (hit && !覆盖) {
     console.log(`拒绝登记：${curVer} 是已发版的号，而 HTML 字节已变（登记 ${hit.sha256.slice(0, 8)}… ≠ 实际 ${curSha.slice(0, 8)}…）。`);
-    console.log(`  正确做法：先把 html:405 的号改成 v${rows.reduce((a, r) => Math.max(a, verNum(r.版本)), 0) + 1}，再跑 node versiongate.js --登记。`);
+    // 行号现算，不写死：写死的那个数每单都会被上面新增的行推走，第 30 单就撞到过一次
+    // （html:405 在 v37 上是对的，v38 一改就成了 423）。verLine 那个常量声明在本段之后（TDZ），故这里就地算一遍。
+    const 号所在行 = htmlBuf.toString('utf8').split('\n').findIndex(l => l.includes('id="set-build"')) + 1;
+    console.log(`  正确做法：先把 ${HTML_REL}:${号所在行} 的号改成 v${rows.reduce((a, r) => Math.max(a, verNum(r.版本)), 0) + 1}，再跑 node versiongate.js --登记。`);
     console.log(`  确需就地改写已发版号的登记（例如上一次登记手滑），显式加：--覆盖 --理由="…"`);
     process.exit(1);
   }

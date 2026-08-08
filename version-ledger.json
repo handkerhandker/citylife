@@ -1,5 +1,5 @@
 {
-  "说明": "构建版本对照表（第 28 单立）。门禁＝versiongate.js，宪法第 27 条。版本号的唯一权威处是 city-life-framework.html 里 id=\"set-build\" 那个 span 的文本（html:405），本表只是它与产物字节的对照账，不是第二处定义。",
+  "说明": "构建版本对照表（第 28 单立）。门禁＝versiongate.js，宪法第 27 条。版本号的唯一权威处是 city-life-framework.html 里 id=\"set-build\" 那个 span 的文本（v38 上是 html:423；**行号会随每单改动漂移，认的是 id 不是行号**），本表只是它与产物字节的对照账，不是第二处定义。",
   "口径": {
     "哈希算的是什么": "city-life-framework.html 整份文件的字节 sha256。不是只算 <script> 段——界面上那个数的用途是让玩家认出手里这份产物是哪一版，故产物字节变了这个数就该变。",
     "SIM块md5": "沿用第 20 单起的口径：/*SIM-START*/ 与 /*SIM-END*/ 之间那段源码的 md5。只作对账用，不是判据。",
