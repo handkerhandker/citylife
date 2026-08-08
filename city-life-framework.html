@@ -402,7 +402,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-        <span class="num dim" id="set-build">v36</span>
+        <span class="num dim" id="set-build">v37</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -2988,12 +2988,99 @@ async function rawCallRelay(prompt, batch){
   L.channel=j?'relay':'';
   return j;
 }
+/* ---------- 第 29 单：落字排队（按时间顺序上墙 ＋ 占位符收尾死线） -------------------
+   病症（线上 D110–D111 实测）：①时间戳靠后的对白先写完上墙，靠前的还挂着占位符，像时间倒流；
+   ②D110 19:50／20:10 两条到 D111 06:40 仍是「（聊得正起劲⋯）」——约 10 游戏小时未落字。
+
+   根因两条，取证已坐实：
+   ①**谁先回来谁先贴**：三个挂点都是 fire-and-forget 的 async 函数，各自在函数尾部直接 patchLid，
+     回包先后由网络说了算。并发上限 2、重生成要再排一次队、直连败了转中转（4s→15s 两级死线）、
+     首轮拿 null 还要睡 800ms 再排一轮——任何一条慢下来，后面的就先上墙了。
+   ②**收尾时限太长，且有几条路根本没人收尾**：jobLimit＝2×死线，callClaude 还要试两轮，
+     单条对白协议上界＝30000×2＋800＝60800ms；1 真秒＝10 模拟分钟，故合 10.1 游戏小时——
+     与决策者实测的「挂了约 8 个游戏小时」正好同量级。更要命的是三个 enhance 挂点都没有
+     try/finally 罩住 llmPending：函数体内任何一处抛异常（DOM 查询、noteUtter、pushLog、
+     以及 fire-and-forget 无人 catch 的 rejection），这条就永远停在 llmPending=true 上；
+     而唯一的清道夫 settleOrphanLLM 只在 if(bootWorld) 那一行跑一次——**只管开机，不管会话中途**。
+     那条已经过了 drainLog（logSeenLid 只增不减，不会被第二次遍历到），
+     `!e.llmPending` 的闸又让它永远不会被重新点着——双重永挂。
+
+   治法（决策者裁定）：按时间顺序落字，等不到就用该条自带的兜底句顶上。
+   - 落字不再由各挂点自己 patchLid，一律先登记进 penReg（按 e.t、e.lid 升序），
+     只从队头连续放行：前一条没落字，后面的按住不贴。
+   - 每条登记即带死线，到点用 e.fb 落定。死线在**主循环里按真实时钟判**，不用 setTimeout：
+     后台标签页会把 setTimeout 节流到分钟级（那正是「长挂」的另一条路），而 loop() 一旦回到前台
+     第一帧就把过期的全部收掉；页面隐藏期间 loop 不跑，但墙也没人看，且 drainLog 同在 loop 里，
+     不会有新条目挤进来。世界暂停（speed===0）时 loop 照跑，故按停的城市里占位符一样会收尾。
+   - 迟到的回包若在该条已落定之后才回来，penReady 返回 false，整包丢弃、绝不覆写。
+
+   死线取值理由（PEN_TTL_MS＝20000）：
+     单轮健康上界＝中转线路死线 15000ms（直连 4000ms 更短，工件内走直连）；
+     留 ~33% 排队余量 → 20000ms。它恰好卡在「一轮打得完、两轮打不完」之间：
+     健康请求照常落 AI 文案，病态请求则在 20 秒（1× 速度下 3.3 游戏小时）内被兜底句落定，
+     把实测的 60800ms／10.1 游戏小时砍到 20000ms／3.3 游戏小时。
+     再往下压会连中转线路的正常回包都一起砍掉，墙上就几乎全是模板字了——这是取值的下边界。
+   兜底取字只认 e.fb（落条目那一刻就抽好的那条，第 27 单）：死线到点是**网络说了算的时刻**，
+   在这里现抽会让 rng 流位移跟着网络快慢走，同一份存档两次跑出两个世界（第 27 单原话）。
+   故本段一次 w.rng() 都不掷——世界指纹逐字节不变。
+   AI 调用次数零增加：本段只管「什么时候贴」，不发任何请求（第 26 单「离线期间零调用」断言不受影响）。*/
+const PEN_TTL_MS=20000;          // 可调：占位符收尾死线（真实毫秒）。取值理由见上。
+const penReg=[];                 // 待落字登记表，按 (e.t, e.lid) 升序；会话级，不入存档
+function penNow(){ return (typeof performance!=='undefined' && performance.now)?performance.now():Date.now(); }
+function penCmp(a,b){ return (a.t-b.t) || (a.lid-b.lid); }   // 时间戳同分时用 lid 定序（lid 单调递增）
+function penAdd(e, fbAfter){
+  // 登记：占位符此刻已挂上墙，等回包或等死线。重复登记（同一条被点两次）直接忽略。
+  if(penReg.some(x=>x.e===e)) return;
+  const it={e, due:penNow()+PEN_TTL_MS, text:null, llm:false, ready:false, after:null, fbAfter:fbAfter||null};
+  let i=penReg.length;
+  while(i>0 && penCmp(penReg[i-1].e, e)>0) i--;
+  penReg.splice(i,0,it);
+}
+function penReady(e, text, llm, after){
+  // 回包（或挂点自己的兜底）到了。返回 false ＝ 这条早已落定，本次整包丢弃，绝不覆写。
+  const it=penReg.find(x=>x.e===e);
+  if(!it || it.ready) return false;
+  it.text=(typeof text==='string' && text)?text:null; it.llm=!!llm; it.after=after||null; it.ready=true;
+  penFlush();
+  return true;
+}
+function penFlush(){
+  // 只从队头连续放行 —— 「前一条没落字，后面的先按住不贴」就是这个 while 的循环条件。
+  while(penReg.length && penReg[0].ready){
+    const it=penReg.shift(), e=it.e;
+    if(it.text){ e.thought=it.text; if(it.llm) e.llm=true; }
+    e.llmPending=false;
+    patchLid(e);
+    if(it.after){ try{ it.after(); }catch(_){} }   // 收尾的副作用（短信回信/已读不回）不许把落字流程带崩
+  }
+}
+function penSweep(nowMs){
+  // 死线扫描：主循环每帧调，登记表为空即刻返回（不阻塞主循环与渲染）。
+  if(!penReg.length) return;
+  const t=isFinite(nowMs)?nowMs:penNow();
+  let hit=false;
+  for(const it of penReg){
+    if(it.ready || t<it.due) continue;
+    // 只认 e.fb：这里是网络说了算的时刻，掷骰子会让 rng 流随网络漂移（第 27 单）
+    it.text=it.e.fb||null; it.llm=false; it.ready=true; hit=true;
+    if(it.fbAfter){ it.after=it.fbAfter; it.fbAfter=null; }   // 兜底落定时该补的那条（短信「已读不回」）
+  }
+  if(hit) penFlush();
+}
 async function enhanceMessage(e){
   e.llmPending=true;
   const w=state.world;
+  // 第 29 单：登记排在一切可能抛异常的语句之前 —— 登记不上就没人给它收尾，那正是改前的永挂形态。
+  // fbAfter＝死线到点时该补的那条「已读不回」，与 settleOrphanLLM 的收尾形态逐字同源
+  //（读掉了却没等到回信，就得有个交代）；ag 在回调里现取，故本行自己不会抛。
+  penAdd(e, ()=>{
+    const a=w.agents.find(x=>x.id===e.agent);
+    if(a && e.sms==='read') pushLog(w,{type:'player',sms:'noreply',agent:a.id,name:a.name,text:SMS_NOREPLY});
+  });
   const ag=w.agents.find(a=>a.id===e.agent);
   const m=Sim.MSGS.find(x=>x.id===e.msg);
   let j=null;
+  try{
   if(ag){
     // 提示词整体须是 ag/e/m 的纯表达式（tools/voice-check 靠正则逐字取用它求值），故不抽临时变量
     const smsPrompt=
@@ -3012,26 +3099,29 @@ async function enhanceMessage(e){
       if(j2) j=j2;
     }
   }
-  const inner=j&&(typeof j.inner==='string'?j.inner:(typeof j.reaction==='string'?j.reaction:''));
-  if(inner && inner.trim()){
-    e.thought=inner.trim(); e.llm=true;
-  }else{
-    e.thought=e.fb||e.thought;
+  }catch(_){ j=null; }   // 第 29 单：报错也得落字——异常在这里收住，绝不让 llmPending 卡在 true
+  finally{
+    const inner=j&&(typeof j.inner==='string'?j.inner:(typeof j.reaction==='string'?j.reaction:''));
+    const txt=(inner && inner.trim())?inner.trim():(e.fb||e.thought);
+    const isLlm=!!(inner && inner.trim());
+    // penReady 返回 false ＝ 这条已被兜底句落定（死线先到），迟到的回包整包丢弃：
+    // 内心独白不覆写，回信/已读不回也不再补——否则玩家会看见字自己变了。
+    penReady(e, txt, isLlm, ()=>{
+      if(!ag) return;
+      const rep=(j && typeof j.reply==='string')?j.reply.trim():'';
+      noteUtter(ag, rep||(isLlm?txt:''));   // 回信原文优先，已读不回取 ✨ 内心独白；模板兜底不记
+      if(rep) pushLog(w,{type:'player',sms:'reply',agent:ag.id,name:ag.name,text:'回了你的短信',thought:rep,llm:true});
+      else pushLog(w,{type:'player',sms:'noreply',agent:ag.id,name:ag.name,text:SMS_NOREPLY});   // 第 26 单：原文集中到 SIM 块常量，一字未改
+    });
   }
-  patchLid(e);
-  if(ag){
-    const rep=(j && typeof j.reply==='string')?j.reply.trim():'';
-    noteUtter(ag, rep||(e.llm?e.thought:''));   // 回信原文优先，已读不回取 ✨ 内心独白；模板兜底不记
-    if(rep) pushLog(w,{type:'player',sms:'reply',agent:ag.id,name:ag.name,text:'回了你的短信',thought:rep,llm:true});
-    else pushLog(w,{type:'player',sms:'noreply',agent:ag.id,name:ag.name,text:SMS_NOREPLY});   // 第 26 单：原文集中到 SIM 块常量，一字未改
-  }
-  e.llmPending=false;
 }
 async function enhanceChat(e){
   e.llmPending=true;
+  penAdd(e);            // 第 29 单：先登记再发请求（对白无副作用，故不带 fbAfter）
   const w=state.world;
   const a=w.agents.find(x=>x.id===e.agent), b=w.agents.find(x=>x.id===e.with);
   let j=null;
+  try{
   if(a&&b){
     const loc=Sim.ANCHORS[a.anchor];
     // 第 18 单·病症三：话题由 SIM 派定（e.topic，见 pickTopic），模型只能在该类里发挥；
@@ -3054,18 +3144,20 @@ async function enhanceChat(e){
       if(j2 && Array.isArray(j2.dialogue) && j2.dialogue.length) j=j2;
     }
   }
-  if(j && Array.isArray(j.dialogue) && j.dialogue.length){
-    e.thought=j.dialogue.map(s=>'「'+String(s)+'」').join(''); e.llm=true;
-    if(a) noteUtter(a, j.dialogue.filter((_,i)=>i%2===0).join(' '));   // 对白 A/B 轮替约定：偶数句归 A
-    if(b) noteUtter(b, j.dialogue.filter((_,i)=>i%2===1).join(' '));
-    const t=w.t;
-    if(a&&j.a_mem){ a.personalLog.push({t, text:'记在心里', thought:String(j.a_mem)}); if(a.personalLog.length>30) a.personalLog.shift(); }
-    if(b&&j.b_mem){ b.personalLog.push({t, text:'记在心里', thought:String(j.b_mem)}); if(b.personalLog.length>30) b.personalLog.shift(); }
-  }else{
-    e.thought=e.fb||e.thought;
+  }catch(_){ j=null; }   // 第 29 单：报错也得落字——异常在这里收住，绝不让 llmPending 卡在 true
+  finally{
+    const good=!!(j && Array.isArray(j.dialogue) && j.dialogue.length);
+    const txt=good ? j.dialogue.map(s=>'「'+String(s)+'」').join('') : (e.fb||e.thought);
+    const t=w.t;   // 「记在心里」那条的时刻仍取**回包这一刻**（与改前逐字同源），不取排队放行的时刻
+    // penReady 返回 false ＝ 已被兜底句落定，迟到的回包整包丢弃：字不覆写，两人的记忆也不再写入
+    penReady(e, txt, good, ()=>{
+      if(!good) return;
+      if(a) noteUtter(a, j.dialogue.filter((_,i)=>i%2===0).join(' '));   // 对白 A/B 轮替约定：偶数句归 A
+      if(b) noteUtter(b, j.dialogue.filter((_,i)=>i%2===1).join(' '));
+      if(a&&j.a_mem){ a.personalLog.push({t, text:'记在心里', thought:String(j.a_mem)}); if(a.personalLog.length>30) a.personalLog.shift(); }
+      if(b&&j.b_mem){ b.personalLog.push({t, text:'记在心里', thought:String(j.b_mem)}); if(b.personalLog.length>30) b.personalLog.shift(); }
+    });
   }
-  patchLid(e);
-  e.llmPending=false;
 }
 async function runReflection(){
   const w=state.world, day=PURE.dayOf(w.t);
@@ -3078,6 +3170,7 @@ async function runReflection(){
     const e={type:'diary',agent:ag.id,name:ag.name,text:'睡前日记',thought:'（在台灯下写着⋯）',
              fb:diaryFallback(w,ag),llmPending:true};
     pushLog(w,e); entries[ag.id]=e;
+    penAdd(e);   // 第 29 单：四条日记各自登记（pushLog 已给出 lid，定序有据），死线到点各自用自己的 e.fb 落定
   }
   const cards=w.agents.map(ag=>{
     const today=ag.personalLog.slice(-4).map(e=>e.text+(e.thought?'（'+e.thought+'）':'')).join('；');
@@ -3090,7 +3183,9 @@ async function runReflection(){
   const diaryPrompt=
     '都市生活模拟《云港小事》第'+day+'天深夜，四位合租住户各写一段睡前日记：2-3句，第一人称，允许小情绪和具体细节，禁止总结腔。日记体铁律（五条，写完逐条自查，违反任何一条即为不合格）：①这段字只写给自己看，不是说给任何人听；②通篇不得出现第二人称（你／你们／您／咱），也不得称呼任何人；③不得提问，全段不出现问号；④不得复述别人说过的话，也不得把角色卡"今日片段""最近""上次开口"里的句子当成别人对你说的话——那些全是你自己心里的话和自己做过的事；⑤不得出现对白结构（引号包住的整句对话、"我说…TA说…"、破折号领起的话轮）。修辞纪律：职业梗或比喻整段最多一次；禁止连环比喻（不许接连出现"像/跟…似的/如同"句式）；大多数句子说普通人话，生活细节优先于修辞。四段必须风格迥异，逐一对照各自的说话方式；写完自查：盖住名字仍能分清是谁写的，才算合格。\n'
     +cards+'\n只返回JSON：{"a1":"...","a2":"...","a3":"...","a4":"..."}';
-  const j=await callClaude(diaryPrompt, true, true);
+  let j=null;
+  try{
+  j=await callClaude(diaryPrompt, true, true);
   // 第 18 单·方案乙兜底闸：谁以语气词起手，就由代码给谁指定另一类开场，整批重生成一次。
   // 至多一次；只替换不合格的那几段，合格的沿用第一版；第二版仍不合格也照收。
   if(j){
@@ -3102,13 +3197,15 @@ async function runReflection(){
       if(j2) for(const ag of bad){ if(typeof j2[ag.id]==='string' && j2[ag.id].trim()) j[ag.id]=j2[ag.id]; }
     }
   }
-  for(const ag of w.agents){
-    const e=entries[ag.id];
-    const txt=(j && typeof j[ag.id]==='string') ? j[ag.id].trim() : '';
-    if(txt){ e.thought=txt; e.llm=true; noteUtter(ag, txt); }
-    else { e.thought=e.fb; }   // 第 27 单：回落到落条目时就抽好的那一条（补算走的也是同一个池）
-    e.llmPending=false;
-    patchLid(e);
+  }catch(_){ j=null; }   // 第 29 单：报错也得落字——异常在这里收住，绝不让四条日记卡在 llmPending
+  finally{
+    for(const ag of w.agents){
+      const e=entries[ag.id];
+      const txt=(j && typeof j[ag.id]==='string') ? j[ag.id].trim() : '';
+      // 第 27 单：AI 出不来时回落到落条目那一刻就抽好的 e.fb（补算走的也是同一个池）
+      // 第 29 单：改由 penReady 落字（按时间戳排队）；返回 false ＝ 该条已被兜底句落定，迟到回包丢弃
+      penReady(e, txt||e.fb, !!txt, txt?(()=>{ noteUtter(ag, txt); }):null);
+    }
   }
 }
 $('#set-llm').addEventListener('click',()=>{
@@ -3683,6 +3780,7 @@ function loop(now){
   stepAllDisplays(dtFrame);        // 第 25 单：显示位每帧必推，与当前在哪一页无关（下面 draw() 是有条件的，这里不许有条件）
   updateCamera(dtFrame);
   drainLog();
+  penSweep(now);   // 第 29 单：占位符收尾死线按真实时钟在这里判（不用 setTimeout：后台标签页会把它节流到分钟级）
   const tick=Math.floor(w.t/10);
   if(tick!==lastTick){ lastTick=tick; renderTopbar();
     if(state.llm.on){
