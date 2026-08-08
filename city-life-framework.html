@@ -420,7 +420,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-        <span class="num dim" id="set-build">v38</span>
+        <span class="num dim" id="set-build">v39</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -3371,6 +3371,94 @@ function chip(x,y,text,color,size){
   ctx.textAlign='center'; ctx.textBaseline='middle';
   ctx.fillText(text, x, y-6.5);
 }
+/*ACTICON-START*/
+/* ---------- 第 31 单·活动指示器（头顶符号档）：把「这个人在干什么」画到画布上 ----------
+   病根（第 31 单取证复核，逐条实测于 v38）：`draw()` 全程只读 `v.moving`（走／站两种精灵行），
+   唯一读 `activity.type` 的地方是名牌那一行的 `sleep?名字+' 睡觉符号':名字`。于是做饭／写稿／盯盘／
+   睡觉在画布上**完全一样**——都是站姿 idle 精灵，差别只在站的位置不同。
+   「这个人在干什么」此前只存在于日志墙、角色页、剪辑页的文字里，画布上零表达。
+
+   本段的射程（刻意压到最小，先验「活动上画面」这件事值不值）：
+     · 只做**图标／字符档**，不做带文字排版的真气泡。气泡的完整形态（换行、指向尾巴、
+       长度自适应、多人错让）另属一档，本单不碰；「气泡」一词在本仓至今未被定义过。
+     · 零新增素材：符号是 canvas `fillText` 出来的字，`assets/*.png` 与 `build_assets.py` 零触碰。
+     · 零 SIM 改动：本段只**读** `ag.activity.type` 与 `ag.workKind`，一个字节都不写回世界，
+       不摇 `w.rng()`、不碰 `Math.random`、不进 AI，故世界指纹与 SIM 块 md5 逐字节不动。
+
+   口径四条：
+   ① **一张表管到底**：`type→符号` 集中在 `ACT_ICON`，`work` 的分档集中在 `ACT_ICON_WORK`，
+      观感要调只调这两张表，draw() 里一个符号字面量都没有。
+   ② **睡觉那个符号只有一套**：改前它挂在名牌文本里（名字后缀），改后挪进 `ACT_ICON.sleep`，
+      名牌回归纯名字。该符号的字面量全站因此**恰好一处**（harness 硬断言，故本段其余地方一律只写
+      「睡觉符号」四个字、不再复制那个字符），不出现「名牌一套、指示器一套」并存。
+   ③ **work 分档、eat 不分档**（本单裁定，理由写进交付件）：
+      `work` 四档（`work`／`clerk`／`trade`／`write`）在 SIM 里连 label 都一样（一律「上班」／
+      「上班（摸鱼中）」），而 a1「写代码」与 a3「盯盘」同处 `office` 一间房、工位 `desk1`／`desk2`
+      相隔 4 格且**画面上长得一模一样**——位置在这一档不携带任何信息，不分开等于本单没做。
+      `eat` 三档（做饭吃／逛吃街市／便利店就餐）相反：它们分别落在厨房／周日街市／便利店三处
+      **各自有房间标签、各自有独立美术的地方**，「在哪吃」画面上已经说清了，再给三个吃的符号
+      等于把同一维信息画两遍。故只按 `type` 出一个 🍚。判据一句话：**位置已经区分得开的不分档，
+      位置区分不开的才分档。**
+   ④ **认不出就不画**：`type` 为 null／未登记的新词／整个 `activity` 缺失时一律返回空串、不画牌子，
+      退化成改前的观感（本来就没有指示器），绝不抛错、绝不编一个符号出来。
+      查表一律走 `hasOwnProperty`（照 `PIX_IDX` 那一处先例）：裸索引会沿原型链取到 `constructor`
+      之类的函数，篡改档能把 `type` 写成任意字符串。
+
+   叠放（与既有名牌／选中金框的关系，逐条钉死）：
+     名牌 `chip(x,y,…)` 的盒子是 `[y−14, y+1]`（见上面 `chip()`），选中金框 `strokeRect(…,dy0−3,…)`
+     的上边线（lineWidth 2）落在 `[dy0−4, dy0−2]`。名牌画在 `y=dy0−4`，盒底 `dy0−3` 恰与金框上边线相接。
+     指示器取**名牌之上**：盒底 ＝ `y−ACT_CHIP.gap`（gap＝14＝名牌盒顶），故其占位是 `[dy0−18−h, dy0−18]`，
+     与金框上边线 `dy0−4` 之间恒隔 14px，**结构上不可能遮挡金框**（harness 逐像素算一遍）。
+     选「上方」而不是「并进名牌」的理由：名牌横向相邻挤字是已登记的既有观感项（待办「名牌横向相邻挤字」，
+     第 19 单登记），把符号并进名牌文本会**加宽名牌**、直接把那一项恶化；单开一个只有一个字宽的
+     窄牌子反而是四人同锚时最省横向空间的形态（本单附四人同锚实拍对照）。 */
+const ACT_ICON={
+  eat:   '🍜',   // 吃饭：做饭吃／逛吃街市／便利店就餐三档共用（见口径③）
+  nap:   '😴',   // 小憩：白天回卧室打盹（打盹的脸，与夜里那个睡觉符号一黄一蓝、一圆脸一折线，远看即可分）
+  work:  '💼',   // 上班·通用档：只在 workKind 不在 ACT_ICON_WORK 里时兜底（篡改档才可能走到）
+  stroll:'🚶',   // 散步／逛街市
+  idle:  '☕',   // 在家待着／醒了（闲着，手边一杯）
+  sleep: '💤',   // 睡觉（改前挂在名牌文本里，本单挪进表；这个字符全站只此一处）
+  chat:  '💬',   // 和谁聊天
+};
+const ACT_ICON_WORK={
+  work: '💻',    // a1 顾云帆·程序员
+  clerk:'🧾',    // a2 沈小满·便利店店员（收银小票）
+  trade:'📈',    // a3 陆知秋·交易员（盯盘）
+  write:'✍️',    // a4 白一鸣·自由撰稿（写稿）
+};
+// 观感参数集中一处（字号／内边距／底色／与名牌的间距），要调只调这里。
+// gap＝14＝名牌盒顶相对 chip 的 y 的偏移（`chip()` 的盒子＝`[y−14, y+1]`）。
+// 字体栈里**彩色 emoji 字体必须排在 system-ui 之前**：反过来写时实测（Chromium＋fontconfig）
+// ☕ 与 😴 会被 system-ui 的回退链先接走、落到一套单色字形上，且那套字形的 ink 宽超出 measureText
+// 报的 advance（😴 实测 advance 20.9 而盒子按 16 算），字会溢出底板。emoji 在前之后十个符号
+// advance 一律 16、ink 一律 17，宽度整齐、全部彩色（第 31 单实测，见交付件「字形与字体栈」一节）。
+// 本表只画 emoji，故把 emoji 字体提到最前不影响任何别的文字（名牌仍走 chip() 的原字体，逐字未动）。
+const ACT_CHIP={size:13, padX:2, padY:2, gap:14, bg:'rgba(14,17,26,.78)', fg:'#ece5d0',
+                font:'"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",system-ui,sans-serif'};
+function actIcon(ag){
+  const a=ag&&ag.activity;
+  const t=(a&&typeof a.type==='string')?a.type:'';
+  if(t==='work'){
+    const k=ag&&ag.workKind;
+    return (typeof k==='string' && Object.prototype.hasOwnProperty.call(ACT_ICON_WORK,k))
+      ? ACT_ICON_WORK[k] : ACT_ICON.work;
+  }
+  return Object.prototype.hasOwnProperty.call(ACT_ICON,t) ? ACT_ICON[t] : '';
+}
+// yBottom＝牌子的下边缘（调用处传名牌盒顶）。认不出活动就一笔都不画。
+function actChip(x, yBottom, ag){
+  const g=actIcon(ag);
+  if(!g) return;
+  ctx.font=ACT_CHIP.size+'px '+ACT_CHIP.font;
+  const w=ctx.measureText(g).width+ACT_CHIP.padX*2, h=ACT_CHIP.size+ACT_CHIP.padY*2;
+  ctx.fillStyle=ACT_CHIP.bg;
+  ctx.fillRect(x-w/2, yBottom-h, w, h);
+  ctx.fillStyle=ACT_CHIP.fg;
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText(g, x, yBottom-h/2);
+}
+/*ACTICON-END*/
 /* ---------- 云港城市总规 B 案骨架（第 16 单）：广场／江面／岸线的几何常量集中登记 ----------
    数字以《云港城市总规》（docs/云港城市总规.md）B 图为准绳；房区几何与其余锚点零移动。
    本组常量只供渲染层放样消费（SIM 不读），二期·室外篇铺装接手时以此为底图坐标。 */
@@ -3696,7 +3784,7 @@ function draw(now){
     const ag=en.ag;
     const v=state.vis[ag.id];
     const px=sx(dispPos[ag.id].x), py=sy(dispPos[ag.id].y);
-    const tag=ag.activity.type==='sleep'?ag.name+' 💤':ag.name;
+    const tag=ag.name;   // 第 31 单：睡觉那个符号从名牌文本挪进头顶指示器（ACT_ICON.sleep），名牌回归纯名字，不两套并存
     // 只认自有键：裸索引会沿原型链取值（篡改档过闸的 id 可为 'constructor' 等），非 a1–a4 一律落旧色块路径
     const ci=Object.prototype.hasOwnProperty.call(PIX_IDX,ag.id)?PIX_IDX[ag.id]:undefined;
     if(pixOn && ci!==undefined){
@@ -3713,6 +3801,7 @@ function draw(now){
       }
       ctx.drawImage(img,(dir*6+fi)*fw,(ci*2+(walking?1:0))*fh,fw,fh,dx0,dy0,dw,dh);
       chip(px, dy0-4, tag, '#ece5d0', 10);
+      actChip(px, dy0-4-ACT_CHIP.gap, ag);          // 第 31 单：指示器画在名牌之上（盒底＝名牌盒顶），不碰下方的选中金框
       continue;
     }
     const R=Math.max(4, s*0.42);
@@ -3725,6 +3814,10 @@ function draw(now){
     ctx.fillStyle=ag.color;
     ctx.fillRect(px-R,py-R,R*2,R*2);
     chip(px, py-R-4, tag, '#ece5d0', 10);
+    // 第 31 单：素材未就位／`pix.on` 关掉的兜底路径**照出指示器**。理由：这条路上人物退化成一个纯色方块，
+    // 连走／站都分不出来，「在干什么」比有素材时更没有别的地方可看；而符号本身零素材依赖（canvas 画的字），
+    // 出不出与素材加载成败无关。两条路的调用点各一处，harness 结构侧逐条钉住。
+    actChip(px, py-R-4-ACT_CHIP.gap, ag);
   }
   // 雨幕
   if(state.world.weather.rain && !state.reduceMotion){
