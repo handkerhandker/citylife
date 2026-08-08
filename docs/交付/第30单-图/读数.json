@@ -1,0 +1,519 @@
+[
+  {
+    "awayMin": 3,
+    "tag": "jia0-below-threshold",
+    "note": "不足一拍（3 分钟）：低于门槛 ⇒ 不该弹",
+    "before": 490,
+    "after": {
+      "popOpen": false,
+      "popTitle": "",
+      "popLead": "",
+      "popQuiet": [],
+      "popSum": [],
+      "popCardN": 0,
+      "popCardWho": "",
+      "popCardScore": "",
+      "popCardItems": [],
+      "popCardFoot": "",
+      "popBtns": [],
+      "screen": "scr-live",
+      "bannerShown": false,
+      "banner": "",
+      "clipCards": 0,
+      "llmStat": "0 次 · 待机",
+      "clock": "D1 周一 08:10",
+      "build": "v38",
+      "seed": "1609061798",
+      "sparkleN": 0,
+      "tickLog": []
+    },
+    "closed": null,
+    "netBoot": 0,
+    "netBootUrls": [],
+    "netTotal": 0,
+    "netUrls": []
+  },
+  {
+    "awayMin": 60,
+    "tag": "yi1-1h-daytime",
+    "note": "乙：白天离开 1 小时，没到 04:00 结算点 ⇒ 概括形态",
+    "before": 490,
+    "after": {
+      "popOpen": true,
+      "popTitle": "你不在的时候",
+      "popLead": "城市自己过了 1 小时（D1 08:10 → D1 09:10）。这段时间没有结算出新的剪辑卡。",
+      "popQuiet": [],
+      "popSum": [
+        "住户之间搭话 1 次。",
+        "另外还有 1 条日常记录（上工、吃饭、睡觉这些）。"
+      ],
+      "popCardN": 0,
+      "popCardWho": "",
+      "popCardScore": "",
+      "popCardItems": [],
+      "popCardFoot": "",
+      "popBtns": [
+        "✕",
+        "知道了"
+      ],
+      "screen": "scr-live",
+      "bannerShown": false,
+      "banner": "",
+      "clipCards": 0,
+      "llmStat": "0 次 · 待机",
+      "clock": "D1 周一 09:10",
+      "build": "v38",
+      "seed": "1609061798",
+      "sparkleN": 0,
+      "tickLog": [
+        "D1 09:10城市⏱ 你不在的时候，城市自己过了 1 小时。"
+      ]
+    },
+    "closed": {
+      "popOpen": false,
+      "popTitle": "",
+      "popLead": "",
+      "popQuiet": [],
+      "popSum": [],
+      "popCardN": 0,
+      "popCardWho": "",
+      "popCardScore": "",
+      "popCardItems": [],
+      "popCardFoot": "",
+      "popBtns": [],
+      "screen": "scr-live",
+      "bannerShown": false,
+      "banner": "",
+      "clipCards": 0,
+      "llmStat": "0 次 · 待机",
+      "clock": "D1 周一 09:20",
+      "build": "v38",
+      "seed": "1609061798",
+      "sparkleN": 0,
+      "tickLog": [
+        "D1 09:10城市⏱ 你不在的时候，城市自己过了 1 小时。"
+      ]
+    },
+    "netBoot": 0,
+    "netBootUrls": [],
+    "netTotal": 0,
+    "netUrls": []
+  },
+  {
+    "awayMin": 600,
+    "tag": "yi2-10h-daytime",
+    "note": "乙：白天离开 10 小时，仍没跨 04:00 ⇒ 概括形态",
+    "before": 490,
+    "after": {
+      "popOpen": true,
+      "popTitle": "你不在的时候",
+      "popLead": "城市自己过了 10 小时（D1 08:10 → D1 18:10）。这段时间没有结算出新的剪辑卡。",
+      "popQuiet": [],
+      "popSum": [
+        "下过 2 场雨。",
+        "雨停过 1 次。",
+        "住户之间搭话 3 次。",
+        "另外还有 22 条日常记录（上工、吃饭、睡觉这些）。"
+      ],
+      "popCardN": 0,
+      "popCardWho": "",
+      "popCardScore": "",
+      "popCardItems": [],
+      "popCardFoot": "",
+      "popBtns": [
+        "✕",
+        "知道了"
+      ],
+      "screen": "scr-live",
+      "bannerShown": false,
+      "banner": "",
+      "clipCards": 0,
+      "llmStat": "0 次 · 待机",
+      "clock": "D1 周一 18:10",
+      "build": "v38",
+      "seed": "1609061798",
+      "sparkleN": 0,
+      "tickLog": [
+        "D1 18:10城市⏱ 你不在的时候，城市自己过了 10 小时。"
+      ]
+    },
+    "closed": {
+      "popOpen": false,
+      "popTitle": "",
+      "popLead": "",
+      "popQuiet": [],
+      "popSum": [],
+      "popCardN": 0,
+      "popCardWho": "",
+      "popCardScore": "",
+      "popCardItems": [],
+      "popCardFoot": "",
+      "popBtns": [],
+      "screen": "scr-live",
+      "bannerShown": false,
+      "banner": "",
+      "clipCards": 0,
+      "llmStat": "0 次 · 待机",
+      "clock": "D1 周一 18:20",
+      "build": "v38",
+      "seed": "1609061798",
+      "sparkleN": 0,
+      "tickLog": [
+        "D1 18:10城市⏱ 你不在的时候，城市自己过了 10 小时。"
+      ]
+    },
+    "netBoot": 0,
+    "netBootUrls": [],
+    "netTotal": 0,
+    "netUrls": []
+  },
+  {
+    "awayMin": 780,
+    "tag": "jia1-13h-deadzone",
+    "note": "甲：决策者实测那一档 —— 夜里离开 13 小时，nights=0 而卡照出（改前这一档一声不吭）",
+    "before": 1400,
+    "after": {
+      "popOpen": true,
+      "popTitle": "你不在的时候",
+      "popLead": "城市自己过了 13 小时（D1 23:20 → D2 12:20），结算了 1 天。",
+      "popQuiet": [
+        "下面就是这一天的剪辑卡："
+      ],
+      "popSum": [],
+      "popCardN": 1,
+      "popCardWho": "沈小满",
+      "popCardScore": "落差 5.40",
+      "popCardItems": [
+        "3.00处境 · 逆：店长那边——「排面没理齐，被店长说了两句」",
+        "2.40社交 · 三个人都聊了：顾云帆、白一鸣、陆知秋"
+      ],
+      "popCardFoot": "四人落差：顾云帆 1.40 ／ 沈小满 5.40 ／ 陆知秋 1.40 ／ 白一鸣 0.60　·　基线 0 天",
+      "popBtns": [
+        "✕",
+        "看全部剪辑",
+        "知道了"
+      ],
+      "screen": "scr-live",
+      "bannerShown": true,
+      "banner": "⏱ 你不在的时候，城市自己过了 13 小时（D1 23:20 → D2 12:20，结算了 1 天）。这段时间的对白与日记都没有过 AI，只有剪辑照常挑。",
+      "clipCards": 0,
+      "llmStat": "0 次 · 待机",
+      "clock": "D2 周二 12:30",
+      "build": "v38",
+      "seed": "1609062963",
+      "sparkleN": 0,
+      "tickLog": [
+        "D2 12:20城市⏱ 你不在的时候，城市自己过了 13 小时。"
+      ]
+    },
+    "closed": {
+      "popOpen": false,
+      "popTitle": "",
+      "popLead": "",
+      "popQuiet": [],
+      "popSum": [],
+      "popCardN": 0,
+      "popCardWho": "",
+      "popCardScore": "",
+      "popCardItems": [],
+      "popCardFoot": "",
+      "popBtns": [],
+      "screen": "scr-live",
+      "bannerShown": true,
+      "banner": "⏱ 你不在的时候，城市自己过了 13 小时（D1 23:20 → D2 12:20，结算了 1 天）。这段时间的对白与日记都没有过 AI，只有剪辑照常挑。",
+      "clipCards": 0,
+      "llmStat": "0 次 · 待机",
+      "clock": "D2 周二 12:40",
+      "build": "v38",
+      "seed": "1609062963",
+      "sparkleN": 0,
+      "tickLog": [
+        "D2 12:20城市⏱ 你不在的时候，城市自己过了 13 小时。"
+      ]
+    },
+    "netBoot": 0,
+    "netBootUrls": [],
+    "netTotal": 0,
+    "netUrls": []
+  },
+  {
+    "awayMin": 4320,
+    "tag": "jia2-3d",
+    "note": "甲：离开 3 天，多张新卡，弹最新那张",
+    "before": 490,
+    "after": {
+      "popOpen": true,
+      "popTitle": "你不在的时候",
+      "popLead": "城市自己过了 3 天（D1 08:10 → D4 08:10），结算了 3 天。",
+      "popQuiet": [
+        "下面是最新的那一张剪辑卡："
+      ],
+      "popSum": [],
+      "popCardN": 1,
+      "popCardWho": "沈小满",
+      "popCardScore": "落差 8.80",
+      "popCardItems": [
+        "3.00处境 · 逆：店长那边——「盘点对不上，差了三样」",
+        "2.60钱包 · 见底：当日最低 ¥-50，低于见底线 ¥60（D3 15:20）",
+        "2.40社交 · 三个人都聊了：顾云帆、白一鸣、陆知秋",
+        "0.80钱包 · 欠债：当日最低 ¥-50，已是负数"
+      ],
+      "popCardFoot": "四人落差：顾云帆 1.40 ／ 沈小满 8.80 ／ 陆知秋 3.80 ／ 白一鸣 0.00　·　基线 1 天",
+      "popBtns": [
+        "✕",
+        "看全部剪辑",
+        "知道了"
+      ],
+      "screen": "scr-live",
+      "bannerShown": true,
+      "banner": "⏱ 你不在的时候，城市自己过了 3 天（D1 08:10 → D4 08:10，结算了 3 天）。这段时间的对白与日记都没有过 AI，只有剪辑照常挑。",
+      "clipCards": 0,
+      "llmStat": "0 次 · 待机",
+      "clock": "D4 周四 08:10",
+      "build": "v38",
+      "seed": "1609061798",
+      "sparkleN": 0,
+      "tickLog": [
+        "D4 08:10城市⏱ 你不在的时候，城市自己过了 3 天。"
+      ]
+    },
+    "closed": {
+      "popOpen": false,
+      "popTitle": "",
+      "popLead": "",
+      "popQuiet": [],
+      "popSum": [],
+      "popCardN": 0,
+      "popCardWho": "",
+      "popCardScore": "",
+      "popCardItems": [],
+      "popCardFoot": "",
+      "popBtns": [],
+      "screen": "scr-live",
+      "bannerShown": true,
+      "banner": "⏱ 你不在的时候，城市自己过了 3 天（D1 08:10 → D4 08:10，结算了 3 天）。这段时间的对白与日记都没有过 AI，只有剪辑照常挑。",
+      "clipCards": 0,
+      "llmStat": "0 次 · 待机",
+      "clock": "D4 周四 08:20",
+      "build": "v38",
+      "seed": "1609061798",
+      "sparkleN": 0,
+      "tickLog": [
+        "D4 08:10城市⏱ 你不在的时候，城市自己过了 3 天。"
+      ]
+    },
+    "netBoot": 0,
+    "netBootUrls": [],
+    "netTotal": 0,
+    "netUrls": []
+  },
+  {
+    "awayMin": 14400,
+    "tag": "jia3-10d-capped",
+    "note": "甲：离开 10 天触封顶，须如实告知跳过了多少",
+    "before": 490,
+    "after": {
+      "popOpen": true,
+      "popTitle": "你不在的时候",
+      "popLead": "城市自己过了 3 天（D1 08:10 → D4 08:10），结算了 3 天。",
+      "popQuiet": [
+        "离开更久，只补到封顶的 3 天，更早的 7 天没有补算，那段日子没有发生。",
+        "下面是最新的那一张剪辑卡："
+      ],
+      "popSum": [],
+      "popCardN": 1,
+      "popCardWho": "沈小满",
+      "popCardScore": "落差 8.80",
+      "popCardItems": [
+        "3.00处境 · 逆：店长那边——「盘点对不上，差了三样」",
+        "2.60钱包 · 见底：当日最低 ¥-50，低于见底线 ¥60（D3 15:20）",
+        "2.40社交 · 三个人都聊了：顾云帆、白一鸣、陆知秋",
+        "0.80钱包 · 欠债：当日最低 ¥-50，已是负数"
+      ],
+      "popCardFoot": "四人落差：顾云帆 1.40 ／ 沈小满 8.80 ／ 陆知秋 3.80 ／ 白一鸣 0.00　·　基线 1 天",
+      "popBtns": [
+        "✕",
+        "看全部剪辑",
+        "知道了"
+      ],
+      "screen": "scr-live",
+      "bannerShown": true,
+      "banner": "⏱ 你不在的时候，城市自己过了 3 天（D1 08:10 → D4 08:10，结算了 3 天）。这段时间的对白与日记都没有过 AI，只有剪辑照常挑。　离开更久，只补到封顶的 3 天，更早的 7 天没有补算，那段日子没有发生。",
+      "clipCards": 0,
+      "llmStat": "0 次 · 待机",
+      "clock": "D4 周四 08:10",
+      "build": "v38",
+      "seed": "1609061798",
+      "sparkleN": 0,
+      "tickLog": [
+        "D4 08:10城市⏱ 你不在的时候，城市自己过了 3 天。（离开更久，只补到封顶的 3 天，更早的没有补算。）"
+      ]
+    },
+    "closed": {
+      "popOpen": false,
+      "popTitle": "",
+      "popLead": "",
+      "popQuiet": [],
+      "popSum": [],
+      "popCardN": 0,
+      "popCardWho": "",
+      "popCardScore": "",
+      "popCardItems": [],
+      "popCardFoot": "",
+      "popBtns": [],
+      "screen": "scr-live",
+      "bannerShown": true,
+      "banner": "⏱ 你不在的时候，城市自己过了 3 天（D1 08:10 → D4 08:10，结算了 3 天）。这段时间的对白与日记都没有过 AI，只有剪辑照常挑。　离开更久，只补到封顶的 3 天，更早的 7 天没有补算，那段日子没有发生。",
+      "clipCards": 0,
+      "llmStat": "0 次 · 待机",
+      "clock": "D4 周四 08:20",
+      "build": "v38",
+      "seed": "1609061798",
+      "sparkleN": 0,
+      "tickLog": [
+        "D4 08:10城市⏱ 你不在的时候，城市自己过了 3 天。（离开更久，只补到封顶的 3 天，更早的没有补算。）"
+      ]
+    },
+    "netBoot": 0,
+    "netBootUrls": [],
+    "netTotal": 0,
+    "netUrls": []
+  },
+  {
+    "awayMin": 780,
+    "tag": "phone-jia-13h",
+    "note": "甲·手机竖屏（390×844）：底部抽屉形态",
+    "before": 1400,
+    "after": {
+      "popOpen": true,
+      "popTitle": "你不在的时候",
+      "popLead": "城市自己过了 13 小时（D1 23:20 → D2 12:20），结算了 1 天。",
+      "popQuiet": [
+        "下面就是这一天的剪辑卡："
+      ],
+      "popSum": [],
+      "popCardN": 1,
+      "popCardWho": "沈小满",
+      "popCardScore": "落差 5.40",
+      "popCardItems": [
+        "3.00处境 · 逆：店长那边——「排面没理齐，被店长说了两句」",
+        "2.40社交 · 三个人都聊了：顾云帆、白一鸣、陆知秋"
+      ],
+      "popCardFoot": "四人落差：顾云帆 1.40 ／ 沈小满 5.40 ／ 陆知秋 1.40 ／ 白一鸣 0.60　·　基线 0 天",
+      "popBtns": [
+        "✕",
+        "看全部剪辑",
+        "知道了"
+      ],
+      "screen": "scr-live",
+      "bannerShown": true,
+      "banner": "⏱ 你不在的时候，城市自己过了 13 小时（D1 23:20 → D2 12:20，结算了 1 天）。这段时间的对白与日记都没有过 AI，只有剪辑照常挑。",
+      "clipCards": 0,
+      "llmStat": "0 次 · 待机",
+      "clock": "D2 周二 12:30",
+      "build": "v38",
+      "seed": "1609062963",
+      "sparkleN": 0,
+      "tickLog": [
+        "D2 12:20城市⏱ 你不在的时候，城市自己过了 13 小时。"
+      ]
+    },
+    "closed": {
+      "popOpen": false,
+      "popTitle": "",
+      "popLead": "",
+      "popQuiet": [],
+      "popSum": [],
+      "popCardN": 0,
+      "popCardWho": "",
+      "popCardScore": "",
+      "popCardItems": [],
+      "popCardFoot": "",
+      "popBtns": [],
+      "screen": "scr-live",
+      "bannerShown": true,
+      "banner": "⏱ 你不在的时候，城市自己过了 13 小时（D1 23:20 → D2 12:20，结算了 1 天）。这段时间的对白与日记都没有过 AI，只有剪辑照常挑。",
+      "clipCards": 0,
+      "llmStat": "0 次 · 待机",
+      "clock": "D2 周二 12:40",
+      "build": "v38",
+      "seed": "1609062963",
+      "sparkleN": 0,
+      "tickLog": [
+        "D2 12:20城市⏱ 你不在的时候，城市自己过了 13 小时。"
+      ]
+    },
+    "netBoot": 0,
+    "netBootUrls": [],
+    "netTotal": 0,
+    "netUrls": []
+  },
+  {
+    "awayMin": 600,
+    "tag": "phone-yi-10h",
+    "note": "乙·手机竖屏（390×844）：底部抽屉形态",
+    "before": 490,
+    "after": {
+      "popOpen": true,
+      "popTitle": "你不在的时候",
+      "popLead": "城市自己过了 10 小时（D1 08:10 → D1 18:10）。这段时间没有结算出新的剪辑卡。",
+      "popQuiet": [],
+      "popSum": [
+        "下过 2 场雨。",
+        "雨停过 1 次。",
+        "住户之间搭话 3 次。",
+        "另外还有 22 条日常记录（上工、吃饭、睡觉这些）。"
+      ],
+      "popCardN": 0,
+      "popCardWho": "",
+      "popCardScore": "",
+      "popCardItems": [],
+      "popCardFoot": "",
+      "popBtns": [
+        "✕",
+        "知道了"
+      ],
+      "screen": "scr-live",
+      "bannerShown": false,
+      "banner": "",
+      "clipCards": 0,
+      "llmStat": "0 次 · 待机",
+      "clock": "D1 周一 18:10",
+      "build": "v38",
+      "seed": "1609061798",
+      "sparkleN": 0,
+      "tickLog": [
+        "D1 18:10城市⏱ 你不在的时候，城市自己过了 10 小时。"
+      ]
+    },
+    "closed": {
+      "popOpen": false,
+      "popTitle": "",
+      "popLead": "",
+      "popQuiet": [],
+      "popSum": [],
+      "popCardN": 0,
+      "popCardWho": "",
+      "popCardScore": "",
+      "popCardItems": [],
+      "popCardFoot": "",
+      "popBtns": [],
+      "screen": "scr-live",
+      "bannerShown": false,
+      "banner": "",
+      "clipCards": 0,
+      "llmStat": "0 次 · 待机",
+      "clock": "D1 周一 18:20",
+      "build": "v38",
+      "seed": "1609061798",
+      "sparkleN": 0,
+      "tickLog": [
+        "D1 18:10城市⏱ 你不在的时候，城市自己过了 10 小时。"
+      ]
+    },
+    "netBoot": 0,
+    "netBootUrls": [],
+    "netTotal": 0,
+    "netUrls": []
+  }
+]
