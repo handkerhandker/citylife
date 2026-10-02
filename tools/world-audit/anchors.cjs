@@ -121,25 +121,32 @@ for (const [k, 名] of [['clear', '晴    '], ['rain', '雨    ']]) {
   console.log('下雨拍数最集中的钟点：' + 雨钟.slice(0, 6).map(x => x.h + '时(' + x.n + ')').join('　'));
 }
 
-console.log('\n═══ 问三 · 兜底闲聊：接话池有多「万能」 ═══');
+console.log('\n═══ 问三 · 兜底闲聊：接话答不答得上 ═══');
 {
-  const OP = Sim.CHAT_FB_OPEN, RP = Sim.CHAT_FB_REPLY;
+  /* 第 48 单改：接话池从「逐人 8 条万能句」改成「逐人 × 开口类别 各一组」，
+     故本节的打印口径同步改成分组形态——改的是**读数怎么印**，不是判什么。 */
+  const OP = Sim.CHAT_FB_OPEN, RP = Sim.CHAT_FB_REPLY, KI = Sim.CHAT_OPEN_KIND, KS = Sim.CHAT_KINDS;
+  const 人 = Object.keys(OP);
+  const 摊平 = k => [].concat(...KS.map(kd => (RP[k] && RP[k][kd]) || []));
   const 起手 = arr => { const m = {}; for (const s of arr) { const k = String(s).slice(0, 2); m[k] = (m[k] || 0) + 1; } return m; };
   const 展 = m => Object.entries(m).sort((a, b) => b[1] - a[1]);
   const 全 = arr => Object.values(起手(arr)).reduce((a, b) => a + b, 0);
-  console.log('开口池：' + Object.keys(OP).length + ' 人 × ' + OP[Object.keys(OP)[0]].length + ' 条');
-  const o = 起手(OP[Object.keys(OP)[0]]), r = 起手(RP[Object.keys(RP)[0]]);
-  console.log('开口起手（前 2 字）种类 ' + Object.keys(o).length + ' / ' + 全(OP[Object.keys(OP)[0]]) + ' 条，最高频 '
+  const 开口全 = [].concat(...人.map(k => OP[k]));
+  const 接话全 = [].concat(...人.map(k => 摊平(k)));
+  console.log('开口池：' + 人.length + ' 人 × ' + OP[人[0]].length + ' 条（平铺）；'
+    + '接话池：' + 人.length + ' 人 × ' + KS.length + ' 组（第 48 单按开口类别分组）');
+  const o = 起手(开口全), r = 起手(接话全);
+  console.log('开口起手（前 2 字）种类 ' + Object.keys(o).length + ' / ' + 全(开口全) + ' 条，最高频 '
     + 展(o).slice(0, 3).map(x => x[0] + '×' + x[1]).join('　'));
-  console.log('接话起手（前 2 字）种类 ' + Object.keys(r).length + ' / ' + 全(RP[Object.keys(RP)[0]]) + ' 条，最高频 '
+  console.log('接话起手（前 2 字）种类 ' + Object.keys(r).length + ' / ' + 全(接话全) + ' 条，最高频 '
     + 展(r).slice(0, 5).map(x => x[0] + '×' + x[1]).join('　'));
-  const 接话集 = RP[Object.keys(RP)[0]];
   const 承接 = ['同感', '确实', '细想', '也是', '倒是', '说得', '还真', '这话', '可不是', '嗯'];
-  const n = 接话集.filter(s => 承接.some(k => String(s).startsWith(k))).length;
-  console.log('接话句以承接语起手的：' + n + ' / ' + 接话集.length + '（' + (n / 接话集.length * 100).toFixed(0) + '%）');
+  const n = 接话全.filter(s => 承接.some(k => String(s).startsWith(k))).length;
+  console.log('接话句以承接语起手的：' + n + ' / ' + 接话全.length + '（' + (n / 接话全.length * 100).toFixed(0) + '%）'
+    + '　—— 第 37 单量的是顾云帆那一池（改前 1 / 8＝13%），改后按全城口径印');
   console.log('\n★ 逐条印出来自己看（起手词的机械统计说明不了「答不答得上」，语义只能目验）：');
-  for (const k of Object.keys(RP)) {
-    console.log('【' + k + '·开口】' + OP[k].join(' ／ '));
-    console.log('【' + k + '·接话】' + RP[k].join(' ／ '));
+  for (const k of 人) {
+    console.log('【' + k + '·开口归类】' + OP[k].map((s, i) => (KS.indexOf(KI[k][i]) >= 0 ? KI[k][i] : '?')).join(' '));
+    for (const kd of KS) console.log('【' + k + '·' + kd + '】' + (RP[k] && RP[k][kd] ? RP[k][kd].join(' ／ ') : '（缺组）'));
   }
 }

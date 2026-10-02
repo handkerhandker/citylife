@@ -25,11 +25,19 @@ const NAMES={work:'顾云帆', clerk:'沈小满', trade:'陆知秋', write:'白�
 const hr=t=>console.log('\n═══ '+t+' '+'═'.repeat(Math.max(0,60-t.length*2)));
 
 // 池截短／还原：就地改数组内容（闭包持的是同一个引用，故生产代码立刻看得见）
-function snapshot(tbl){ const o={}; for(const k of KINDS) o[k]=tbl[k].slice(); return o; }
-function truncate(tbl, full, n){ for(const k of KINDS){ const a=tbl[k]; a.length=0; for(let i=0;i<Math.min(n,full[k].length);i++) a.push(full[k][i]); } }
-function restore(tbl, full){ for(const k of KINDS){ const a=tbl[k]; a.length=0; for(const s of full[k]) a.push(s); } }
+// 第 48 单：接话池改成「人 → 开口类别 → 数组」两层，故快照／截短／还原都要认得两层形态
+// （日记池与开口池仍是平铺一维，两种形态并存，故一律先判形态再动手）。
+function snapshot(tbl){ const o={}; for(const k of KINDS){ o[k]=Array.isArray(tbl[k])?tbl[k].slice():Object.fromEntries(Object.entries(tbl[k]).map(([g,a])=>[g,a.slice()])); } return o; }
+function 写回(arr,src,n){ arr.length=0; for(let i=0;i<Math.min(n,src.length);i++) arr.push(src[i]); }
+function truncate(tbl, full, n){ for(const k of KINDS){ const a=tbl[k], f=full[k];
+  if(Array.isArray(a)) 写回(a,f,n);
+  else for(const g in a) 写回(a[g], f[g], n); } }
+function restore(tbl, full){ for(const k of KINDS){ const a=tbl[k], f=full[k];
+  if(Array.isArray(a)) 写回(a,f,f.length);
+  else for(const g in a) 写回(a[g], f[g], f[g].length); } }
 const DFULL=snapshot(Sim.DIARY_FB), OFULL=snapshot(Sim.CHAT_FB_OPEN), RFULL=snapshot(Sim.CHAT_FB_REPLY);
-const minLen=o=>Math.min(...KINDS.map(k=>o[k].length));
+const 长度=o=>Array.isArray(o)?o.length:Math.min(...Object.values(o).map(a=>a.length));
+const minLen=o=>Math.min(...KINDS.map(k=>长度(o[k])));
 
 function away(seed){
   const w=Sim.hydrate(Sim.serialize(Sim.makeWorld(seed),{selected:'a1',lastReflectDay:0,at:1})).world;
@@ -105,10 +113,12 @@ hr('定容量的两个底数（曲线只证「够不够 3 天」，容量按这�
 {
   const N=Number(process.argv[2]||300), D=30;
   const dPeak=[], oPeak=[], rPeak=[];
+  const KS=Sim.CHAT_KINDS, KI=Sim.CHAT_OPEN_KIND;
+  const gPeakO={}, gPeakR={};        // 第 48 单：按 (人 × 开口类别) 的单日峰值——分组后的容量依据
   for(let s=0;s<N;s++){
     const w=Sim.hydrate(Sim.serialize(Sim.makeWorld(1000000+s*7919),null)).world;
     let dPk=0,oPk=0,rPk=0, rd=0, curDay=PURE.dayOf(w.t);
-    const dayO={}, dayR={};
+    const dayO={}, dayR={}, dayOK={}, dayRK={};
     for(let i=0;i<D*144;i++){
       const lid0=w.lidSeq;
       const c=Sim.catchUp(w,1,rd); rd=c.lastReflectDay;
@@ -117,11 +127,24 @@ hr('定容量的两个底数（曲线只证「够不够 3 天」，容量按这�
         const e=w.log[j];
         if(!e || e.type!=='chat' || !e.with) continue;
         const d=PURE.dayOf(e.t);
-        if(d!==curDay){ curDay=d; for(const k in dayO) delete dayO[k]; for(const k in dayR) delete dayR[k]; }
+        if(d!==curDay){ curDay=d; for(const k in dayO) delete dayO[k]; for(const k in dayR) delete dayR[k];
+          for(const k in dayOK) delete dayOK[k]; for(const k in dayRK) delete dayRK[k]; }
         const ka=(w.agents.find(a=>a.id===e.agent)||{}).workKind, kb=(w.agents.find(a=>a.id===e.with)||{}).workKind;
         dayO[ka]=(dayO[ka]||0)+1; dayR[kb]=(dayR[kb]||0)+1;
         if(dayO[ka]>oPk) oPk=dayO[ka];
         if(dayR[kb]>rPk) rPk=dayR[kb];
+        // 第 48 单：开口句归到哪一类，就记到哪一类——接话池按类分组后，容量要按**类**核
+        const m=/^「([\s\S]*?)」「([\s\S]*?)」$/.exec(e.thought||'');
+        if(m){
+          const oi=((Sim.CHAT_FB_OPEN[ka])||[]).indexOf(m[1]);
+          const kind=oi>=0?((KI[ka])||[])[oi]:null;
+          if(kind){
+            const ko=ka+'|'+kind, kr=kb+'|'+kind;
+            dayOK[ko]=(dayOK[ko]||0)+1; dayRK[kr]=(dayRK[kr]||0)+1;
+            if(dayOK[ko]>(gPeakO[ko]||0)) gPeakO[ko]=dayOK[ko];
+            if(dayRK[kr]>(gPeakR[kr]||0)) gPeakR[kr]=dayRK[kr];
+          }
+        }
       }
       if(c.nights){
         const cnt={}; for(const e of w.log) if(e && e.type==='diary' && e.agent) cnt[e.agent]=(cnt[e.agent]||0)+1;
@@ -145,5 +168,19 @@ hr('定容量的两个底数（曲线只证「够不够 3 天」，容量按这�
   console.log('\n  现行取值：DIARY_FB_RECENT='+Sim.DIARY_FB_RECENT
     +' ／ 日记池 '+KINDS.map(k=>Sim.DIARY_FB[k].length).join('/')
     +' ／ 开口池 '+KINDS.map(k=>Sim.CHAT_FB_OPEN[k].length).join('/')
-    +' ／ 接话池 '+KINDS.map(k=>Sim.CHAT_FB_REPLY[k].length).join('/')+'（'+KINDS.map(k=>NAMES[k]).join('/')+'）');
+    +' ／ 接话池 '+KINDS.map(k=>Object.values(Sim.CHAT_FB_REPLY[k]).map(a=>a.length).join('+')).join('/')
+    +'（'+KINDS.map(k=>NAMES[k]).join('/')+'；第 48 单起按类别分组，故按「组」印）');
+  // 第 48 单：分组后每一组的容量必须 ≥ 该组实测单日峰值（第 13 单口径按组重算）
+  console.log('\n  第 48 单·按 (人 × 开口类别) 的单日峰值矩阵（容量依据）');
+  console.log('        '+KS.map(kd=>kd.padStart(7)).join(''));
+  const 缺 = [];
+  for(const k of KINDS){
+    console.log('   开口 '+NAMES[k]+' '+KS.map(kd=>String(gPeakO[k+'|'+kd]||0).padStart(7)).join(''));
+    console.log('   接话 '+NAMES[k]+' '+KS.map(kd=>String(gPeakR[k+'|'+kd]||0).padStart(7)).join(''));
+    for(const kd of KS){
+      const 需=gPeakR[k+'|'+kd]||0, 有=(((Sim.CHAT_FB_REPLY[k])||{})[kd]||[]).length;
+      if(有<需) 缺.push(NAMES[k]+'·'+kd+'（需 '+需+' 有 '+有+'）');
+    }
+  }
+  console.log('  容量核对：'+(缺.length?'✘ 不够 —— '+缺.join('；'):'✔ 每一组都 ≥ 该组实测峰值'));
 }

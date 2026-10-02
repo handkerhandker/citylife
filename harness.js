@@ -503,7 +503,11 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   {
     const KINDS=['work','clerk','trade','write'];
     const NAMES=['顾云帆','沈小满','陆知秋','白一鸣'];
-    const pools=[['日记',Sim.DIARY_FB],['闲聊·开口',Sim.CHAT_FB_OPEN],['闲聊·接话',Sim.CHAT_FB_REPLY]];
+    // 第 48 单：接话池改成**按开口类别分组**（`{人:{类别:[句…]}}`），故这里先摊平成「此人全部接话句」，
+    // 第 27 单那几条通用检查（非空／零撞句／零语气词起手／无 ✨ 与英文）原样照跑，口径一字未松。
+    const 摊平接话=k=>[].concat(...Sim.CHAT_KINDS.map(kd=>((Sim.CHAT_FB_REPLY[k]||{})[kd])||[]));
+    const 接话表={}; KINDS.forEach(k=>{ 接话表[k]=摊平接话(k); });
+    const pools=[['日记',Sim.DIARY_FB],['闲聊·开口',Sim.CHAT_FB_OPEN],['闲聊·接话',接话表]];
     for(const [label,P] of pools){
       ok(KINDS.every(k=>Array.isArray(P[k]) && P[k].length>0),label+'池按 workKind 四人齐备（照 WORK_THOUGHTS 先例挂表）');
       const all=[].concat(...KINDS.map(k=>P[k]||[]));
@@ -533,10 +537,26 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
            NAMES[i]+'的日记池容量 '+p.length+' > 记账窗口 '+Sim.DIARY_FB_RECENT+'（否则无候选可派）');
       }
     }
-    // 闲聊专属：容量须 ≥ 单日抽取峰值（第 13 单既有口径），实测见 tools/fallback-pool/capacity.cjs
+    // 闲聊专属：容量须 ≥ 单日抽取峰值（第 13 单既有口径）。
+    // 第 48 单改：接话池分组后容量按**组**算——逐 (人 × 类别) 的实测峰值表见 tools/chat-pair/probe.cjs
+    // （本单实测：30 天 × 3 种子，单组单日最多被抽 3 次），闸这里守住两条：每组 ≥2 条的地板、
+    // 以及总量 ≥8 条（第 27 单那条「≥ 单日接话峰值上界 8」的等效落点）。
     for(let i=0;i<KINDS.length;i++){
-      ok(Sim.CHAT_FB_OPEN[KINDS[i]].length>=10,NAMES[i]+'的开口池 '+Sim.CHAT_FB_OPEN[KINDS[i]].length+' 条 ≥ 单日开口峰值上界 10');
-      ok(Sim.CHAT_FB_REPLY[KINDS[i]].length>=8,NAMES[i]+'的接话池 '+Sim.CHAT_FB_REPLY[KINDS[i]].length+' 条 ≥ 单日接话峰值上界 8');
+      const k=KINDS[i], 名=NAMES[i], 开口=Sim.CHAT_FB_OPEN[k], 接话=Sim.CHAT_FB_REPLY[k]||{};
+      ok(开口.length>=10, 名+'的开口池 '+开口.length+' 条 ≥ 单日开口峰值上界 10');
+      // 第 48 单·开口类别表：与开口池一一对应、取值只在 CHAT_KINDS 内（写错长度或写错类名当场判红）
+      const 表=Sim.CHAT_OPEN_KIND[k];
+      ok(Array.isArray(表)&&表.length===开口.length,
+        '第 48 单·'+名+'的开口类别表与开口池等长（'+(Array.isArray(表)?表.length:'—')+' vs '+开口.length+'）');
+      ok(Array.isArray(表)&&表.every(kd=>Sim.CHAT_KINDS.indexOf(kd)>=0),
+        '第 48 单·'+名+'的类别表取值全在 CHAT_KINDS 内（'+Sim.CHAT_KINDS.join('/')+'）');
+      ok(Sim.CHAT_KINDS.every(kd=>Array.isArray(接话[kd])&&接话[kd].length>0),
+        '第 48 单·'+名+'的接话池六类齐备（'+Sim.CHAT_KINDS.join('/')+'）');
+      const 全=摊平接话(k);
+      ok(new Set(全).size===全.length, '第 48 单·'+名+'的接话池组间零共享（'+全.length+' 条不重复——否则「同类命中」那条行为断言会退化成恒真）');
+      ok(Sim.CHAT_KINDS.every(kd=>接话[kd].length>=2),
+        '第 48 单·'+名+'每组 ≥2 条（'+Sim.CHAT_KINDS.map(kd=>接话[kd].length).join('/')+'）');
+      ok(全.length>=8, 名+'的接话池总量 '+全.length+' 条 ≥ 单日接话峰值上界 8');
     }
   }
 }
@@ -1279,15 +1299,110 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
     const kindOf={}; w.agents.forEach(a=>{ kindOf[a.id]=a.workKind; });
     ok(diary.every(e=>Sim.DIARY_FB[kindOf[e.agent]].indexOf(e.thought)>=0),
        '['+seed+'] 每条日记都出自该住户自己那一池（四人不共用一池）');
-    ok(chat.length>0 && new Set(chat.map(e=>e.thought)).size===chat.length,
-       '['+seed+'] '+chat.length+' 场闲聊**逐场不同**（改前：4 组模板摊 15–25 场，最高频一组占 40–60%）');
-    // 两句各自出自各自那一池 —— 「开口的那句按开口人抽、接话的那句按接话人抽」
-    let mis=0;
+    // 第 48 单换量尺（极值量 → 分布量，照第 27 单「无话题霸屏」那次的先例，取证见该单交付件第四章）：
+    // 接话池按类别分组后每组只有 2–3 条，故**跨天**再抽到同一对是可能的（同一天里仍不许重，见下面那条同日零重复）。
+    // 本单实测（3 颗种子 × 离线 3 天）：18/18 对、22/23 对（最高频一对 2 场＝8.7%）、14/14 对。
+    // 要防的是「复读机」（改前最高频一组占 40–60%），不是「一次都不许重」——故改判两档：
+    //   ① 最高频的一对 ≤2 场 且 占比 <20%；② 不同对 ≥ 场数−1（至少 95% 不重样）。
+    {
+      const 频={}; chat.forEach(e=>{ 频[e.thought]=(频[e.thought]||0)+1; });
+      const 最高=Math.max(0,...Object.values(频)), 不同=Object.keys(频).length;
+      ok(chat.length>0 && 最高<=2 && 最高/chat.length<0.2,
+        '['+seed+'] '+chat.length+' 场闲聊不是复读机：最高频的一对只出现 '+最高+' 场（'
+        +((最高/Math.max(1,chat.length))*100).toFixed(1)+'%；改前最高频一组占 40–60%）');
+      ok(不同>=chat.length-1,
+        '['+seed+'] '+chat.length+' 场里有 '+不同+' 对不同（≥ 场数−1；第 48 单换量尺的取证见交付件第四章）');
+    }
+    // 两句各自出自各自那一池，且**下句必须出自「上句类别」那一组**（第 48 单把「万能承接」换成「同类配对」）
+    let mis=0, 串门=0;
     for(const e of chat){
       const m=/^「([\s\S]*?)」「([\s\S]*?)」$/.exec(e.thought||'');
-      if(!m || Sim.CHAT_FB_OPEN[kindOf[e.agent]].indexOf(m[1])<0 || Sim.CHAT_FB_REPLY[kindOf[e.with]].indexOf(m[2])<0) mis++;
+      if(!m){ mis++; continue; }
+      const 开池=Sim.CHAT_FB_OPEN[kindOf[e.agent]]||[], 表=Sim.CHAT_OPEN_KIND[kindOf[e.agent]]||[];
+      const oi=开池.indexOf(m[1]);
+      const kind=oi>=0?表[oi]:null;
+      const 组=kind?((Sim.CHAT_FB_REPLY[kindOf[e.with]]||{})[kind]):null;
+      if(!kind || !Array.isArray(组) || 组.indexOf(m[2])<0){ mis++; continue; }
+      // 组间零共享由上面那条结构断言保证 ⇒ 这一句「同时落在别的组」本该不可能；真出现就是有两句同文，判红
+      if(Sim.CHAT_KINDS.some(kd=>kd!==kind && (((Sim.CHAT_FB_REPLY[kindOf[e.with]]||{})[kd])||[]).indexOf(m[2])>=0)) 串门++;
     }
-    ok(mis===0,'['+seed+'] 每场闲聊上句出自开口人的开口池、下句出自接话人的接话池（错位 '+mis+' 场）');
+    ok(mis===0,'['+seed+'] 每场闲聊：上句出自开口人的开口池、下句出自**该开口类别**对应那一组（错位 '+mis+' 场）');
+    ok(串门===0,'['+seed+'] 接话句没有同时落在别的类别组里（串门 '+串门+' 场）');
+  }
+
+  /* ═══ 第 48 单 · 接话池分组（决策者裁定 C）：行为侧普查 ＋ 反向自查 ═══
+     病根（第 37 单取证）：接话句与开口句各抽各的，于是 32 条接话全是敷衍式承接，实录里约半数答非所问。
+     治法：开口句归类、接话从**同类**那一组取——配对由构造保证。本段量的就是这件事在**真世界里**成不成立。 */
+  {
+    // 普查器：逐场核对「接话句是否出自开口类别那一组」，并查**同一人同一天同一组**有没有重复抽到同一句。
+    function 闲聊普查(seeds,days){
+      const r={场数:0,同类:0,错位:0,串门:0,归类失败:0,同日重复:0};
+      for(const seed of seeds){
+        const w=Sim.makeWorld(seed);
+        const kindOf={}; w.agents.forEach(a=>{ kindOf[a.id]=a.workKind; });
+        const 用过=new Set();
+        let 已读=0;
+        for(let i=0;i<days*144;i++){
+          Sim.step(w,10);
+          for(const e of w.log){
+            if(e.lid<=已读) continue; 已读=e.lid;
+            if(e.type!=='chat'||!e.with) continue;
+            const m=/^「([\s\S]*?)」「([\s\S]*?)」$/.exec(e.thought||'');
+            if(!m) continue;
+            const 开W=kindOf[e.agent], 接W=kindOf[e.with];
+            const 开池=Sim.CHAT_FB_OPEN[开W]||[], 表=Sim.CHAT_OPEN_KIND[开W]||[];
+            const oi=开池.indexOf(m[1]);
+            const kind=oi>=0?表[oi]:null;
+            if(!kind){ r.归类失败++; continue; }
+            r.场数++;
+            const 接表=Sim.CHAT_FB_REPLY[接W]||{};
+            const g=接表[kind];
+            if(Array.isArray(g)&&g.indexOf(m[2])>=0) r.同类++; else r.错位++;
+            // 串门：这一句**同时落在别的类别组里** ⇒ 组间零共享被打破（接线接歪、或两组同句）。
+            // 这条才是「接线判据」的第二条腿：只查「在不在等的那一组」查不出「两组共用一份数组」。
+            if(Sim.CHAT_KINDS.some(kd=>kd!==kind && ((接表[kd])||[]).indexOf(m[2])>=0)) r.串门++;
+            const key=PURE.dayOf(w.t)+'|'+接W+'|'+kind+'|'+m[2];
+            if(用过.has(key)) r.同日重复++; else 用过.add(key);
+          }
+        }
+      }
+      return r;
+    }
+    const 普=闲聊普查([20260803,424242,777],30);
+    ok(普.归类失败===0&&普.场数>0,'第 48 单·开口句全部能归类（归不了类的 '+普.归类失败+' 条；共 '+普.场数+' 场闲聊）');
+    ok(普.同类===普.场数&&普.错位===0,'第 48 单·**同类命中 100%**：'+普.同类+'/'+普.场数+' 场的接话句都出自「开口类别」那一组（错位 '+普.错位+' 场；改前无从判——那时没有组，一句要接住全部四十句）');
+    ok(普.串门===0,'第 48 单·零串门：没有一场的接话句同时落在别的类别组里（'+普.串门+' 场）——组间零共享在真世界里的那一半');
+    ok(普.同日重复===0,'第 48 单·同日零重复：没有一场「同人同日同组」抽到同一句（重复 '+普.同日重复+' 次）——组容量 ≥ 单日峰值由 tools/chat-pair/probe.cjs 的实测表背书');
+    // 反向自查一：把最热那一类组接歪（让 work 的 view 组指向 eat 组那份数组）⇒ 同类命中必须当场掉下来。
+    // 组接歪＝同一个数组挂在两个类别名下 ⇒ 抽出来的句子会「同时落在别的组」，由串门那条判红；
+    // 用最热的组是因为判断只在**真抽到**该 (人 × 类别) 时才成立（冷组 30 天可能一次都不抽）。
+    {
+      const 原=Sim.CHAT_FB_REPLY.work.view;
+      Sim.CHAT_FB_REPLY.work.view=Sim.CHAT_FB_REPLY.work.eat;
+      const 病=闲聊普查([20260803,424242,777],30);
+      Sim.CHAT_FB_REPLY.work.view=原;
+      ok(病.串门>0,'第 48 单·反向自查·拦得住：把顾云帆的 view 组接歪之后，同类命中掉到 '
+        +((病.同类/Math.max(1,病.场数))*100).toFixed(1)+'%（串门 '+病.串门+' 场）⇒ 这条判据不是恒绿');
+    }
+    // 反向自查二：把最热那组砍到 1 条（容量低于单日峰值）⇒ 「同日零重复」必须冒红（同上，取最热组才抽得着）
+    {
+      const 原=Sim.CHAT_FB_REPLY.trade.self.slice();
+      Sim.CHAT_FB_REPLY.trade.self.splice(1);
+      const 病=闲聊普查([20260803,424242,777],30);
+      Sim.CHAT_FB_REPLY.trade.self.length=0; 原.forEach(s=>Sim.CHAT_FB_REPLY.trade.self.push(s));
+      ok(病.同日重复>0,'第 48 单·反向自查·拦得住：把陆知秋的「说自己」组砍到 1 条，同日重复冒出 '
+        +病.同日重复+' 次 ⇒ 「同日零重复」这条不是恒绿');
+    }
+    // 源码侧：配对走的是**一处定义**（`chatKindOf` ＋ `chatReplyGroup`），且每场仍是两次抽签（rng 流不动的依据）
+    {
+      const 源=require('fs').readFileSync(require('path').join(__dirname,'city-life-framework.html'),'utf8');
+      ok(/const grp=chatReplyGroup\(mate\.workKind,chatKindOf\(ag\.workKind,said\)\);/.test(源),
+        '第 48 单·源码侧：接话取组走 chatKindOf＋chatReplyGroup（一处定义），不是就地翻表');
+      ok(/const back=pickV\(w,grp\.arr,mate,grp\.key\);/.test(源),
+        '第 48 单·源码侧：抽签吃的正是那一组的数组与带类别后缀的键（不同数组严禁共键）');
+      ok((源.match(/pickV\(w,CHAT_FB_OPEN\[/g)||[]).length===1&&(源.match(/pickV\(w,grp\.arr/g)||[]).length===1,
+        '第 48 单·源码侧：每场闲聊仍是「一次开口 ＋ 一次接话」两次抽签 ⇒ rng 流不动（世界指纹据此应逐字节不变）');
+    }
   }
   // —— 正向审计带出来的一处：关页把在途 AI 调用带走的那些条目，重开时照「AI 挂掉那条路」收尾 ——
   {
