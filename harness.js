@@ -1894,5 +1894,272 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   }
 }
 
+// ═══ 第 31 单·活动上画面（头顶活动指示器）═════════════════════════════════
+/* 被验的是**生产源码原文**：ACTICON-START…ACTICON-END 那对标记之间整块抠出来，
+   在一个只记账不作画的假 ctx 上跑（照第 30 单 backLab 的先例）。假 ctx 只做四件事：
+   记下 font／fillStyle、把 fillRect 与 fillText 逐笔存成流水、给 measureText 一个可算的宽度。
+   有了这本流水，「画了几个牌子」「牌子的盒子在哪儿」「盒子会不会压到金框」才有得判。
+
+   四条闸（任务书「必须补闸」逐条）：
+     闸一 · 七类活动各自有对应表达：**七类从 SIM 源码里现读**（不写死），逐类在绘制路径上
+            取到互不混淆的符号；work 按 workKind 分档，四档也是从 SIM 的住户卡现读。
+     闸二 · 指示器不改世界：源码侧（零 rng／零 Math.random／零 AI 入口／零出网／整块同步）
+            ＋运行侧可计数（照第 30 单闸三先例）＋世界逐字节只读。
+     闸三 · 兜底路径不崩：素材未就位那条路照出指示器（结构侧两个调用点各一处）；
+            activity 畸形（type 为 null／未知字符串／整个 activity 缺失／原型链键）不抛错、不乱画；
+            叠放不遮挡选中金框（逐像素算）。
+     闸四 · 反向自查：三条闸各自复演病态写法，断言当场判红；再喂生产原文，断言不误伤。 */
+{
+  const fs=require('fs'), path=require('path');
+  const src=fs.readFileSync(path.resolve(__dirname,'city-life-framework.html'),'utf8');
+  const grab=(re,name)=>{ const m=src.match(re); if(!m){ ok(false,'源码抽取失败:'+name); return ''; } return m[0]; };
+  const ICON_SRC=grab(/\/\*ACTICON-START\*\/[\s\S]*?\/\*ACTICON-END\*\//,'ACTICON 段');
+  // draw() 里的人物绘制段（含像素路径与色块兜底路径两支），锚在它后面那句「// 雨幕」上
+  const AGENTLOOP=grab(/for\(const en of ents\)\{[\s\S]*?\n  \/\/ 雨幕/,'draw 的人物绘制段');
+  const SIM_SRC=grab(/\/\*SIM-START\*\/[\s\S]*?\/\*SIM-END\*\//,'SIM 块');
+
+  // 假 ctx：只记账不作画。measureText 给每个码位记 1 个字宽（emoji 多为双码位，宽度不影响任何判据）
+  function iconLab(mut){
+    const rec={rect:[], text:[], font:[]};
+    const ctx={
+      set font(v){ rec.font.push(String(v)); ctx._f=String(v); }, get font(){ return ctx._f||''; },
+      fillStyle:'', textAlign:'', textBaseline:'',
+      measureText(s){ return {width:[...String(s)].length*13}; },
+      fillRect(x,y,w,h){ rec.rect.push({x,y,w,h,fill:ctx.fillStyle}); },
+      fillText(s,x,y){ rec.text.push({s:String(s),x,y,fill:ctx.fillStyle,font:ctx.font}); },
+    };
+    const code=(mut?mut(ICON_SRC):ICON_SRC)+'\nreturn {ACT_ICON,ACT_ICON_WORK,ACT_CHIP,actIcon,actChip};';
+    const M=new Function('ctx','Object','String','Math',code)(ctx,Object,String,Math);
+    return {M, rec, ctx};
+  }
+  const AG=Sim.makeWorld(20260803).agents;
+  const byKind=k=>AG.find(a=>a.workKind===k);
+  const posed=(ag,type)=>Object.assign(Object.create(null),{workKind:ag.workKind,activity:{type,label:'x'}});
+
+  // ── 闸一 · 七类活动各自有对应表达（七类与四档都从 SIM 源码现读，不写死）──────────
+  {
+    const L=iconLab();
+    // SIM 里所有会落到 ag.activity.type 的词：setActivity 的第 4 个实参 ＋ 直接赋值 activity={type:'…'}
+    const fromSim=new Set();
+    for(const m of SIM_SRC.matchAll(/setActivity\(\s*w\s*,\s*ag\s*,\s*[^,]+,\s*'([a-z]+)'/g)) fromSim.add(m[1]);
+    for(const m of SIM_SRC.matchAll(/activity\s*=\s*\{\s*type\s*:\s*'([a-z]+)'/g)) fromSim.add(m[1]);
+    const types=[...fromSim].sort();
+    ok(types.length===7,'闸一构造成立：从 SIM 源码现读出 '+types.length+' 类活动 —— '+types.join('／'));
+    const tbl=Object.keys(L.M.ACT_ICON).sort();
+    /* 取材表的完整性（照第 30 单「取材表完整」先例立成机器闸）：
+       日后有人往 SIM 加第八个活动词而忘了补一行符号，这条当场判红；
+       反过来，表里留着 SIM 已经删掉的词也判红（死行不许长挂）。 */
+    ok(JSON.stringify(tbl)===JSON.stringify(types),
+       '闸一：对照表 ACT_ICON 的键与 SIM 现有活动词**逐字相等**（表 '+tbl.join('／')+'）⇒ 加词漏登当场判红');
+    // work 的四档同样从 SIM 的住户卡现读
+    const kinds=[...new Set([...SIM_SRC.matchAll(/workKind\s*:\s*'([a-z]+)'/g)].map(m=>m[1]))].sort();
+    ok(kinds.length===4 && JSON.stringify(Object.keys(L.M.ACT_ICON_WORK).sort())===JSON.stringify(kinds),
+       '闸一：work 分档表 ACT_ICON_WORK 的键与 SIM 住户卡的 workKind **逐字相等**（'+kinds.join('／')+'）');
+    // 逐类真跑一遍 actIcon，收全部形态的符号
+    const got={};
+    for(const t of types) got[t]= t==='work' ? kinds.map(k=>L.M.actIcon(posed(byKind(k),'work'))) : [L.M.actIcon(posed(AG[0],t))];
+    const flat=[].concat(...Object.values(got));
+    ok(flat.every(g=>typeof g==='string' && g.length>0),'闸一：七类（work 含四档，共 '+flat.length+' 种形态）逐类都取到了非空符号');
+    ok(new Set(flat).size===flat.length,
+       '闸一：'+flat.length+' 种形态两两互不相同 ⇒ 不会两个活动共用一个符号 · '
+       +types.map(t=>t+'='+got[t].join('')).join(' '));
+    ok(L.M.actIcon(posed(byKind('write'),'work'))!==L.M.actIcon(posed(byKind('trade'),'work')),
+       '闸一·缘由点名的那一档：写稿（'+L.M.actIcon(posed(byKind('write'),'work'))+'）与盯盘（'
+       +L.M.actIcon(posed(byKind('trade'),'work'))+'）在画面上不再一样 —— SIM 里这两档连 label 都相同');
+    // 💤 只有一套：全站字面量恰好一处，且不在 draw 的人物绘制段里
+    ok((src.match(/💤/g)||[]).length===1 && /sleep:\s*'💤'/.test(ICON_SRC),
+       '闸一·不两套并存：全站 💤 字面量恰好 1 处，且就在 ACT_ICON.sleep 上（改前挂在名牌文本里）');
+    ok(!/💤/.test(AGENTLOOP) && /const tag=ag\.name;/.test(AGENTLOOP),
+       '闸一·不两套并存：名牌回归纯名字（const tag=ag.name），draw 的人物段零 💤');
+    // 符号一个都不许散落在 draw 里
+    ok(!/['"][\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u.test(AGENTLOOP),
+       '闸一·集中一处：draw 的人物绘制段里没有任何符号字面量，全部经 ACT_ICON／ACT_ICON_WORK 出');
+  }
+
+  // ── 闸二 · 指示器不改世界（源码侧 ＋ 可计数的运行侧 ＋ 世界只读，三判）────────────
+  {
+    const bare=ICON_SRC.replace(/\/\*[\s\S]*?\*\//g,'').replace(/(^|[^:'"])\/\/.*$/gm,'$1');
+    ok(/function actIcon\(ag\)\{/.test(bare) && /function actChip\(x, yBottom, ag\)\{/.test(bare),
+       '闸二：剥注释后 ACTICON 段代码仍完整（剥过头会让下面几条变成空转）');
+    ok(!/\.rng\s*\(|Math\.random/.test(bare),'闸二·源码侧：零骰子（w.rng／Math.random 一处都没有）⇒ 世界指纹逐字节不动');
+    ok(!/callClaude|enhanceChat|enhanceMessage|runReflection/.test(bare),'闸二·源码侧：零 AI 入口');
+    ok(!/\bfetch\s*\(|XMLHttpRequest|WebSocket|navigator\.sendBeacon/.test(bare),'闸二·源码侧：零出网调用点');
+    ok(!/\bawait\b|async /.test(bare),'闸二·源码侧：整块同步，没有一个 await');
+    ok(!/\bstate\.world\b|\bw\.|setActivity|\bag\.[A-Za-z]+\s*=[^=]/.test(bare),
+       '闸二·源码侧：整块对世界零写入（没有一处 ag.xxx＝、没碰 state.world、没调 setActivity）');
+    // 运行侧：真计数器，不是声明（照第 26／30 单「可计数硬断言」先例）
+    {
+      const w=Sim.makeWorld(20260803);
+      for(let i=0;i<144*3;i++) Sim.step(w,10);
+      const snap=Sim.serialize(w,null);
+      let rngHits=0, randHits=0, netHits=0;
+      const realRng=w.rng; w.rng=function(){ rngHits++; return realRng(); };
+      const bakRand=Math.random; Math.random=function(){ randHits++; return bakRand(); };
+      const bak={f:global.fetch, x:global.XMLHttpRequest, s:global.WebSocket};
+      const trap=n=>function(){ netHits++; throw new Error('指示器期间出网：'+n); };
+      global.fetch=trap('fetch'); global.XMLHttpRequest=trap('XMLHttpRequest'); global.WebSocket=trap('WebSocket');
+      let err='', drawn=0;
+      try{
+        const L=iconLab();
+        for(const t of ['eat','nap','work','stroll','idle','sleep','chat'])
+          for(const ag of w.agents){ L.M.actChip(100, 60, posed(ag,t)); }
+        for(const ag of w.agents) L.M.actChip(100, 60, ag);      // 再拿真住户当场的活动跑一遍
+        drawn=L.rec.text.length;
+      }catch(e){ err=String((e&&e.message)||e); }
+      Math.random=bakRand; w.rng=realRng;
+      global.fetch=bak.f; global.XMLHttpRequest=bak.x; global.WebSocket=bak.s;
+      ok(!err,'闸二·运行侧：七类 ×4 人 ＋ 真住户当场活动各跑一遍，没有异常'+(err?('（实测抛了：'+err+'）'):''));
+      ok(drawn===32,'闸二·运行侧构造成立：确实画出了 '+drawn+' 个指示器（不是一个都没画的空转）');
+      ok(rngHits===0 && randHits===0,'闸二·运行侧：w.rng 命中 '+rngHits+' 次、Math.random 命中 '+randHits+' 次 —— 可计数硬断言');
+      ok(netHits===0,'闸二·运行侧：fetch／XMLHttpRequest／WebSocket 命中 '+netHits+' 次');
+      ok(Sim.serialize(w,null)===snap,'闸二：指示器跑完之后世界逐字节不变（只读，一个字段都没写）');
+    }
+  }
+
+  // ── 闸三 · 兜底路径不崩（结构侧两条路各一个调用点 ＋ 畸形输入 ＋ 不遮金框）──────────
+  // 判据抽成函数，闸四正反两侧喂的是同一段判断
+  const g3pix=s=>{ const i=s.indexOf('const R=Math.max'); return (s.slice(0,i).match(/actChip\(/g)||[]).length; };
+  const g3fb =s=>{ const i=s.indexOf('const R=Math.max'); return (s.slice(i).match(/actChip\(/g)||[]).length; };
+  {
+    ok(g3pix(AGENTLOOP)===1,'闸三·结构侧：像素素材那条路上恰有 1 个 actChip 调用点');
+    ok(g3fb(AGENTLOOP)===1,
+       '闸三·结构侧：**素材未就位／pix 关掉的色块兜底路**上也恰有 1 个 actChip 调用点 ⇒ 那条路照出指示器'
+       +'（人退化成纯色方块，走／站都分不出来，「在干什么」在那儿比有素材时更没别处可看）');
+    ok(/chip\(px, dy0-4, tag[\s\S]*?actChip\(px, dy0-4-ACT_CHIP\.gap, ag\)/.test(AGENTLOOP)
+       && /chip\(px, py-R-4, tag[\s\S]*?actChip\(px, py-R-4-ACT_CHIP\.gap, ag\)/.test(AGENTLOOP),
+       '闸三·结构侧：两条路的指示器都取「名牌盒顶」为盒底（y−gap），叠放口径同源');
+    // 畸形输入：一律不抛错，且认不出就一笔都不画
+    {
+      const L=iconLab();
+      const bads=[undefined, null, {}, {activity:null}, {activity:{}}, {activity:{type:null}},
+                  {activity:{type:123}}, {activity:{type:'constructor'}}, {activity:{type:'toString'}},
+                  {activity:{type:'__proto__'}}, {activity:{type:'从未见过的新活动'}},
+                  {activity:{type:'work'},workKind:'constructor'}, {activity:{type:'work'},workKind:null},
+                  {activity:{type:'work'},workKind:'从未见过的工种'}];
+      let threw='', n0=L.rec.rect.length;
+      try{ for(const b of bads) L.M.actChip(100,60,b); }catch(e){ threw=String((e&&e.message)||e); }
+      ok(!threw,'闸三·畸形输入：'+bads.length+' 种畸形 activity（缺失／null／非串／未知词／原型链键，含畸形 workKind）一律不抛错'
+         +(threw?('（实测抛了：'+threw+'）'):''));
+      const painted=L.rec.rect.length-n0;
+      ok(painted===3,'闸三·认不出就不画：'+bads.length+' 种畸形里只有 3 种（type＝work 的那三个畸形 workKind）落到通用档 💼，'
+         +'其余一笔都没画（实测画了 '+painted+' 个牌子）⇒ 退化成改前的观感，不编符号');
+      for(const b of [{activity:{type:'work'},workKind:'constructor'},{activity:{type:'work'},workKind:null},
+                      {activity:{type:'work'},workKind:'从未见过的工种'}])
+        ok(L.M.actIcon(b)===L.M.ACT_ICON.work,'闸三·畸形 workKind「'+String(b.workKind)+'」落通用档 '+L.M.ACT_ICON.work+'（不沿原型链取到函数）');
+    }
+    // 叠放：指示器的盒子恒在选中金框上边线之上，逐像素算一遍
+    {
+      const L=iconLab(); L.rec.rect.length=0;
+      const dy0=200;                                   // 精灵顶（金框 strokeRect 的 y＝dy0−3，lineWidth 2 ⇒ 上边线占 [dy0−4, dy0−2]）
+      L.M.actChip(100, dy0-4-L.M.ACT_CHIP.gap, posed(AG[0],'sleep'));
+      const r=L.rec.rect[0];
+      const 金框顶=dy0-4, 名牌顶=dy0-4-14, 指示器底=r.y+r.h;
+      ok(指示器底<=名牌顶 && 指示器底<金框顶,
+         '闸三·不遮金框：指示器盒底 y='+指示器底+' ≤ 名牌盒顶 '+名牌顶+' ＜ 金框上边线 '+金框顶
+         +'（相隔 '+(金框顶-指示器底)+'px）⇒ 2px 金框结构上不可能被遮');
+      ok(/strokeRect\(dx0-3,dy0-3,dw\+6,dh\+6\)/.test(AGENTLOOP) && /strokeRect\(px-R-3,py-R-3,R\*2\+6,R\*2\+6\)/.test(AGENTLOOP),
+         '闸三构造成立：两条路的金框几何逐字未动（上面那个算式喂的就是生产源码里的数）');
+      ok((AGENTLOOP.match(/ctx\.lineWidth=2;/g)||[]).length===2,'闸三：金框仍是 2px（两条路各一处），本单零触碰');
+    }
+  }
+
+  // ── 闸四 · 反向自查：三条闸各自复演病态写法必须判红，再喂生产原文必须不误伤 ──
+  // 一条恒绿的闸等于没立（照走位三铁律与第 23／24／27／29／30 单先例）。
+  {
+    // 闸一的判据抽成函数：七类形态是否两两互不相同 ＋ 表键是否与 SIM 对得上
+    const g1=M=>{
+      const kinds=Object.keys(M.ACT_ICON_WORK);
+      const flat=[];
+      for(const t of Object.keys(M.ACT_ICON))
+        if(t==='work') for(const k of kinds) flat.push(M.actIcon(posed(byKind(k),'work')));
+        else flat.push(M.actIcon(posed(AG[0],t)));
+      return flat.every(g=>g) && new Set(flat).size===flat.length;
+    };
+    // 病态 1a · 让两个活动共用一个符号（睡觉与小憩都写成 💤）
+    {
+      const sick=s=>s.replace(/nap:\s*'😴'/,"nap:   '💤'");
+      ok(sick(ICON_SRC)!==ICON_SRC,'反向·闸一：病态改写命中了生产原文（改写没落空，下一条才算数）');
+      ok(!g1(iconLab(sick).M),'反向·闸一：小憩与睡觉合用 💤，「两两互不相同」当场判红');
+    }
+    // 病态 1b · 退回「work 不分档」（写稿与盯盘又变成同一个符号）＝ 本单不做这一步会长成的样子
+    {
+      const sick=s=>s.replace(/const ACT_ICON_WORK=\{[\s\S]*?\n\};/,
+        "const ACT_ICON_WORK={work:'💼',clerk:'💼',trade:'💼',write:'💼'};");
+      ok(sick(ICON_SRC)!==ICON_SRC,'反向·闸一：病态改写命中了生产原文');
+      const M=iconLab(sick).M;
+      ok(!g1(M),'反向·闸一：work 四档合并成一个 💼，判据当场判红 —— 这正是缘由点名「写稿与盯盘一模一样」的形态');
+      ok(M.actIcon(posed(byKind('write'),'work'))===M.actIcon(posed(byKind('trade'),'work')),
+         '反向·闸一·构造成立：病态写法下写稿与盯盘确实取到了同一个符号');
+    }
+    // 病态 1c · 往 SIM 里加第八个活动词而忘了补表（复演「加词漏登」）
+    {
+      const fakeSim=SIM_SRC.replace(/setActivity\(w,ag,'kitchen','eat'/,"setActivity(w,ag,'kitchen','shower'");
+      ok(fakeSim!==SIM_SRC,'反向·闸一：病态改写命中了 SIM 原文');
+      const s=new Set(); for(const m of fakeSim.matchAll(/setActivity\(\s*w\s*,\s*ag\s*,\s*[^,]+,\s*'([a-z]+)'/g)) s.add(m[1]);
+      for(const m of fakeSim.matchAll(/activity\s*=\s*\{\s*type\s*:\s*'([a-z]+)'/g)) s.add(m[1]);
+      ok(JSON.stringify([...s].sort())!==JSON.stringify(Object.keys(iconLab().M.ACT_ICON).sort()),
+         '反向·闸一：SIM 多出一个活动词（shower）而符号表没跟上 ⇒ 「表键逐字相等」当场判红');
+    }
+    // 病态 2 · 往 ACTICON 段里掺骰子与出网（源码侧与运行侧都必须判红）
+    {
+      const sickRng=s=>s.replace('const g=actIcon(ag);','const g=actIcon(ag); if(state.world.rng()<0.5) return;');
+      const sickNet=s=>s.replace('const g=actIcon(ag);','const g=actIcon(ag); fetch("https://x/"+g);');
+      ok(sickRng(ICON_SRC)!==ICON_SRC && sickNet(ICON_SRC)!==ICON_SRC,'反向·闸二：两处病态改写都命中了生产原文');
+      const bare=s=>s.replace(/\/\*[\s\S]*?\*\//g,'').replace(/(^|[^:'"])\/\/.*$/gm,'$1');
+      ok(/\.rng\s*\(/.test(bare(sickRng(ICON_SRC))),'反向·闸二·源码侧：掺了 rng() 的写法当场判红');
+      ok(/\bfetch\s*\(/.test(bare(sickNet(ICON_SRC))),'反向·闸二·源码侧：掺了 fetch() 的写法当场判红');
+      // 运行侧：计数器必须真的数到
+      const w=Sim.makeWorld(20260803);
+      let rngHits=0; const realRng=w.rng; w.rng=function(){ rngHits++; return realRng(); };
+      const L=new Function('ctx','Object','String','Math','state',
+        sickRng(ICON_SRC)+'\nreturn {actChip};')(
+        {set font(v){}, get font(){return ''}, fillStyle:'', textAlign:'', textBaseline:'',
+         measureText:s=>({width:13}), fillRect(){}, fillText(){}}, Object, String, Math, {world:w});
+      for(let i=0;i<8;i++) L.actChip(0,0,posed(AG[0],'sleep'));
+      w.rng=realRng;
+      ok(rngHits>0,'反向·闸二·运行侧：病态写法下 rng 计数器数到了 '+rngHits+' 次 —— 闸当场判红');
+    }
+    // 病态 3a · 把兜底路径的 actChip 调用删掉（＝「素材没就位就没指示器」那种做法）
+    {
+      const sick=AGENTLOOP.replace(/\n\s*\/\/ 第 31 单：素材未就位[\s\S]*?actChip\(px, py-R-4-ACT_CHIP\.gap, ag\);/,'');
+      ok(sick!==AGENTLOOP,'反向·闸三：病态改写命中了生产原文');
+      ok(g3fb(sick)===0 && g3pix(sick)===1,'反向·闸三：兜底路径的调用点被删掉 ⇒ 「那条路也有 1 个调用点」当场判红');
+    }
+    // 病态 3b · 查表改回裸索引（沿原型链取值），喂 type='constructor' 必须出事
+    {
+      const sick=s=>s.replace("return Object.prototype.hasOwnProperty.call(ACT_ICON,t) ? ACT_ICON[t] : '';",
+                              "return ACT_ICON[t]||'';");
+      ok(sick(ICON_SRC)!==ICON_SRC,'反向·闸三：病态改写命中了生产原文');
+      const M=iconLab(sick).M;
+      ok(typeof M.actIcon({activity:{type:'constructor'}})!=='string',
+         '反向·闸三：裸索引下 type="constructor" 取到的不再是字符串（沿原型链摸到了函数）⇒ 闸当场判红');
+    }
+    // 病态 3c · 指示器改画在名牌之下（贴着精灵头顶），当场压住 2px 金框
+    {
+      const L=iconLab(); L.rec.rect.length=0;
+      const dy0=200;
+      L.M.actChip(100, dy0-1, posed(AG[0],'sleep'));    // 病态放法：盒底压到金框上边线之下
+      const r=L.rec.rect[0];
+      ok(r.y+r.h>dy0-4,'反向·闸三：把指示器挪到名牌之下（盒底 y='+(r.y+r.h)+'）⇒ 越过金框上边线 '+(dy0-4)+'，闸当场判红');
+    }
+    // 病态 3d · 名牌把 💤 又挂回去（两套并存复发）
+    {
+      const sick=AGENTLOOP.replace('const tag=ag.name;',"const tag=ag.activity.type==='sleep'?ag.name+' 💤':ag.name;");
+      ok(sick!==AGENTLOOP,'反向·闸一：病态改写命中了生产原文');
+      ok(/💤/.test(sick),'反向·闸一：名牌把 💤 挂回去 ⇒ 「draw 的人物段零 💤」当场判红（名牌一套、指示器一套并存）');
+    }
+    // ── 反向不误伤：同样这几段判据喂生产原文，必须全部照常放行 ──
+    {
+      const M=iconLab().M;
+      ok(g1(M),'反向不误伤·闸一：合规写法下「七类形态两两互不相同」判据照常放行');
+      ok(g3pix(AGENTLOOP)===1 && g3fb(AGENTLOOP)===1,'反向不误伤·闸三：合规写法下两条路的调用点判据照常放行');
+      ok(typeof M.actIcon({activity:{type:'constructor'}})==='string' && M.actIcon({activity:{type:'constructor'}})==='',
+         '反向不误伤·闸三：合规写法下原型链键仍老实返回空串，没把对的判成错的');
+      const bare=ICON_SRC.replace(/\/\*[\s\S]*?\*\//g,'').replace(/(^|[^:'"])\/\/.*$/gm,'$1');
+      ok(!/\.rng\s*\(|\bfetch\s*\(/.test(bare),'反向不误伤·闸二：合规写法下源码侧判据照常放行（注释里提到 rng／fetch 不算数）');
+    }
+  }
+}
+
 console.log(fails? ('\n'+fails+' FAILURES') : '\nALL PASS');
 process.exit(fails?1:0);
