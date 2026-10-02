@@ -2406,5 +2406,125 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   }
 }
 
+// ═══ 第 35 单·入夜点灯（屋里亮起来）═════════════════════════════════════════
+/* 被验的是生产源码原文：SKYTINT ＋ NIGHTLAMP 两段一起抠出来求值（灯要调 skyTint，两段必须同源），
+   在一个只记账的假 ctx 上跑。四条闸：
+     闸一 · 同源：灯亮度直接由天色的不透明度换算 ⇒ 不存在第二套作息表
+     闸二 · 白天不点、夜里够亮、上限保守
+     闸三 · **只点室内五间**：不点室外（park／river 不在名单）、不点幽灵房间（名单每一项都得在 Sim.ROOMS 里）
+     闸四 · 不改世界 ＋ 畸形钟点不抛错不画坏色 ＋ 三条反向自查 ＋ 结构侧（画在天色之上） */
+{
+  const fs=require('fs'), path=require('path');
+  const src=fs.readFileSync(path.resolve(__dirname,'city-life-framework.html'),'utf8');
+  const grab=(re,name)=>{ const m=src.match(re); if(!m){ ok(false,'源码抽取失败:'+name); return ''; } return m[0]; };
+  const SKY_SRC=grab(/\/\*SKYTINT-START\*\/[\s\S]*?\/\*SKYTINT-END\*\//,'SKYTINT 段');
+  const LAMP_SRC=grab(/\/\*NIGHTLAMP-START\*\/[\s\S]*?\/\*NIGHTLAMP-END\*\//,'NIGHTLAMP 段');
+  const DRAWFN=grab(/function draw\(now\)\{[\s\S]*?\n\}\n\/\/ 画布：拖动=平移镜头/,'draw() 全函数');
+
+  function lampLab(mut){
+    const rec={rect:[]};
+    const ctx={ fillStyle:'', fillRect(x,y,w,h){ rec.rect.push({x,y,w,h,fill:ctx.fillStyle}); } };
+    const state={view:{s:24}};
+    const sx=x=>100+x*24, sy=y=>50+y*24;
+    let code=SKY_SRC+'\n'+LAMP_SRC;
+    if(mut) code=mut(code);
+    const M=new Function('ctx','PURE','Sim','state','sx','sy',
+      code+'\nreturn {SKY_MAX_ALPHA,skyTint,lampLevel,lampPaint,LAMP_ROOMS,LAMP_COLOR,LAMP_MAX_ALPHA};')
+      (ctx,PURE,Sim,state,sx,sy);
+    return {M,rec,ctx,state};
+  }
+  const 三更=180, 正午=720;
+
+  // ── 闸一 · 同源：灯＝天色换算出来的，不是第二套作息表 ─────────────────────
+  {
+    const bare=LAMP_SRC.replace(/\/\*[\s\S]*?\*\//g,'').replace(/(^|[^:'"])\/\/.*$/gm,'$1');
+    ok(/skyTint\(/.test(bare) && /SKY_MAX_ALPHA/.test(bare),
+       '闸一·同源：灯亮度由 `skyTint(...).a/SKY_MAX_ALPHA` 换算 ⇒ 改天色曲线灯自动跟着变，'
+       +'不存在「两套作息表各走各的」');
+    const M=lampLab().M;
+    let 同源=0;
+    for(let m=0;m<1440;m+=15) if(Math.abs(M.lampLevel(m)-PURE.clamp(M.skyTint(m).a/M.SKY_MAX_ALPHA,0,1))<1e-9) 同源++;
+    ok(同源===96,'闸一·同源（逐点核）：全天 96 个采样点上 lampLevel 都等于天色换算值（实测 '+同源+' 点）');
+  }
+  // ── 闸二 · 白天不点、夜里够亮、上限保守 ──────────────────────────────────
+  {
+    const L=lampLab();
+    ok(L.M.lampLevel(正午)===0,'闸二·白天不点：12:00 的灯亮度 '+L.M.lampLevel(正午)+' = 0');
+    L.M.lampPaint(正午);
+    ok(L.rec.rect.length===0,'闸二·白天一笔都不落：12:00 的 lampPaint 发 '+L.rec.rect.length
+       +' 次 fillRect（「不点灯」不是铺了一层透明的）');
+    ok(L.M.lampLevel(三更)>=0.99,'闸二·夜里点满：03:00 的灯亮度 '+L.M.lampLevel(三更).toFixed(3)+' ≥ 0.99');
+    ok(L.M.LAMP_MAX_ALPHA<=0.2,'闸二·上限保守：LAMP_MAX_ALPHA='+L.M.LAMP_MAX_ALPHA+' ≤ 0.2'
+       +'（再高房间就成一块发光贴纸）');
+    const L2=lampLab(); L2.M.lampPaint(三更);
+    const 混=parseFloat(String(L2.rec.rect[0].fill).split(',')[3]);
+    ok(Math.abs(混-L2.M.LAMP_MAX_ALPHA)<1e-6,'闸二·落笔的不透明度＝上限（实测 '+混+'，03:00 时 k=1）');
+  }
+  // ── 闸三 · 只点室内五间 ─────────────────────────────────────────────────
+  {
+    const L=lampLab();
+    L.M.lampPaint(三更);
+    const ids=Sim.ROOMS.map(r=>r.id);
+    ok(L.M.LAMP_ROOMS.length===5 && L.rec.rect.length===5,
+       '闸三·只点登记的房间：名单 '+L.M.LAMP_ROOMS.length+' 间、夜里恰好落 '+L.rec.rect.length+' 笔');
+    const 幽灵=L.M.LAMP_ROOMS.filter(id=>ids.indexOf(id)<0);
+    ok(幽灵.length===0,'闸三·无幽灵房间：名单每一项都在 Sim.ROOMS 里（找不到的 '+幽灵.length+' 个'
+       +(幽灵.length?('：'+幽灵.join('／')):'')+'）');
+    ok(L.M.LAMP_ROOMS.indexOf('park')<0 && L.M.LAMP_ROOMS.indexOf('river')<0,
+       '闸三·室外不点：滨江公园（park）与江边步道（river）都不在名单里');
+    const 未点=ids.filter(id=>L.M.LAMP_ROOMS.indexOf(id)<0);
+    ok(JSON.stringify(未点)===JSON.stringify(['park','river']),
+       '闸三·名单完整性：Sim.ROOMS 里**没被点**的恰好是室外两间 ['+未点.join('／')+']'
+       +' —— 日后往 ROOMS 加一间室内房而忘了登记，这条当场判红');
+    // 逐间核矩形：应当是该房自己的矩形
+    let 错位=0;
+    L.M.LAMP_ROOMS.forEach((id,i)=>{
+      const r=Sim.ROOMS.find(x=>x.id===id);
+      const b=L.rec.rect[i];
+      if(Math.abs(b.x-(100+r.x*24))>1e-6 || Math.abs(b.y-(50+r.y*24))>1e-6
+         || Math.abs(b.w-r.w*24)>1e-6 || Math.abs(b.h-r.h*24)>1e-6) 错位++;
+    });
+    ok(错位===0,'闸三·位置对得上：五笔都落在各自房间的矩形上（错位 '+错位+' 笔）—— 不是拿别处的坐标凑的');
+  }
+  // ── 闸四 · 不改世界 ＋ 畸形输入 ＋ 反向自查 ＋ 结构侧 ────────────────────
+  {
+    const bare=LAMP_SRC.replace(/\/\*[\s\S]*?\*\//g,'').replace(/(^|[^:'"])\/\/.*$/gm,'$1');
+    ok(!/\.rng\s*\(|\bMath\.random|\bfetch\s*\(|rawCallClaude/.test(bare),
+       '闸四·源码侧：NIGHTLAMP 段零 rng／零 Math.random／零出网／零 AI 入口');
+    const w=Sim.makeWorld(20260803), snap=Sim.serialize(w,null), L=lampLab();
+    for(let m=0;m<1440;m+=37) L.M.lampPaint(m);
+    ok(Sim.serialize(w,null)===snap,'闸四·运行侧：全天 39 次 lampPaint 跑完，世界逐字节不变（只读不写）');
+    const L2=lampLab();
+    let threw='';
+    try{ for(const t of [-1,0,1440,1441,1e9,NaN,undefined,null]) L2.M.lampPaint(t); }
+    catch(e){ threw=String((e&&e.message)||e); }
+    ok(!threw,'闸四·畸形钟点不抛错：8 种（负／越界／NaN／undefined／null／极大值）一律不出错'
+       +(threw?('（实测抛了：'+threw+'）'):''));
+    const 坏色=L2.rec.rect.filter(r=>/NaN|undefined|null/.test(String(r.fill))).length;
+    ok(坏色===0,'闸四·畸形钟点不画坏色：落下 '+L2.rec.rect.length+' 笔，色值含 NaN／undefined 的 '+坏色+' 笔');
+    // 反向自查一 · 灯灭（＝改前那种「屋里也黑着」）
+    const sick1=lampLab(s=>s.replace('return PURE.clamp(skyTint(PURE.minuteOfDay(t)).a/SKY_MAX_ALPHA,0,1);','return 0;')).M;
+    ok(!(sick1.lampLevel(三更)>=0.99),'闸四·反向一：把灯灭掉（亮度恒 0）⇒「夜里点满」当场判红');
+    // 反向自查二 · 名单里塞进室外那间
+    const sick2=lampLab(s=>s.replace("const LAMP_ROOMS=['living','kitchen','bedroom','store','office'];",
+                                     "const LAMP_ROOMS=['living','kitchen','bedroom','store','office','park'];")).M;
+    ok(sick2.LAMP_ROOMS.indexOf('park')>=0,'闸四·反向二：往名单里塞进室外那间 ⇒ 「室外不点」当场判红');
+    // 反向自查三 · 上限抬高
+    const sick3=lampLab(s=>s.replace('const LAMP_MAX_ALPHA=0.16;','const LAMP_MAX_ALPHA=0.9;')).M;
+    ok(!(sick3.LAMP_MAX_ALPHA<=0.2),'闸四·反向三：把上限抬到 0.9 ⇒ 「上限保守」当场判红');
+    // 反向不误伤
+    const M=lampLab().M;
+    ok(M.LAMP_MAX_ALPHA<=0.2 && M.lampLevel(三更)>=0.99 && M.LAMP_ROOMS.indexOf('park')<0,
+       '闸四·不误伤：生产原文三条判据全部照常放行（不是恒红）');
+    // 结构侧
+    const nCall=(DRAWFN.match(/lampPaint\(/g)||[]).length;
+    ok(nCall===1,'结构侧：draw() 里 lampPaint 恰 1 个调用点（实测 '+nCall+' 处）');
+    ok(DRAWFN.lastIndexOf('lampPaint(')>DRAWFN.lastIndexOf('skyPaint('),
+       '结构侧：灯画在**天色之后** —— 灯在夜色之上才亮得起来（画在天色之前会被夜色吃掉）');
+    const nAll=(src.match(/lampPaint/g)||[]).length;
+    ok(nAll===2,'射程：lampPaint 全站只出现 2 次（定义 ＋ draw 末尾调用）；角色页／日志／剪辑／短信都是 DOM，零触碰');
+  }
+}
+
 console.log(fails? ('\n'+fails+' FAILURES') : '\nALL PASS');
 process.exit(fails?1:0);

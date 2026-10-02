@@ -420,7 +420,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v41</span>
+<span class="num dim" id="set-build">v42</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -3762,6 +3762,41 @@ function skyPaint(w,h,t){
   ctx.fillRect(0,0,w,h);
 }
 /*SKYTINT-END*/
+/*NIGHTLAMP-START*/
+/* ---------- 入夜点灯：屋里亮起来 ----------
+   缘由（第 35 单）：第 33 单把画面按钟点压暗之后，公寓三间／便利店／公司一入夜**跟室外一样黑**——
+   「屋里也黑着」既不像有人住，也让夜里的画面更难读。
+
+   调研依据（出处与原文见 docs/规划/借鉴调研-2026-10-03.md 候选 5）：
+     · 星露谷：「At nightfall … indoors the windows turn dark and **lamps and sconces light up**」
+       （stardewvalleywiki.com/Day_Cycle）
+     · 环世界：「Artificial light sources can be used for lighting at night or in roofed areas」
+       （rimworldwiki.com/wiki/Light）
+
+   治法（纯显示层、零素材）：**只点室内**——给下面登记的五间房的矩形铺一层暖光。
+   亮度直接由**天色的不透明度**换算（`lampLevel` ＝ `skyTint(...).a / SKY_MAX_ALPHA`），
+   故「天黑才点、天亮就灭」**由构造保证**——不存在第二套作息表，改天色曲线灯自动跟着变。
+
+   射程与名单：
+     · **室外两间不点**——`park`（滨江公园）与 `river`（江边步道）不在名单里；名单改了要同步
+       回写 `交接说明.md` 的「硬编码名单登记」一节（宪法第 8 条）。
+     · 只作用于画布；角色页／日志／剪辑／短信都是 DOM，零触碰。
+     · 不新增任何素材、不改 SIM、不动 rng。 */
+const LAMP_ROOMS=['living','kitchen','bedroom','store','office'];   // 室内五间；park／river 是室外，刻意不点
+const LAMP_COLOR={r:255,g:196,b:132};   // 暖黄（窗灯的观感）
+const LAMP_MAX_ALPHA=0.16;              // 上限：再高房间就成一块发光贴纸，也会压垮房内名牌
+function lampLevel(t){ return PURE.clamp(skyTint(PURE.minuteOfDay(t)).a/SKY_MAX_ALPHA,0,1); }
+function lampPaint(t){
+  const k=lampLevel(t);
+  // 白天不点：与天色同一套写法——!(k>0.001) 对 NaN 也为真，畸形钟点一笔都不落
+  if(!(k>0.001)) return;
+  ctx.fillStyle='rgba('+LAMP_COLOR.r+','+LAMP_COLOR.g+','+LAMP_COLOR.b+','+(k*LAMP_MAX_ALPHA).toFixed(3)+')';
+  for(const r of Sim.ROOMS){
+    if(LAMP_ROOMS.indexOf(r.id)<0) continue;
+    ctx.fillRect(sx(r.x),sy(r.y),r.w*state.view.s,r.h*state.view.s);
+  }
+}
+/*NIGHTLAMP-END*/
 function draw(now){
   const {s,ox,oy}=state.view;
   ctx.setTransform(state.dpr,0,0,state.dpr,0,0);
@@ -3917,6 +3952,7 @@ function draw(now){
     ctx.stroke();
   }
   skyPaint(state.cvW,state.cvH,state.world.t);   // 第 33 单：天色罩层——画在最后一层，雨幕也一并跟着染色
+  lampPaint(state.world.t);                       // 第 35 单：入夜点灯——画在天色**之上**，灯才亮得起来（否则被夜色吃掉）
 }
 // 画布：拖动=平移镜头，点按=选中小人
 let drag=null;
