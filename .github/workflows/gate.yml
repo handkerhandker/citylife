@@ -46,6 +46,10 @@ jobs:
           # merge-base(HEAD, origin/main) 就是 HEAD 自己、差分恒为空，第二层在 main 上等于空转。
           VERSIONGATE_PREV: ${{ github.event.before }}
         run: node versiongate.js
+      - name: 行号引用门禁（第 34 单）
+        # 活文档与门禁脚本里不许有裸 `html:NNN`（历史快照块与 docs/交付、docs/规划 豁免）；
+        # 每个 `src:<源码逐字片段>` 锚都必须能在 city-life-framework.html 里逐字找到。
+        run: node linegate.js
       - name: SIM 块纯净检查
         run: |
           python3 - <<'EOF'
