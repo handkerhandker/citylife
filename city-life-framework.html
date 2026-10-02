@@ -420,7 +420,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v44</span>
+<span class="num dim" id="set-build">v45</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -3385,8 +3385,15 @@ function chip(x,y,text,color,size){
    只作用于名牌：房间名/地标名是静态背景，跟着抬会闪，一律不走这道闸。 */
 const NAME_CHIP_LANE_H=15;      // 道距＝名牌盒高（chip 的盒高恒 15）
 const NAME_CHIP_GAP=3;          // 同一道上两个盒子之间至少留的横向缝
-let nameChipBoxes=[];           // 本帧登记表（每帧绘制前由 nameChipReset 清账）
-function nameChipReset(){ nameChipBoxes=[]; }
+let nameChipBoxes=[];           // 本帧名牌登记表（每帧绘制前由 nameChipReset 清账）
+/* 第 42 单：本帧「会挡住房间名」的盒子 —— **精灵盒 ∪ 名牌盒**。
+   实测（第 42 单取证）：四人聚在一处时名牌要往上摞到第 3 道（离精灵顶 45px），
+   手机档下 kitchen／store_counter／park_bench／river_walk／home_tv 五处都会把房间名整片盖住。
+   治法：**房间名给人物让位**——绘制推到人物之后，凡与遮挡盒相交的房间名一律不画
+   （人是主角；房间名次要。被盖住的房间名本来也读不出来）。 */
+let labelBlockBoxes=[];
+function nameChipReset(){ nameChipBoxes=[]; labelBlockBoxes=[]; }
+const 盒相交=(a,b)=>a.l<b.r && b.l<a.r && a.t<b.b && b.t<a.b;
 function nameChip(x,y,text){
   ctx.font='10px system-ui,sans-serif';
   const w=ctx.measureText(text).width+8;
@@ -3401,6 +3408,8 @@ function nameChip(x,y,text){
   }
   nameChipBoxes.push({x,y,w,lane});
   chip(x, y-lane*NAME_CHIP_LANE_H, text, '#ece5d0', 10);
+  // 第 42 单：把这一块名牌的**最终盒**也登记进「遮挡表」，供房间名让位判据消费
+  labelBlockBoxes.push({ l:x-w/2, r:x+w/2, t:y-14-lane*NAME_CHIP_LANE_H, b:y+1-lane*NAME_CHIP_LANE_H });
   return y-14-lane*NAME_CHIP_LANE_H;   // 盒顶：头顶指示器以它为盒底（ACT_CHIP.gap 口径同源）
 }
 /*NAMECHIP-END*/
@@ -3977,9 +3986,11 @@ function draw(now){
     chip(sx(6), sy(SHORE_Y)+13, '岸线步道', '#9aa4bb', 9);
     chip(sx(Sim.MAPW/2), sy((RIVER_Y+Sim.MAPH)/2)+6, '江面', '#8fb4d9', Math.max(9,Math.min(12, s*0.7)));
   }
-  // 房间标签（屏幕空间字号，任何缩放下可读）
+  // 房间标签（屏幕空间字号，任何缩放下可读）—— 第 42 单起**只登记不画**，推到人物之后画
+  // （理由见 nameChipReset 上方那段：四人摞名牌时会把房间名整片盖住，故房间名给人物让位）
+  const roomLabelQueue=[];
   for(const r of Sim.ROOMS){
-    if(r.w*s>52) chip(sx(r.x+r.w/2), sy(r.y)+16, r.label, '#aeb6c6', Math.max(9,Math.min(12, s*0.7)));
+    if(r.w*s>52) roomLabelQueue.push({ x:sx(r.x+r.w/2), y:sy(r.y)+16, text:r.label, size:Math.max(9,Math.min(12, s*0.7)) });
   }
   // 小人与高件家具:按脚底 y 统一排序绘制(补充指令三:靠下者后画形成正确遮挡;旧渲染路径不变)
   // 第 20 单·规矩三：绘制期不碰位移。显示坐标全部出自 stepDisplay 一处，此处只取用。
@@ -4014,6 +4025,7 @@ function draw(now){
       const dir=(v.dir===undefined)?3:v.dir;
       const dw=s, dh=(fh/fw)*s;                              // 帧宽＝1 格，高按帧比例（16×32 帧即 2 格高）
       const dx0=px-dw/2, dy0=py+s*0.5-dh;                    // 脚底贴住所在格底边
+      labelBlockBoxes.push({l:dx0, r:dx0+dw, t:dy0, b:dy0+dh});   // 第 42 单：精灵盒也参与「房间名让位」
       if(ag.id===state.selected){
         ctx.strokeStyle='#d9b96c'; ctx.lineWidth=2;
         ctx.strokeRect(dx0-3,dy0-3,dw+6,dh+6);
@@ -4024,6 +4036,7 @@ function draw(now){
       continue;
     }
     const R=Math.max(4, s*0.42);
+    labelBlockBoxes.push({l:px-R-1, r:px+R+1, t:py-R-1, b:py+R+1});   // 第 42 单：色块兜底路同样登记
     if(ag.id===state.selected){
       ctx.strokeStyle='#d9b96c'; ctx.lineWidth=2;
       ctx.strokeRect(px-R-3,py-R-3,R*2+6,R*2+6);
@@ -4048,6 +4061,13 @@ function draw(now){
       ctx.moveTo(x, oy); ctx.lineTo(x-14, oy+Sim.MAPH*s);
     }
     ctx.stroke();
+  }
+  // 第 42 单：房间名（推到**人物与雨幕之后**画；凡与遮挡盒相交者一律不画——人是主角，房间名让位）
+  for(const L of roomLabelQueue){
+    ctx.font=L.size+'px system-ui,sans-serif';
+    const w=ctx.measureText(L.text).width+8, b={l:L.x-w/2, r:L.x+w/2, t:L.y-14, b:L.y+1};
+    if(labelBlockBoxes.some(k=>盒相交(k,b))) continue;
+    chip(L.x, L.y, L.text, '#aeb6c6', L.size);
   }
   skyPaint(state.cvW,state.cvH,state.world.t);   // 第 33 单：天色罩层——画在最后一层，雨幕也一并跟着染色
   lampPaint(state.world.t);                       // 第 35 单：入夜点灯——画在天色**之上**，灯才亮得起来（否则被夜色吃掉）

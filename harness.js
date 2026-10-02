@@ -2163,10 +2163,13 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
          '闸五·构造成立：道数上限直接取住户人数（不是写死的数字）—— 住户加到几个就分几道');
       ok(/const NAME_CHIP_LANE_H=15;/.test(NAMECHIP_SRC) && /const NAME_CHIP_GAP=3;/.test(NAMECHIP_SRC),
          '闸五·构造成立：分道常量在生产源码里可抽取（道距 '+laneH+'px）');
-      // 只作用于名牌：房间名/地标名仍走裸 chip()，不被这道闸碰
-      ok((src.match(/\bchip\(sx\(/g)||[]).length>=6,
-         '闸五·射程：房间名/地标名仍走裸 chip()（实测 '+(src.match(/\bchip\(sx\(/g)||[]).length
-         +' 处），分道只作用于名牌 —— 静态标签跟着抬会闪');
+      /* 第 42 单改了房间名的画法（推到人物之后、带让位判据），故本条随之换形态——
+         但**口径未松**：分道只作用于名牌，地标名与房间名仍走裸 `chip()`，不经过 nameChip。 */
+      const 地标 = (src.match(/\bchip\(sx\(/g)||[]).length;
+      const 房名 = (src.match(/chip\(L\.x, L\.y, L\.text/g)||[]).length;
+      ok(地标>=5 && 房名===1,
+         '闸五·射程：地标名仍走裸 chip()（实测 '+地标+' 处）＋房间名走让位判据后的裸 chip()（实测 '+房名
+         +' 处）—— 分道只作用于名牌，两者都不经 nameChip');
     }
   }
 
@@ -2775,6 +2778,53 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
        '结构侧：光斑画在**室内灯之后** —— 两者都在天色之上，夜里才亮得起来');
     ok((src.match(/streetGlow/g)||[]).length===2,
        '射程：streetGlow 全站只出现 2 次（定义 ＋ draw 末尾调用）；角色页／日志／剪辑／短信都是 DOM，零触碰');
+  }
+}
+
+// ═══ 第 42 单·房间名给人物让位（名牌摞高时不再压住房间名）══════════════════════
+/* 病根（第 42 单取证，实测于 v44）：第 32 单的名牌分道最多把名牌抬到离精灵顶 45px，
+   手机档（s=13）下 **5 个多人锚**（kitchen／store_counter／park_bench／river_walk／home_tv）
+   的房间名会被整片盖住、桌面档 2 个——两档合计 **13 处重叠**（取证工具：
+   `tools/nameplate-audit/audit.mjs`，它按源码公式逐锚逐道复算）。
+   治法（渲染层）：房间名的绘制**推到人物与雨幕之后**，凡与「遮挡盒」（**精灵盒 ∪ 名牌盒**）
+   相交者一律不画——**人是主角**，被盖住的房间名本来也读不出来。
+   本闸是**源码级**的（渲染层的东西跑不进 node 假 ctx：`draw()` 里的队列是帧内局部变量）——
+   照第 20 单「走位三铁律·规矩三」先例：行为断言挡不住下一单重写，源码级断言才挡得住。 */
+{
+  const fs=require('fs'), path=require('path');
+  const src=fs.readFileSync(path.resolve(__dirname,'city-life-framework.html'),'utf8');
+  const 判据 = X => {
+    const iQueue=X.indexOf('const roomLabelQueue=[]');
+    const iEnts =X.indexOf('for(const en of ents)');
+    const iOut  =X.indexOf('for(const L of roomLabelQueue)');
+    const iSky  =X.indexOf('skyPaint(state.cvW');
+    const nPush =(X.match(/labelBlockBoxes\.push/g)||[]).length;
+    return iQueue>=0 && iEnts>=0 && iOut>iEnts && iOut<iSky
+        && nPush===3
+        && /盒相交=\(a,b\)=>/.test(X)
+        && /if\(labelBlockBoxes\.some\(k=>盒相交\(k,b\)\)\) continue;/.test(X)
+        && /function nameChipReset\(\)\{ nameChipBoxes=\[\]; labelBlockBoxes=\[\]; \}/.test(X);
+  };
+  ok(判据(src),'闸十·源码侧：房间名先入队、在**人物与雨幕之后**出队绘制，出队时带「遮挡盒相交则不画」判据'
+     +'（三张表：遮挡盒登记 3 处＝名牌 1 ＋ 精灵两条路各 1；nameChipReset 每帧清两张表）');
+  // 逐条拆开印，便于日后定位是哪一条松了
+  ok(/const roomLabelQueue=\[\];/.test(src),'闸十·房间名改成「先登记不画」（原先是就地 chip）');
+  ok(/for\(const L of roomLabelQueue\)/.test(src) && src.indexOf('for(const L of roomLabelQueue)')>src.indexOf('for(const en of ents)'),
+     '闸十·绘制次序：房间名的出队循环排在人物段**之后**（人先画，房间名后画且会让位）');
+  ok(src.indexOf('for(const L of roomLabelQueue)')<src.indexOf('skyPaint(state.cvW'),
+     '闸十·房间名仍在天色**之前**画 —— 夜里它照样被夜色染色，与改前的观感一致（不是新开一层）');
+  ok((src.match(/labelBlockBoxes\.push/g)||[]).length===3,
+     '闸十·遮挡盒三处登记齐：名牌盒（nameChip 内）＋ 精灵盒（像素素材路）＋ 精灵盒（色块兜底路）'
+     +'—— 少一处就有一条路的角色挡不住房间名');
+  // 反向自查：把让位判据删掉，判据必须当场判红；再喂生产原文，必须不误伤
+  {
+    const sick=src.replace('if(labelBlockBoxes.some(k=>盒相交(k,b))) continue;','');
+    ok(sick!==src,'闸十·反向自查构造成立：病态改写命中了生产原文');
+    ok(!判据(sick),'闸十·反向自查：把「相交则不画」那句删掉 ⇒ 本条当场判红（房间名又会压回名牌上）');
+    const sick2=src.replace('function nameChipReset(){ nameChipBoxes=[]; labelBlockBoxes=[]; }',
+                            'function nameChipReset(){ nameChipBoxes=[]; }');
+    ok(!判据(sick2),'闸十·反向自查：漏清遮挡表（跨帧累积）⇒ 本条当场判红');
+    ok(判据(src),'闸十·不误伤：生产原文照常放行（不是恒红）');
   }
 }
 
