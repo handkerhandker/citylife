@@ -1,0 +1,617 @@
+{
+  "视口": [
+    {
+      "视口": "桌面",
+      "报错数": 8
+    },
+    {
+      "视口": "手机",
+      "报错数": 7
+    }
+  ],
+  "点击": [
+    {
+      "视口": "桌面",
+      "谁": "切页 [data-tab=\"live\"]",
+      "结果": "已点"
+    },
+    {
+      "视口": "桌面",
+      "谁": "切页 [data-tab=\"roles\"]",
+      "结果": "已点"
+    },
+    {
+      "视口": "桌面",
+      "谁": "切页 [data-tab=\"log\"]",
+      "结果": "已点"
+    },
+    {
+      "视口": "桌面",
+      "谁": "切页 [data-tab=\"clip\"]",
+      "结果": "已点"
+    },
+    {
+      "视口": "桌面",
+      "谁": "切页 [data-tab=\"phone\"]",
+      "结果": "已点"
+    },
+    {
+      "视口": "桌面",
+      "谁": "切页 [data-tab=\"settings\"]",
+      "结果": "已点"
+    },
+    {
+      "视口": "桌面",
+      "谁": "顶栏 #tb-pause",
+      "结果": "已点"
+    },
+    {
+      "视口": "桌面",
+      "谁": "顶栏 #tb-pause",
+      "结果": "已点"
+    },
+    {
+      "视口": "桌面",
+      "谁": "顶栏 #tb-speed",
+      "结果": "已点"
+    },
+    {
+      "视口": "桌面",
+      "谁": "顶栏 #tb-speed",
+      "结果": "已点"
+    },
+    {
+      "视口": "桌面",
+      "谁": "顶栏 #tb-speed",
+      "结果": "已回到原值「1×」（点了 2 下）"
+    },
+    {
+      "视口": "桌面",
+      "谁": "顶栏 #tb-msg",
+      "结果": "已点"
+    },
+    {
+      "视口": "桌面",
+      "谁": "浮层 #ov-follow",
+      "结果": "不可见（跳过）"
+    },
+    {
+      "视口": "桌面",
+      "谁": "浮层 #ov-openlog",
+      "结果": "不可见（跳过）"
+    },
+    {
+      "视口": "桌面",
+      "谁": "切页 [data-tab=\"roles\"]",
+      "结果": "已点"
+    },
+    {
+      "视口": "桌面",
+      "谁": "角色页 [data-act=\"detail\"]",
+      "结果": "已点"
+    },
+    {
+      "视口": "桌面",
+      "谁": "关弹窗 [data-close]",
+      "结果": "已点"
+    },
+    {
+      "视口": "桌面",
+      "谁": "角色页 [data-act=\"follow\"]",
+      "结果": "已点"
+    },
+    {
+      "视口": "桌面",
+      "谁": "切页 [data-tab=\"settings\"]",
+      "结果": "已点"
+    },
+    {
+      "视口": "桌面",
+      "谁": "设置 #set-scale-minus",
+      "结果": "已点"
+    },
+    {
+      "视口": "桌面",
+      "谁": "复原 #set-scale-minus",
+      "结果": "已点"
+    },
+    {
+      "视口": "桌面",
+      "谁": "设置 #set-scale-plus",
+      "结果": "已点"
+    },
+    {
+      "视口": "桌面",
+      "谁": "复原 #set-scale-plus",
+      "结果": "已点"
+    },
+    {
+      "视口": "桌面",
+      "谁": "设置 #set-layout",
+      "结果": "已点"
+    },
+    {
+      "视口": "桌面",
+      "谁": "设置 #set-layout",
+      "结果": "已点"
+    },
+    {
+      "视口": "桌面",
+      "谁": "设置 #set-layout",
+      "结果": "已点"
+    },
+    {
+      "视口": "桌面",
+      "谁": "设置 #set-layout",
+      "结果": "已点"
+    },
+    {
+      "视口": "桌面",
+      "谁": "设置 #set-layout",
+      "结果": "已点"
+    },
+    {
+      "视口": "桌面",
+      "谁": "设置 #set-layout",
+      "结果": "已回到原值「自动」（点了 5 下）"
+    },
+    {
+      "视口": "桌面",
+      "谁": "设置 #set-motion",
+      "结果": "已点"
+    },
+    {
+      "视口": "桌面",
+      "谁": "设置 #set-motion",
+      "结果": "已点"
+    },
+    {
+      "视口": "桌面",
+      "谁": "设置 #set-motion",
+      "结果": "已回到原值「关」（点了 2 下）"
+    },
+    {
+      "视口": "桌面",
+      "谁": "设置 #set-pix",
+      "结果": "已点"
+    },
+    {
+      "视口": "桌面",
+      "谁": "设置 #set-pix",
+      "结果": "已点"
+    },
+    {
+      "视口": "桌面",
+      "谁": "设置 #set-pix",
+      "结果": "已回到原值「开」（点了 2 下）"
+    },
+    {
+      "视口": "桌面",
+      "谁": "设置 #set-speed",
+      "结果": "已点"
+    },
+    {
+      "视口": "桌面",
+      "谁": "设置 #set-speed",
+      "结果": "已点"
+    },
+    {
+      "视口": "桌面",
+      "谁": "设置 #set-speed",
+      "结果": "已回到原值「1×」（点了 2 下）"
+    },
+    {
+      "视口": "桌面",
+      "谁": "设置 #set-llm",
+      "结果": "已点"
+    },
+    {
+      "视口": "桌面",
+      "谁": "设置 #set-llm",
+      "结果": "已回到原值「开」（点了 1 下）"
+    },
+    {
+      "视口": "桌面",
+      "谁": "立即存档 #sv-now",
+      "结果": "已点"
+    },
+    {
+      "视口": "桌面",
+      "谁": "导出 #sv-export",
+      "结果": "已点"
+    },
+    {
+      "视口": "桌面",
+      "谁": "关弹窗 [data-close]",
+      "结果": "已点"
+    },
+    {
+      "视口": "桌面",
+      "谁": "导入 #sv-import",
+      "结果": "已点"
+    },
+    {
+      "视口": "桌面",
+      "谁": "取消导入 #sv-import-cancel",
+      "结果": "已点"
+    },
+    {
+      "视口": "桌面",
+      "谁": "重开新城 #sv-reset",
+      "结果": "已点"
+    },
+    {
+      "视口": "桌面",
+      "谁": "再想想 #sv-reset-no",
+      "结果": "已点"
+    },
+    {
+      "视口": "桌面",
+      "谁": "切页 [data-tab=\"phone\"]",
+      "结果": "已点"
+    },
+    {
+      "视口": "桌面",
+      "谁": "短信页 #ph-send",
+      "结果": "已点"
+    },
+    {
+      "视口": "手机",
+      "谁": "切页 [data-tab=\"live\"]",
+      "结果": "已点"
+    },
+    {
+      "视口": "手机",
+      "谁": "切页 [data-tab=\"roles\"]",
+      "结果": "已点"
+    },
+    {
+      "视口": "手机",
+      "谁": "切页 [data-tab=\"log\"]",
+      "结果": "已点"
+    },
+    {
+      "视口": "手机",
+      "谁": "切页 [data-tab=\"clip\"]",
+      "结果": "已点"
+    },
+    {
+      "视口": "手机",
+      "谁": "切页 [data-tab=\"phone\"]",
+      "结果": "已点"
+    },
+    {
+      "视口": "手机",
+      "谁": "切页 [data-tab=\"settings\"]",
+      "结果": "已点"
+    },
+    {
+      "视口": "手机",
+      "谁": "顶栏 #tb-pause",
+      "结果": "已点"
+    },
+    {
+      "视口": "手机",
+      "谁": "顶栏 #tb-pause",
+      "结果": "已点"
+    },
+    {
+      "视口": "手机",
+      "谁": "顶栏 #tb-speed",
+      "结果": "不可见（跳过）"
+    },
+    {
+      "视口": "手机",
+      "谁": "顶栏 #tb-speed",
+      "结果": "已回到原值「1×」（点了 1 下）"
+    },
+    {
+      "视口": "手机",
+      "谁": "顶栏 #tb-msg",
+      "结果": "已点"
+    },
+    {
+      "视口": "手机",
+      "谁": "浮层 #ov-follow",
+      "结果": "不可见（跳过）"
+    },
+    {
+      "视口": "手机",
+      "谁": "浮层 #ov-openlog",
+      "结果": "不可见（跳过）"
+    },
+    {
+      "视口": "手机",
+      "谁": "切页 [data-tab=\"roles\"]",
+      "结果": "已点"
+    },
+    {
+      "视口": "手机",
+      "谁": "角色页 [data-act=\"detail\"]",
+      "结果": "已点"
+    },
+    {
+      "视口": "手机",
+      "谁": "关弹窗 [data-close]",
+      "结果": "已点"
+    },
+    {
+      "视口": "手机",
+      "谁": "角色页 [data-act=\"follow\"]",
+      "结果": "已点"
+    },
+    {
+      "视口": "手机",
+      "谁": "切页 [data-tab=\"settings\"]",
+      "结果": "已点"
+    },
+    {
+      "视口": "手机",
+      "谁": "设置 #set-scale-minus",
+      "结果": "已点"
+    },
+    {
+      "视口": "手机",
+      "谁": "复原 #set-scale-minus",
+      "结果": "已点"
+    },
+    {
+      "视口": "手机",
+      "谁": "设置 #set-scale-plus",
+      "结果": "已点"
+    },
+    {
+      "视口": "手机",
+      "谁": "复原 #set-scale-plus",
+      "结果": "已点"
+    },
+    {
+      "视口": "手机",
+      "谁": "设置 #set-layout",
+      "结果": "已点"
+    },
+    {
+      "视口": "手机",
+      "谁": "设置 #set-layout",
+      "结果": "已点"
+    },
+    {
+      "视口": "手机",
+      "谁": "设置 #set-layout",
+      "结果": "已点"
+    },
+    {
+      "视口": "手机",
+      "谁": "设置 #set-layout",
+      "结果": "已点"
+    },
+    {
+      "视口": "手机",
+      "谁": "设置 #set-layout",
+      "结果": "已点"
+    },
+    {
+      "视口": "手机",
+      "谁": "设置 #set-layout",
+      "结果": "已回到原值「自动」（点了 5 下）"
+    },
+    {
+      "视口": "手机",
+      "谁": "设置 #set-motion",
+      "结果": "已点"
+    },
+    {
+      "视口": "手机",
+      "谁": "设置 #set-motion",
+      "结果": "已点"
+    },
+    {
+      "视口": "手机",
+      "谁": "设置 #set-motion",
+      "结果": "已回到原值「关」（点了 2 下）"
+    },
+    {
+      "视口": "手机",
+      "谁": "设置 #set-pix",
+      "结果": "已点"
+    },
+    {
+      "视口": "手机",
+      "谁": "设置 #set-pix",
+      "结果": "已点"
+    },
+    {
+      "视口": "手机",
+      "谁": "设置 #set-pix",
+      "结果": "已回到原值「开」（点了 2 下）"
+    },
+    {
+      "视口": "手机",
+      "谁": "设置 #set-speed",
+      "结果": "已点"
+    },
+    {
+      "视口": "手机",
+      "谁": "设置 #set-speed",
+      "结果": "已点"
+    },
+    {
+      "视口": "手机",
+      "谁": "设置 #set-speed",
+      "结果": "已回到原值「1×」（点了 2 下）"
+    },
+    {
+      "视口": "手机",
+      "谁": "设置 #set-llm",
+      "结果": "已点"
+    },
+    {
+      "视口": "手机",
+      "谁": "设置 #set-llm",
+      "结果": "已回到原值「开」（点了 1 下）"
+    },
+    {
+      "视口": "手机",
+      "谁": "立即存档 #sv-now",
+      "结果": "已点"
+    },
+    {
+      "视口": "手机",
+      "谁": "导出 #sv-export",
+      "结果": "已点"
+    },
+    {
+      "视口": "手机",
+      "谁": "关弹窗 [data-close]",
+      "结果": "已点"
+    },
+    {
+      "视口": "手机",
+      "谁": "导入 #sv-import",
+      "结果": "已点"
+    },
+    {
+      "视口": "手机",
+      "谁": "取消导入 #sv-import-cancel",
+      "结果": "已点"
+    },
+    {
+      "视口": "手机",
+      "谁": "重开新城 #sv-reset",
+      "结果": "已点"
+    },
+    {
+      "视口": "手机",
+      "谁": "再想想 #sv-reset-no",
+      "结果": "已点"
+    },
+    {
+      "视口": "手机",
+      "谁": "切页 [data-tab=\"phone\"]",
+      "结果": "已点"
+    },
+    {
+      "视口": "手机",
+      "谁": "短信页 #ph-send",
+      "结果": "已点"
+    }
+  ],
+  "报错": [
+    "桌面 console.error: Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "桌面 console.error: Access to fetch at 'https://api.anthropic.com/v1/messages' from origin 'http://127.0.0.1:18940' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+    "桌面 requestfailed net::ERR_FAILED https://api.anthropic.com/v1/messages",
+    "桌面 console.error: Failed to load resource: net::ERR_FAILED",
+    "桌面 HTTP 404 http://127.0.0.1:18940/relay",
+    "桌面 console.error: Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "桌面 HTTP 404 http://127.0.0.1:18940/relay",
+    "桌面 console.error: Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "手机 console.error: Access to fetch at 'https://api.anthropic.com/v1/messages' from origin 'http://127.0.0.1:18940' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+    "手机 requestfailed net::ERR_FAILED https://api.anthropic.com/v1/messages",
+    "手机 console.error: Failed to load resource: net::ERR_FAILED",
+    "手机 HTTP 404 http://127.0.0.1:18940/relay",
+    "手机 console.error: Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "手机 HTTP 404 http://127.0.0.1:18940/relay",
+    "手机 console.error: Failed to load resource: the server responded with a status of 404 (Not Found)"
+  ],
+  "按钮清单": [
+    {
+      "id": "tb-pause",
+      "文案": "⏸"
+    },
+    {
+      "id": "tb-speed",
+      "文案": "1×"
+    },
+    {
+      "id": "tb-msg",
+      "文案": "✉"
+    },
+    {
+      "id": "ov-follow",
+      "文案": "◎ 回到跟随"
+    },
+    {
+      "id": "ov-openlog",
+      "文案": "打开日志 ›"
+    },
+    {
+      "id": "log-jump",
+      "文案": "↓ 回到最新"
+    },
+    {
+      "id": "ph-send",
+      "文案": "发送"
+    },
+    {
+      "id": "set-scale-minus",
+      "文案": "−"
+    },
+    {
+      "id": "set-scale-plus",
+      "文案": "＋"
+    },
+    {
+      "id": "set-layout",
+      "文案": "自动"
+    },
+    {
+      "id": "set-motion",
+      "文案": "关"
+    },
+    {
+      "id": "set-pix",
+      "文案": "开"
+    },
+    {
+      "id": "set-speed",
+      "文案": "1×"
+    },
+    {
+      "id": "sv-now",
+      "文案": "立即存档"
+    },
+    {
+      "id": "sv-export",
+      "文案": "导出"
+    },
+    {
+      "id": "sv-import",
+      "文案": "导入"
+    },
+    {
+      "id": "sv-reset",
+      "文案": "重开新城"
+    },
+    {
+      "id": "set-llm",
+      "文案": "开"
+    },
+    {
+      "id": "dlg-follow",
+      "文案": "跟随 TA"
+    },
+    {
+      "id": "sv-reset-yes",
+      "文案": "确定重开"
+    },
+    {
+      "id": "sv-reset-no",
+      "文案": "再想想"
+    },
+    {
+      "id": "sv-import-go",
+      "文案": "导入"
+    },
+    {
+      "id": "sv-import-cancel",
+      "文案": "取消"
+    }
+  ],
+  "服务端404": [
+    "/favicon.ico",
+    "/relay",
+    "/relay",
+    "/relay",
+    "/relay"
+  ]
+}
