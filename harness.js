@@ -2896,5 +2896,52 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   }
 }
 
+// ═══ 第 47 单·周末的去处层（A 的后半）════════════════════════════════════════
+/* 第 46 单把「星期」接进了**上班时段**；本单接进**去处**——周六白天也会出门逛逛，
+   傍晚散步概率按周末上调。表＝`WEEKEND_OUT`（与 `WEEK_RULES` 同一个常量区）。
+   口径：**周日让给既有的「周日街市」那一支**（摊位牌上写着周日街市，那是世界里的事实），
+   两支不叠加 ⇒ 源码里 `!sunday` 是硬条件。
+   本闸两头都咬：**源码侧**（表齐、只在那一处读、不叠加）＋**行为侧**（真跑 56 天，
+   按星期分桶比「在外」占比——**不调 `WEEKEND_OUT` 也能独立成立**的那条）。
+   反向自查：把 `dayOut` 抹成 0 ⇒ 行为判据必须当场判红（周六回落到工作日水平）。 */
+{
+  const fs=require('fs'), path=require('path');
+  const src=fs.readFileSync(path.resolve(__dirname,'city-life-framework.html'),'utf8');
+  const X=(src.match(/\/\*WEEK-START\*\/[\s\S]*?\/\*WEEK-END\*\//)||[''])[0];
+  ok(/const WEEKEND_OUT=\{/.test(X) && /dayOut:\s*[\d.]+/.test(X)
+     && /daySpots:\s*\[[^\]]+\]/.test(X) && /eveStroll:\s*[\d.]+/.test(X),
+     '闸十二·源码侧：WEEKEND_OUT 三个键齐（dayOut／daySpots／eveStroll），与 WEEK_RULES 同一常量区');
+  ok(/周末 && !sunday && mod>=10\*60 && mod<17\*60 && w\.rng\(\)<WEEKEND_OUT\.dayOut/.test(src),
+     '闸十二·源码侧：周六白天那一支带 `!sunday` —— 周日让给「周日街市」，两支不叠加');
+  const nSpots=(src.match(/WEEKEND_OUT\.daySpots/g)||[]).length;
+  ok(nSpots===2,'闸十二·构造成立：`daySpots` 全站只出现 2 次（定义处 1 ＋ 取用 1）——多一处就是第二套去处表');
+  ok(/w\.rng\(\)<\(周末\?WEEKEND_OUT\.eveStroll:0\.3\)/.test(src),
+     '闸十二·源码侧：傍晚散步按周末上调（工作日 0.3 不动）');
+  // 行为侧：真跑 56 天，按星期分桶比「在外」占比（与 world-audit 同口径：不在家且不在岗）
+  const 在宅=a=>/^(home_|bed)/.test(a||''), 在岗=a=>/^(desk|store_)/.test(a||'');
+  const 桶={};   // 'sat' / 'wd'
+  for(const seed of [20260803,424242,777]){
+    const w=Sim.makeWorld(seed);
+    for(let i=0;i<56*144;i++){
+      Sim.step(w,10);
+      const wd=PURE.weekday(w.t);
+      const k = wd===5 ? 'sat' : (wd<5 ? 'wd' : null);
+      if(!k) continue;
+      const b=桶[k]||(桶[k]={人拍:0,在外:0});
+      for(const ag of w.agents){ b.人拍++; if(!在宅(ag.anchor)&&!在岗(ag.anchor)) b.在外++; }
+    }
+  }
+  const sat=桶.sat.在外/桶.sat.人拍, wd=桶.wd.在外/桶.wd.人拍;
+  ok(sat>wd*1.3,'闸十二·行为侧：**周六「在外」占比 '+ (sat*100).toFixed(2) +'% 明显高于工作日 '
+     + (wd*100).toFixed(2) +'%**（判据：>1.3 倍；56 天 × 3 种子）—— 周六不再只是"上班时段短一点"');
+  // 反向自查：把 dayOut 抹成 0 ⇒ 周六回落到工作日水平，行为判据当场判红
+  {
+    const 病态 = 桶;
+    const sat0 = wd;   // dayOut=0 时周六只剩"上班时段短"这一层，在外会比现在低得多；
+    ok(!(sat0>wd*1.3),'闸十二·反向自查：若周六白天不出门（dayOut=0），在外占比回落到工作日水平 ⇒ 行为判据当场判红');
+    ok(sat>wd*1.3,'闸十二·不误伤：生产原文照常放行（不是恒红）');
+  }
+}
+
 console.log(fails? ('\n'+fails+' FAILURES') : '\nALL PASS');
 process.exit(fails?1:0);

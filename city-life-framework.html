@@ -428,7 +428,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v48</span>
+<span class="num dim" id="set-build">v49</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -1244,6 +1244,16 @@ function workWindow(w, ag){
           + ((周末 && wr) ? wr.end : 0);
   return {startBase, start, lunchS, lunchE, end};
 }
+/* 周末的**去处**档（第 46 单后半）——只在「没别的事可做」那一段（`decide()` 第 8 段）起作用。
+   与上班时段同属一张常量区：**改周末的样子只改这里**。
+   口径：工作日这一档是 0（白天该上班的上班、该在家的在家）；周六白天才有"出门逛逛"；
+   周日 10:00–17:00 仍走既有的「周日街市」那一支（那是写在世界里的事实——摊位牌上写着周日街市），
+   故这里刻意用 `!sunday` 把周日让出去，两支不叠加。 */
+const WEEKEND_OUT={
+  dayOut: 0.35,                                   // 周六白天（10:00–17:00）出门的概率
+  daySpots:['park_bench','river_walk','market'],  // 出门去哪：三个候选等概率
+  eveStroll: 0.45,                                // 傍晚（18:30–21:00）出门散步的概率（工作日 0.3）
+};
 /*WEEK-END*/
 function decide(w, ag){
   const mod=PURE.minuteOfDay(w.t);
@@ -1393,13 +1403,22 @@ function decide(w, ag){
       text:'和'+mate.name+'聊了几句',thought:'「'+said+'」「'+back+'」'});
     return;
   }
-  // 6. 周日街市 / 傍晚散步 / 在家待着
-  const sunday=PURE.weekday(w.t)===6;
+  // 6. 周日街市 / 周六出门逛逛 / 傍晚散步 / 在家待着
+  const wd=PURE.weekday(w.t);
+  const sunday=wd===6, 周末=wd>=5;
   if(sunday && mod>=10*60 && mod<17*60 && w.rng()<0.5){
     setActivity(w,ag,'market','stroll','逛街市',tempoDur(w,ag,40),'人挤人，但热闹是真热闹。','去周日街市逛逛');
     return;
   }
-  if(mod>=18.5*60 && mod<21*60 && w.rng()<0.3){
+  // 第 46 单后半：**周六**白天也出门（工作日到不了这一支：白天在上班或在家的那一支之前就返回了，
+  // 而这里的 `dayOut` 在工作日为 0）。去处从 `WEEKEND_OUT.daySpots` 三选一，**独立掷一次**。
+  if(周末 && !sunday && mod>=10*60 && mod<17*60 && w.rng()<WEEKEND_OUT.dayOut){
+    const spots=WEEKEND_OUT.daySpots;                 // 表只有这一处取用（门禁按出现次数钉住）
+    const spot=spots[Math.floor(w.rng()*spots.length)%spots.length];
+    setActivity(w,ag,spot,'stroll','出门逛逛',tempoDur(w,ag,40),pickV(w,STROLL_THOUGHTS,ag,'lo'),'周末出门逛逛');
+    return;
+  }
+  if(mod>=18.5*60 && mod<21*60 && w.rng()<(周末?WEEKEND_OUT.eveStroll:0.3)){
     const spot=w.rng()<0.5?'park_bench':'river_walk';
     setActivity(w,ag,spot,'stroll','散步',tempoDur(w,ag,40),pickV(w,STROLL_THOUGHTS,ag,'lo'),'出门散步');
     return;
@@ -1480,7 +1499,7 @@ const CLIP_LOGCAT=[
   ['eat',   ['做了顿简餐','解决了一餐','买了份小吃']],
   ['work',  ['到岗开始工作','回到工位','工作中']],
   ['nap',   ['回卧室小憩']],
-  ['stroll',['出门散步','街市逛逛']],
+  ['stroll',['出门散步','街市逛逛','周末出门逛逛']],   // 第 46 单后半新增的一句（第 21 单那条覆盖率断言当场抓到了它）
   ['sleep', ['回卧室睡觉']],
   ['money', ['交了房租']],
 ];
@@ -2032,7 +2051,7 @@ const Sim={makeWorld, step, sendMessage, sendCustomMessage, decide, MSGS, ANCHOR
   RHY_BASE, RHY_TRAIT, RHY_BED_MIN, RHY_BED_MAX, RHY_WAKE_MIN, RHY_WAKE_MAX, RHY_DUR_MIN, RHY_DUR_MAX,
   RHY_HUNGER_FLOOR, RHY_ENERGY_FLOOR, RHY_LUNCH_AFTER, rhyOf, rhyRest, rhyEatAt, rhyNapAt, rhyWakeAt,
   rhyBedClock, rhyDur, rhyPressed,
-  WEEK_RULES, workWindow,   // 第 46 单·星期进入世界（门禁调同一份算法，不另写一套）
+  WEEK_RULES, workWindow, WEEKEND_OUT,   // 第 46 单·星期进入世界（门禁调同一份算法，不另写一套）
   CATCHUP_MIN_PER_MIN, CATCHUP_MAX_DAYS, REFLECT_MIN, SMS_NOREPLY,
   catchUpPlan, catchUp, reflectFallback, clipTopDay,
   DIARY_FB, DIARY_FB_RECENT, CHAT_FB_OPEN, CHAT_FB_REPLY, pickV, pickFresh, diaryFallback,   // 第 27 单·兜底文案扩池

@@ -50,6 +50,19 @@ const V=new Function('Sim','state','return (function(){'
 
 const footCell=(x,y)=>Math.floor(x)+','+Math.floor(y+0.5);
 const roomAt=(gx,gy)=>Sim.ROOMS.find(r=>gx>=r.x&&gx<r.x+r.w&&gy>=r.y&&gy<r.y+r.h);
+/* 第 47 单：**室内**房间名单从生产源码现读（第 35 单的 `LAMP_ROOMS` 那一份），不在闸里另写一份。
+   为什么不能拿"在不在 ROOM 里"当室内判据：**公园与江边步道也是 ROOM**（它们是室外），
+   本单第一版就栽在这——把「从便利店走到公园」当成"两端都在室内"，于是广场里的航点又算越界。 */
+const INDOOR=(()=>{ const m=src.match(/const LAMP_ROOMS=\[([^\]]*)\]/);
+  return m ? m[1].split(',').map(s=>s.trim().replace(/^'|'$/g,'')).filter(Boolean) : null; })();
+const 室内=(x,y)=>{ const r=roomAt(x,y); return !!r && Array.isArray(INDOOR) && INDOOR.indexOf(r.id)>=0; };
+/* 第 47 单：本条判据**唯一一处定义**（实测与反向自查共用同一份，免得闸里两套口径各说各话）。
+   口径一：只认「避实体改线造的点」——y 为整数（格心行）且 x 为 gx+0.5（格心列）；门点/街心点的 y 非整数，不在管辖内。
+   口径二：只判「两端都在室内」的走线——穿墙只可能发生在室内那一段；周末出门（店内→广场/公园）本就是要出房间。 */
+function offRoomHit(起室内,终室内,p){
+  if(!(Number.isInteger(p.y) && Math.abs(p.x-Math.floor(p.x)-0.5)<1e-9)) return false;
+  return 起室内 && 终室内 && !roomAt(Math.floor(p.x),Math.floor(p.y+0.5));
+}
 // 该脚底格所在处的横向净宽（房内连续非实体格数）——用来量「有没有从窄缝里挤过去」
 function aisleW(gx,gy){
   if(!roomAt(gx,gy)) return 99;
@@ -95,13 +108,35 @@ function sample(seed,speed,dt,days){
       if(v.path!==lastPath[ag.id]){
         lastPath[ag.id]=v.path; r.pathsBuilt++;
         let ax=before[ag.id].x, ay=before[ag.id].y;
+        /* 第 47 单：本条只管「**两端都在室内**」的那些改线。
+           缘由：第 46／47 单把周末的去处接进了世界（会走去广场的街市、公园长椅、江边步道），
+           而**广场不是 ROOM** —— 于是"改线航点跑出房间"变成正常现象（实测越界 2 处：(21,22)／(23,22)，
+           两格都在 plaza 里）。本条要抓的是**穿墙**，而穿墙只可能发生在室内那一段，故加这个前置条件。
+           **已知盲区（照实登记在交付件里，不粉饰）**：从室内穿墙直插街外、且那面墙不在 PIX_SOLID 里的路径，
+           本条不再抓；「逐帧脚底不得进实体格」与「折线本身零穿实体」两条仍原样管着。
+           两端都在室内时，判据**一字未松**。 */
+        /* 第 47 单修：本条要判的是「这条**走线**是不是室内↔室内」——
+           起点＝人所在处（ax,ay），**终点＝走线末航点**（buildPathRaw 的 target，即站位本身）。
+           第一版错在这里：拿 `v.x/v.y`（人此刻站的地方）当终点，于是「店内→广场」的周末出门路线
+           在重建那一刻两端都还落在店里，被当成室内→室内的活儿，广场里的改线航点当场判红。
+           例证：a2 @8000 人此刻在(28.0,5.7 store)、走线终点(21.5,22 室外广场) 经 (21.5,22)。
+           判据本身（室内↔室内时改线航点必须落在房间里）一字未松。 */
+        const dst=v.path.length?v.path[v.path.length-1]:{x:v.x,y:v.y};
+        const rid=(x,y)=>{ const r=roomAt(Math.floor(x),Math.floor(y)); return r?r.id:'室外'; };
+        const sx0=before[ag.id].x, sy0=before[ag.id].y;   // 起点坐标另存一份：循环里 ax/ay 会被逐段推进覆盖
+        const 起点室内=室内(Math.floor(sx0),Math.floor(sy0));
+        const 终点室内=室内(Math.floor(dst.x),Math.floor(dst.y));
         for(const p of v.path){
           if(V.segHitsSolid(ax,ay,p.x,p.y)){ r.badPath++; if(!r.badPathEg) r.badPathEg=ag.id+' @'+w.t+' ('+ax.toFixed(2)+','+ay.toFixed(2)+')→('+p.x+','+p.y+')'; }
-          // 避实体改线造的航点恒为格心 (gx+0.5, gy)；门点/街心点是原文既有航点，y 非整数，不在本条管辖内。
           // 竖向墙体不在 PIX_SOLID 里（登记表只收墙带与家具占格），故改线若跑出房间就是穿墙——必须单独断言。
-          if(Number.isInteger(p.y) && Math.abs(p.x-Math.floor(p.x)-0.5)<1e-9){
-            const gx=Math.floor(p.x), gy=Math.floor(p.y+0.5);
-            if(!roomAt(gx,gy)){ const k=gx+','+gy; r.offRoom[k]=(r.offRoom[k]||0)+1; }
+          if(offRoomHit(起点室内,终点室内,p)){
+            const k=Math.floor(p.x)+','+Math.floor(p.y+0.5); r.offRoom[k]=(r.offRoom[k]||0)+1;
+            // 第 47 单：**判红要能直接告诉人怎么修** —— 留下第一条例证（谁、从哪、到哪、经由哪一格）
+            if(!r.offRoomEg) r.offRoomEg=ag.id+' @'+w.t
+              +' 从('+sx0.toFixed(1)+','+sy0.toFixed(1)+' '+rid(sx0,sy0)+')'
+              +' 人此刻在('+v.x.toFixed(1)+','+v.y.toFixed(1)+' '+rid(v.x,v.y)+')'
+              +' 走线终点('+dst.x.toFixed(1)+','+dst.y.toFixed(1)+' '+rid(dst.x,dst.y)+')'
+              +' 经 ('+p.x+','+p.y+')';
           }
           ax=p.x; ay=p.y;
         }
@@ -176,10 +211,12 @@ console.log('   判据：正常运行下相邻两帧显示位移 ≤ 行走速�
   ok(clamp===0, `兜底钳制 pixStandPos 恒为空操作（生效 ${clamp} 次；一旦生效即意味着走线放人踩进了实体格）`);
 
   // 竖向墙体不在 PIX_SOLID 内，故「不踩实体格」并不蕴含「不穿墙」，须单独立断言
-  let off={}; for(const q of runs) for(const k in q.r.offRoom) off[k]=(off[k]||0)+q.r.offRoom[k];
+  let off={}, offEg='';
+  for(const q of runs){ for(const k in q.r.offRoom) off[k]=(off[k]||0)+q.r.offRoom[k]; if(!offEg && q.r.offRoomEg) offEg=q.r.offRoomEg; }
   ok(Object.keys(off).length===0,
     `避实体改线造的航点全部落在房间内（零穿墙；越界 ${Object.keys(off).length} 处`
-    +(Object.keys(off).length?` [${Object.keys(off).join(' ')}]`:'')+'）');
+    +(Object.keys(off).length?` [${Object.keys(off).join(' ')}]`:'')+'）'
+    +(offEg?`\n     例：${offEg}`:''));
 
   // 净宽读数：不是断言而是读数 —— 房间与家具的放样属《云港建筑规范》管辖，本单不动放样，只如实报告走线用到的最窄处
   let nar={}, minA=99;
@@ -300,6 +337,13 @@ console.log('\n── 反向自查 · 三条闸不是摆设 ──────�
     '规矩二拦得住旧走线：「客厅门(6.5,11.5) → 餐桌左椅旧位(2.5,9.5)」直线被判穿实体（这正是病症三的那一根线）');
   ok(!V.segHitsSolid(6.5,11.5,6.5,9.5),
     '规矩二不误伤：同起点的一条不碰家具的直线判为合规（非「见线就报」）');
+  // 第 47 单：「改线航点落房间外」这条单独立的反向自查（病态判红 ＋ 合法出门放行 ＋ 口径不含门点）
+  ok(offRoomHit(true,true,{x:21.5,y:22}),
+    '规矩二·改线拦得住：两端都在室内的走线把航点甩到广场 (21.5,22) 判越界（第 47 单第一版正是这么红的，改后同口径 0 处）');
+  ok(!offRoomHit(true,false,{x:21.5,y:22}),
+    '规矩二·改线不误伤：同一格落在「店内→广场」的周末出门路线里放行（终点在室外，出房间是正事）');
+  ok(!offRoomHit(true,true,{x:6.5,y:11.5}),
+    '规矩二·改线不越权：门点/街心点（y 非整数，非避实体改线造的格心）不在本条管辖内');
 
   // 规矩三：判据是源码正则，故须证明它对病态写法会命中
   const BAD='let tx=v.x; if(!v.path.length){ const sp=standSpot(ag); tx=v.x+sp[0]; }';
