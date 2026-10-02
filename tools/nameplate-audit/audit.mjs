@@ -163,6 +163,57 @@ for (const [档名, vp] of [['桌面', { width: 1400, height: 900 }], ['手机�
   }
   await ctx.close();
 }
+/* ── 跨缩放扫描（第 43 单加）：把五个布局档都走一遍 ──────────────────────
+   为什么：`#set-layout` 是五态循环（自动／手机竖屏／手机横屏／平板／桌面宽屏），
+   它同时换来五个不同的 `state.view.s`——而「名牌字号写死 10px」那条遗留，
+   本质就是**跨缩放的比例问题**；顺带把第 40／41 单登记的「平板／横屏三档没拍」补上。 */
+{
+  const ctx = await browser.newContext({ viewport: { width: 1400, height: 900 }, deviceScaleFactor: 1 });
+  const page = await ctx.newPage();
+  await page.goto(URL_); await settle(2600);
+  await page.evaluate(() => { __pv.state.llm.on = false; __pv.state.reduceMotion = true; });
+    await page.click('[data-tab="settings"]'); await settle(300);
+  const 档 = [];
+  for (let i = 0; i < 5; i++) {
+    // 量之前**必须切回「现场」页**：画布在别的页签下是隐藏的，`clientWidth=0` ⇒ `state.view.s=0`
+    // （本单第一版就栽在这里：五档全量到 s=0、名牌宽对精灵宽成了 Infinity）
+    await page.click('[data-tab="live"]'); await settle(400);
+    const 名 = await page.evaluate(() => document.querySelector('#set-layout').textContent.trim());
+    await page.evaluate(() => {
+      const st = __pv.state, A = __pv.Sim.ANCHORS['kitchen'], sp = __pv.SPOTS['kitchen'];
+      st.world.speed = 0; st.cam.manual = true; st.cam.fx = 12; st.cam.fy = 8;
+      st.world.agents.forEach((ag, k) => {
+        const o = sp[k % sp.length], v = st.vis[ag.id];
+        v.x = v.dspX = A.x + 0.5 + o[0]; v.y = v.dspY = A.y + 0.5 + o[1];
+        v.path = []; v.moving = false;
+      });
+    });
+    await settle(350);
+    const r = await page.evaluate(() => {
+      const st = __pv.state, s = st.view.s, c = __pv.ctx;
+      c.font = '10px system-ui,sans-serif';
+      const 名宽 = c.measureText('顾云帆').width + 8;
+      const 房名号 = Math.max(9, Math.min(12, s * 0.7));
+      c.font = 房名号 + 'px system-ui,sans-serif';
+      const 房名宽 = c.measureText('公寓·厨房').width + 8;
+      return { s: Math.round(s * 100) / 100, 精灵宽: Math.round(s), 精灵高: Math.round(2 * s),
+        名牌宽: Math.round(名宽), 名牌字号: 10, 名牌宽对精灵宽: Math.round(名宽 / s * 100) / 100,
+        房间名字号: Math.round(房名号 * 10) / 10, 房间名宽: Math.round(房名宽) };
+    });
+    const f = pre + '布局档-' + 名 + '.png';
+    await page.screenshot({ path: path.join(OUT, f) });
+    档.push({ 布局: 名, ...r, 截图: f });
+    console.log('布局「' + 名 + '」 s=' + r.s + '　精灵 ' + r.精灵宽 + '×' + r.精灵高
+      + '　名牌宽 ' + r.名牌宽 + '（＝精灵宽的 ' + r.名牌宽对精灵宽 + ' 倍）'
+      + '　房间名字号 ' + r.房间名字号);
+    await page.click('[data-tab="settings"]'); await settle(250);
+    await page.click('#set-layout');   // 下一档（自动→竖屏→横屏→平板→宽屏→自动）
+    await settle(300);
+  }
+  读数.跨缩放 = 档;
+  await ctx.close();
+}
+
 fs.writeFileSync(path.join(OUT, pre + '读数.json'), JSON.stringify(读数, null, 2), 'utf8');
 await browser.close(); srv.close();
 const 总重叠 = 读数.档.reduce((n, d) => n + d.复算.reduce((m, x) => m + x.重叠人数, 0), 0);
