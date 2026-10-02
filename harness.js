@@ -2269,5 +2269,142 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   }
 }
 
+// ═══ 第 33 单·天色昼夜（把「现在几点」画到画面上）═════════════════════════════
+/* 被验的是生产源码原文：SKYTINT-START…SKYTINT-END 整块抠出来，在一个只记账不作画的假 ctx 上跑
+   （照第 31 单 iconLab、第 32 单 chipLab 先例）。四条闸：
+     闸一 · 色调跟着钟点走（夜里偏蓝、黄昏偏暖、白天不着色、上限保守）
+     闸二 · 曲线连续（星露谷那条「gradually becomes darker」的机器化：不许某一分钟突然切黑）
+     闸三 · 不改世界（源码侧零 rng／零 AI／零出网；畸形钟点不抛错）
+     闸四 · 反向自查：抹平曲线 ⇒ 判红；造台阶 ⇒ 判红；跨日不同色 ⇒ 判红
+   另加结构侧：draw() 里恰一处调用、且排在雨幕之后；走位门禁那条 `}\nlet rainSeed` 正则仍取得到。 */
+{
+  const fs=require('fs'), path=require('path');
+  const src=fs.readFileSync(path.resolve(__dirname,'city-life-framework.html'),'utf8');
+  const grab=(re,name)=>{ const m=src.match(re); if(!m){ ok(false,'源码抽取失败:'+name); return ''; } return m[0]; };
+  const SKY_SRC=grab(/\/\*SKYTINT-START\*\/[\s\S]*?\/\*SKYTINT-END\*\//,'SKYTINT 段');
+  const DRAWFN=grab(/function draw\(now\)\{[\s\S]*?\n\}\n\/\/ 画布：拖动=平移镜头/,'draw() 全函数');
+
+  function skyLab(mut){
+    const rec={rect:[]};
+    const ctx={ fillStyle:'', fillRect(x,y,w,h){ rec.rect.push({x,y,w,h,fill:ctx.fillStyle}); } };
+    let code=SKY_SRC;
+    if(mut) code=mut(code);
+    const M=new Function('ctx','PURE',
+      code+'\nreturn {SKY_KEYS,SKY_MAX_ALPHA,skyTint,skyPaint};')(ctx,PURE);
+    return {M,rec,ctx};
+  }
+  // 判据抽成函数，闸四正反两侧喂的是同一段判断
+  const g1=M=>(M.skyTint(180).a-M.skyTint(720).a)>0.2;
+  /* 量尺（本单定的口径）：比的是**合成色**——玩家真正看见的是「底色 × 不透明度」，
+     不是色罩自身的 RGB。黄昏段色相从橙跳到紫，原始 RGB 分量和大改 17，但那一档不透明度只有 0.17–0.22，
+     合成到画面上每 5 分钟只动 0.9% —— 拿原始 RGB 当判据会把「看不出来的色相滑动」判成跳变。
+     （照第 24 单「量尺要对」先例：先问这个量在玩家那头对应的是什么，再选尺子。） */
+  const 合成单通道=(c,i)=>{ const v=[c.r,c.g,c.b][i]; return c.a*v/255; };
+  const g2=M=>{
+    for(let m=0;m<1440;m+=5){
+      const a=M.skyTint(m), b=M.skyTint(m+5);
+      if(Math.abs(b.a-a.a)>0.012) return false;
+      if(Math.abs(b.a*(b.r+b.g+b.b)-a.a*(a.r+a.g+a.b))/255>0.04) return false;
+      for(let i=0;i<3;i++) if(Math.abs(合成单通道(b,i)-合成单通道(a,i))>0.015) return false;
+    }
+    return true;
+  };
+  const g2b=M=>{ const K=M.SKY_KEYS[0], L2=M.SKY_KEYS[M.SKY_KEYS.length-1];
+                 return JSON.stringify(K.slice(1))===JSON.stringify(L2.slice(1)); };
+  const g2c=M=>{ for(let m=0;m<=1440;m++) if(M.skyTint(m).a>M.SKY_MAX_ALPHA+1e-9) return false; return true; };
+
+  // ── 闸一 · 色调跟着钟点走 ───────────────────────────────────────────────
+  {
+    const M=skyLab().M;
+    const 夜=M.skyTint(180), 午=M.skyTint(720), 昏=M.skyTint(1110);
+    ok(夜.a-午.a>0.2,'闸一·跟着钟点走：03:00 与 12:00 的罩层不透明度差 '+(夜.a-午.a).toFixed(3)
+       +'（夜 '+夜.a.toFixed(2)+' ／ 昼 '+午.a.toFixed(2)+'）—— v40 上这两个时刻画出来逐像素相同');
+    ok(午.a<=0.05,'闸一·白天不着色：12:00 不透明度 '+午.a.toFixed(3)+' ≤ 0.05（大白天不该蒙一层）');
+    ok(夜.a>=0.25 && 夜.b>夜.r,'闸一·夜里偏蓝：03:00 不透明度 '+夜.a.toFixed(2)+'、RGB('
+       +Math.round(夜.r)+','+Math.round(夜.g)+','+Math.round(夜.b)+')，B>R');
+    ok(昏.r>昏.b,'闸一·黄昏偏暖：18:30 RGB('+Math.round(昏.r)+','+Math.round(昏.g)+','+Math.round(昏.b)+')，R>B');
+    ok(M.SKY_MAX_ALPHA<=0.4,'闸一·上限保守：SKY_MAX_ALPHA='+M.SKY_MAX_ALPHA+' ≤ 0.4'
+       +'（再高压垮名牌文字与选中金框的对比度，第 32 单刚把名牌可读性修好）');
+  }
+  // ── 闸二 · 曲线连续、跨日无台阶、全时段不越上限 ─────────────────────────
+  {
+    const M=skyLab().M;
+    let maxDA=0, maxEff=0, maxCh=0, atA=0, atE=0, atC=0;
+    for(let m=0;m<1440;m+=5){
+      const a=M.skyTint(m), b=M.skyTint(m+5);
+      const da=Math.abs(b.a-a.a);
+      const de=Math.abs(b.a*(b.r+b.g+b.b)-a.a*(a.r+a.g+a.b))/255;
+      let dc=0; for(let i=0;i<3;i++) dc=Math.max(dc,Math.abs(合成单通道(b,i)-合成单通道(a,i)));
+      if(da>maxDA){ maxDA=da; atA=m; }
+      if(de>maxEff){ maxEff=de; atE=m; }
+      if(dc>maxCh){ maxCh=dc; atC=m; }
+    }
+    ok(maxDA<=0.012,'闸二·不跳变（不透明度）：以 5 分钟为步长扫全天，相邻两点不透明度最大差 '+maxDA.toFixed(4)
+       +'（@'+atA+' 分）≤ 0.012 —— 星露谷「At night outdoors, it does not immediately become full dark,'
+       +' but gradually becomes darker over time」的机器化');
+    ok(maxCh<=0.015,'闸二·不跳变（合成单通道）：相邻两点合成后单通道最大变 '+maxCh.toFixed(4)+'（@'+atC
+       +' 分）≤ 0.015 —— 5 模拟分钟在 1× 下只有 0.5 真秒，这个量级的整屏滑动看不出来'
+       +'（量尺＝合成色，不是色罩自身的 RGB；理由见上面 g2 的注释）');
+    ok(maxEff<=0.04,'闸二·不跳变（合成亮度和）：相邻两点合成后三通道和最大变 '+maxEff.toFixed(4)
+       +'（@'+atE+' 分）≤ 0.04');
+    ok(g2b(M),'闸二·跨日不跳：曲线首末两键同色（'+M.SKY_KEYS[0][0]+' 分 ↔ '
+       +M.SKY_KEYS[M.SKY_KEYS.length-1][0]+' 分）⇒ 23:59 到 00:00 没有台阶');
+    ok(g2c(M),'闸二·全时段不越上限：全天 1441 个采样点的不透明度都不超过 SKY_MAX_ALPHA='+M.SKY_MAX_ALPHA);
+  }
+  // ── 闸三 · 不改世界 ＋ 畸形钟点不抛错 ───────────────────────────────────
+  {
+    const bare=SKY_SRC.replace(/\/\*[\s\S]*?\*\//g,'').replace(/(^|[^:'"])\/\/.*$/gm,'$1');
+    ok(!/\.rng\s*\(|\bMath\.random|\bfetch\s*\(|rawCallClaude|actIcon/.test(bare),
+       '闸三·源码侧：SKYTINT 段零 rng／零 Math.random／零出网／零 AI 入口');
+    ok(/PURE\.minuteOfDay\(t\)/.test(bare),
+       '闸三·取时口径同源：钟点直接取 PURE.minuteOfDay(w.t)——与顶栏时钟同一个数，不新起一本账');
+    const w=Sim.makeWorld(20260803), snap=Sim.serialize(w,null), L=skyLab();
+    for(let m=0;m<1440;m+=37) L.M.skyPaint(390,844,m);
+    ok(Sim.serialize(w,null)===snap,'闸三·运行侧：全天 39 次 skyPaint 跑完，世界逐字节不变（只读不写）');
+    const L2=skyLab();
+    let threw='';
+    try{ for(const t of [-1,0,1440,1441,1e9,NaN,undefined,null]) L2.M.skyPaint(10,10,t); }
+    catch(e){ threw=String((e&&e.message)||e); }
+    ok(!threw,'闸三·畸形钟点不抛错：8 种（负／越界／NaN／undefined／null／极大值）一律不出错'
+       +(threw?('（实测抛了：'+threw+'）'):''));
+    const 坏色=L2.rec.rect.filter(r=>/NaN|undefined|null/.test(String(r.fill))).length;
+    ok(坏色===0,'闸三·畸形钟点不画坏色：畸形入参落下 '+L2.rec.rect.length+' 笔，其中色值含 NaN／undefined 的 '
+       +坏色+' 笔（浏览器会忽略非法色值、拿上一笔残留的颜色涂满整屏，故必须一笔都不发）');
+    const L3=skyLab(); L3.M.skyPaint(10,10,720);
+    ok(L3.rec.rect.length===0,'闸三·白天不盖：12:00 那一档一次 fillRect 都不发（实测 '+L3.rec.rect.length
+       +' 次）——「不着色」不是画了一层透明的');
+  }
+  // ── 闸四 · 反向自查 ＋ 结构侧 ──────────────────────────────────────────
+  {
+    // 病态一 · 把不透明度抹平（＝改前那种「一天到晚一个色」）
+    const sick1=skyLab(s=>s.replace('a:mix(a[4],b[4])','a:0')).M;
+    ok(!g1(sick1),'闸四·反向一：把曲线抹平（不透明度恒 0）后，「跟着钟点走」当场判红');
+    // 病态二 · 在 19:45 那一键上造台阶
+    const sick2=skyLab(s=>s.replace('[1185, 104,  86, 138, 0.22]','[1185, 104,  86, 138, 0.99]')).M;
+    ok(!g2(sick2),'闸四·反向二：在 19:45 那一键上把不透明度抬到 0.99 ⇒ 「不跳变」当场判红');
+    ok(!g2c(sick2),'闸四·反向三：同一处也越过上限 ⇒ 「全时段不越上限」当场判红');
+    // 病态三 · 首末不同色（跨日台阶）
+    const sick3=skyLab(s=>s.replace('[1440,  26,  34,  70, 0.34]','[1440,  26,  34,  70, 0.60]')).M;
+    ok(!g2b(sick3),'闸四·反向四：把 24:00 那一键改成与 00:00 不同色 ⇒ 「跨日不跳」当场判红');
+    // 不误伤：生产原文四条判据全过
+    const M=skyLab().M;
+    ok(g1(M)&&g2(M)&&g2b(M)&&g2c(M),'闸四·不误伤：生产原文四条判据全部照常放行（不是恒红）');
+    // 病态改写必须真的命中生产原文，否则上面那几条是空转
+    ok(skyLab(s=>s.replace('a:mix(a[4],b[4])','a:0')).M.SKY_KEYS.length===M.SKY_KEYS.length,
+       '闸四·构造成立：病态改写没有把源码改坏（曲线键数不变）');
+    // ── 结构侧 ──
+    const nCall=(DRAWFN.match(/skyPaint\(/g)||[]).length;
+    ok(nCall===1,'结构侧：draw() 里 skyPaint 恰 1 个调用点（实测 '+nCall+' 处）—— 少了就是没画，多了就是重复着色');
+    ok(DRAWFN.lastIndexOf('skyPaint(')>DRAWFN.indexOf('// 雨幕'),
+       '结构侧：天色画在雨幕**之后** —— 雨也跟着一起染色，不会出现「夜里下着一场亮雨」');
+    const nAll=(src.match(/skyPaint/g)||[]).length;
+    ok(nAll===2,'射程：skyPaint 全站只出现 2 次（SKYTINT 段里的定义 ＋ draw 末尾的调用）—— '
+       +'角色页／日志／剪辑／短信都是 DOM，天色不碰它们');
+    ok(/function stepDisplay\(ag,dtSec,pixOn\)\{[\s\S]*?\n\}\nlet rainSeed/.test(src),
+       '结构侧·回归：走位门禁那条「stepDisplay…}\\nlet rainSeed」正则**仍取得到**源码'
+       +'（第 31 单登记的陷阱：在 draw() 一带增删代码要先确认这条正则还认得出）');
+  }
+}
+
 console.log(fails? ('\n'+fails+' FAILURES') : '\nALL PASS');
 process.exit(fails?1:0);

@@ -420,7 +420,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v40</span>
+<span class="num dim" id="set-build">v41</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -3710,6 +3710,58 @@ function stepAllDisplays(dtSec){
   for(const ag of state.world.agents) stepDisplay(ag,dtSec,pixOn);
 }
 let rainSeed=0;
+/*SKYTINT-START*/
+/* ---------- 天色：把「现在几点」画到画面上 ----------
+   病根（第 33 单取证，逐条实测于 v40）：画布底色只有两处写死的深色（`#10141d`／`#141824`），
+   `draw()` 全程不读钟点 ⇒ **早上六点和半夜两点画出来逐像素相同**。
+   世界明明有钟点（`w.t`＝分钟、`PURE.minuteOfDay`），顶栏时钟一直挂着，画面上却一律大白天。
+
+   调研依据（同类热门游戏怎么做，出处与原文见 docs/规划/借鉴调研-2026-10-03.md）：
+     · 星露谷：入夜**不是一步到全黑**——原文「At night outdoors, it does not immediately become
+       full dark, but gradually becomes darker over time.」（stardewvalleywiki.com/Day_Cycle）
+       ⇒ 必须走渐变，不许在某一分钟突然切黑。
+     · 环世界：光照是**有后果**的量（每格 0–100%，分 Dark／Lit／Brightly lit；<50% 减移速并 −5 心情，
+       床的手术成功率降到 ×75%；太阳能只在自然光下发电）（rimworldwiki.com/wiki/Light）
+       ⇒ 反面教训：光只当壁纸是浪费。本单只做第一档（纯显示层），「光有后果」与已登记的
+       「天气回流进行为」是同一类病，合并另立单，本单不碰。
+
+   射程（刻意压到最小）：
+     · 纯显示层：不改决定、不掷骰子、不碰世界——只在 `draw()` 的**最末尾**盖一层随钟点变的色罩。
+     · 一张曲线表 ＋ 线性插值：无分支、无随机、与帧率无关（只吃 `w.t`）。
+     · 只作用于画布；角色页／日志／剪辑／短信都是 DOM，零触碰。
+     · 钟点直接取 `PURE.minuteOfDay(w.t)`——与顶栏时钟同一个数，不新起一本账。 */
+const SKY_KEYS=[
+  // [当日分钟, R, G, B, 罩层不透明度] —— 段与段之间线性插值，故曲线天然连续
+  [   0,  26,  34,  70, 0.34],   // 00:00 深夜
+  [ 240,  26,  34,  70, 0.34],   // 04:00 天最黑
+  [ 330,  74,  64, 108, 0.20],   // 05:30 破晓（蓝紫）
+  [ 420, 255, 178, 120, 0.13],   // 07:00 晨光（暖）
+  [ 510, 255, 236, 200, 0.00],   // 08:30 白天（不着色）—— 破晓到白天给足 90 分钟，把每步的色差压到不可察觉
+  [1020, 255, 236, 200, 0.00],   // 17:00 白天
+  [1110, 255, 142,  84, 0.17],   // 18:30 黄昏（橙）
+  [1185, 104,  86, 138, 0.22],   // 19:45 暮色（紫）
+  [1260,  26,  34,  70, 0.34],   // 21:00 入夜
+  [1440,  26,  34,  70, 0.34],   // 24:00 与 00:00 同色 ⇒ 跨日不跳
+];
+const SKY_MAX_ALPHA=0.34;   // 不透明度上限：再高就把名牌文字与选中金框的对比度压垮了
+function skyTint(minuteOfDay){
+  const m=PURE.clamp(minuteOfDay,0,1440);
+  let i=0;
+  while(i<SKY_KEYS.length-2 && SKY_KEYS[i+1][0]<=m) i++;
+  const a=SKY_KEYS[i], b=SKY_KEYS[i+1], span=(b[0]-a[0])||1, k=(m-a[0])/span;
+  const mix=(p,q)=>p+(q-p)*k;
+  return { r:mix(a[1],b[1]), g:mix(a[2],b[2]), b:mix(a[3],b[3]), a:mix(a[4],b[4]) };
+}
+function skyPaint(w,h,t){
+  const c=skyTint(PURE.minuteOfDay(t));
+  // 白天不盖：省一次整屏填充，也让「白天不着色」可断言。
+  // 写成 !(c.a>0.001) 而不是 c.a<=0.001 —— 后者对 NaN 为 false，会带着 NaN 去赋值 fillStyle，
+  // 浏览器直接忽略非法色值 ⇒ 用上一笔残留的颜色涂满整屏（畸形钟点必须「什么都不画」）。
+  if(!(c.a>0.001)) return;
+  ctx.fillStyle='rgba('+Math.round(c.r)+','+Math.round(c.g)+','+Math.round(c.b)+','+c.a.toFixed(3)+')';
+  ctx.fillRect(0,0,w,h);
+}
+/*SKYTINT-END*/
 function draw(now){
   const {s,ox,oy}=state.view;
   ctx.setTransform(state.dpr,0,0,state.dpr,0,0);
@@ -3864,6 +3916,7 @@ function draw(now){
     }
     ctx.stroke();
   }
+  skyPaint(state.cvW,state.cvH,state.world.t);   // 第 33 单：天色罩层——画在最后一层，雨幕也一并跟着染色
 }
 // 画布：拖动=平移镜头，点按=选中小人
 let drag=null;
