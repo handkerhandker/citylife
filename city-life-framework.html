@@ -420,7 +420,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v42</span>
+<span class="num dim" id="set-build">v43</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -3797,6 +3797,48 @@ function lampPaint(t){
   }
 }
 /*NIGHTLAMP-END*/
+/*ROOMTILE-START*/
+/* ---------- 店面铺装：把还没被拼合图接管的房间从「一块空地」变成「一间屋」 ----------
+   缘由（第 36 单）：「铺满空房间」是视觉层二期剩下的那一档。公寓三间由 apartment.png 整体接管，
+   而便利店（12×10）与公司（10×9）仍是一块纯色矩形——第 35 单给它们点上灯之后，
+   两块空地反而更显空：占地最大、零细节。
+
+   本单做的是**零素材的第一档**：只用画布原语给这两间铺地砖、描后墙带、压踢脚线。
+   日后素材流水线那版（真瓷砖）接管的方式与公寓三间**完全相同**——把那两间加进 `PIX_ROOMS` 即可，
+   本段会自动跳过（`TILE_ROOMS` 与 `PIX_ROOMS` 的交集由门禁看着，必须是空的）。
+
+   射程（刻意压到最小）：**只画地面与墙，一件家具都不画**。家具会占格、居住者会走上去，
+   而本项目「逐帧脚底不得进实体格或家具占格」是硬红线（第 20 单立的走位三铁律之二）——
+   要加货架／工位必须同时改 PIX_SOLID 与站位表并重跑走位门禁，那是另一单。
+
+   由构造保证：所有笔画被 `ctx.clip()` 裁在房间矩形内，**一笔都出不去**（门禁另有逐笔核）。 */
+const TILE_ROOMS=['store','office'];          // 还没被拼合图接管的两间；加进 PIX_ROOMS 后本段自动跳过
+const TILE_LINE='rgba(255,255,255,.055)';     // 地砖细缝
+const TILE_MAJOR='rgba(255,255,255,.10)';     // 每两格一道粗缝
+const TILE_WALL=0.18;                         // 后墙带：把房间自己的边色压到 18% 铺满顶上一格
+const TILE_SKIRT='rgba(0,0,0,.22)';           // 踢脚线（贴房间底边）
+function roomTile(r){
+  const s=state.view.s, x0=sx(r.x), y0=sy(r.y), w=r.w*s, h=r.h*s;
+  ctx.save();
+  ctx.beginPath(); ctx.rect(x0,y0,w,h); ctx.clip();   // 由构造保证：一笔都不出房间
+  ctx.globalAlpha=TILE_WALL;                          // 后墙带（顶上一格）
+  ctx.fillStyle=r.edge;
+  ctx.fillRect(x0,y0,w,s);
+  ctx.globalAlpha=1;
+  ctx.lineWidth=1;
+  for(let i=1;i<r.w;i++){                             // 竖缝
+    ctx.strokeStyle=(i%2===0)?TILE_MAJOR:TILE_LINE;
+    ctx.beginPath(); ctx.moveTo(x0+i*s,y0+s); ctx.lineTo(x0+i*s,y0+h); ctx.stroke();
+  }
+  for(let j=2;j<r.h;j++){                             // 横缝（第 1 道留给后墙带）
+    ctx.strokeStyle=(j%2===0)?TILE_MAJOR:TILE_LINE;
+    ctx.beginPath(); ctx.moveTo(x0,y0+j*s); ctx.lineTo(x0+w,y0+j*s); ctx.stroke();
+  }
+  ctx.fillStyle=TILE_SKIRT;                           // 踢脚线
+  ctx.fillRect(x0,y0+h-3,w,3);
+  ctx.restore();
+}
+/*ROOMTILE-END*/
 function draw(now){
   const {s,ox,oy}=state.view;
   ctx.setTransform(state.dpr,0,0,state.dpr,0,0);
@@ -3850,6 +3892,7 @@ function draw(now){
     ctx.fillStyle='#171c26';
     if(r.door.side==='b') ctx.fillRect(sx(dx-0.5),sy(r.y+r.h)-3,s,4);
     else ctx.fillRect(sx(dx-0.5),sy(r.y)-1,s,4);
+    if(TILE_ROOMS.indexOf(r.id)>=0) roomTile(r);   // 第 36 单：店面铺装（只对没被拼合图接管的房间）
   }
   // 广场常设件（B 案）：街市摊位 ×3 贴排于广场西列（已撤离步行动脉）＋夜谈角＋江畔景观锚；脚底全部 ≥ 行 15，零压主干道
   for(let i=0;i<PLAZA_STALL.n;i++){

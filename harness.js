@@ -2526,5 +2526,120 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   }
 }
 
+// ═══ 第 36 单·店面铺装（便利店与公司从「一块空地」变「一间屋」）══════════════════
+/* 被验的是生产源码原文：ROOMTILE 段抠出来，在只记账的假 ctx 上跑。四条闸：
+     闸一 · **一笔都不出房间**（逐笔核每一个 fillRect 与每一段线段的两端）
+     闸二 · 只铺没被拼合图接管的房间（TILE_ROOMS 与 PIX_ROOMS 交集为空；未铺装的恰好是公寓三间＋室外两间）
+     闸三 · 不碰占格与站位（零 PIX_SOLID／零 ANCHORS／零 STAND_SPOTS／零 rng）
+     闸四 · 反向自查：把笔画画到房外 ⇒ 判红；把室外房间塞进名单 ⇒ 判红 */
+{
+  const fs=require('fs'), path=require('path');
+  const src=fs.readFileSync(path.resolve(__dirname,'city-life-framework.html'),'utf8');
+  const grab=(re,name)=>{ const m=src.match(re); if(!m){ ok(false,'源码抽取失败:'+name); return ''; } return m[0]; };
+  const TILE_SRC=grab(/\/\*ROOMTILE-START\*\/[\s\S]*?\/\*ROOMTILE-END\*\//,'ROOMTILE 段');
+  // 拼合图接管名单：从生产源码现读，不写死（照第 31 单「从 SIM 源码现读」先例）
+  const pixM=src.match(/const PIX_ROOMS=\{([^}]*)\}/);
+  // 键是**不带引号**的写法（`{living:1,kitchen:1,bedroom:1}`），故不能按 'x': 去匹配——
+  // 本单第一版就栽在这里：名单读成空数组，而「交集为空」那条照样判绿（空集当然不相交）。
+  const PIX_IDS=pixM ? [...pixM[1].matchAll(/([a-z]+)\s*:/g)].map(m=>m[1]) : [];
+
+  function tileLab(mut){
+    const rec={rect:[], seg:[], clip:[]};
+    const ctx={
+      fillStyle:'', strokeStyle:'', lineWidth:1, globalAlpha:1,
+      save(){}, restore(){}, beginPath(){}, clip(){},
+      rect(x,y,w,h){ rec.clip.push({x,y,w,h}); },
+      moveTo(x,y){ rec.seg.push({x,y}); }, lineTo(x,y){ rec.seg.push({x,y}); }, stroke(){},
+      fillRect(x,y,w,h){ rec.rect.push({x,y,w,h}); },
+    };
+    const state={view:{s:20}};
+    const sx=x=>300+x*20, sy=y=>100+y*20;
+    let code=TILE_SRC;
+    if(mut) code=mut(code);
+    const M=new Function('ctx','state','sx','sy',
+      code+'\nreturn {roomTile,TILE_ROOMS,TILE_LINE,TILE_MAJOR,TILE_WALL,TILE_SKIRT};')(ctx,state,sx,sy);
+    return {M,rec,state,sx,sy};
+  }
+  const 房内=(r,x,y)=>x>=300+r.x*20-0.51 && x<=300+(r.x+r.w)*20+0.51
+                    && y>=100+r.y*20-0.51 && y<=100+(r.y+r.h)*20+0.51;
+
+  // ── 闸一 · 一笔都不出房间 ───────────────────────────────────────────────
+  {
+    let 越界=0, 笔数=0, 线数=0;
+    const L=tileLab();
+    for(const id of L.M.TILE_ROOMS){
+      const r=Sim.ROOMS.find(x=>x.id===id);
+      L.rec.rect.length=0; L.rec.seg.length=0; L.rec.clip.length=0;
+      L.M.roomTile(r);
+      笔数+=L.rec.rect.length; 线数+=L.rec.seg.length/2;
+      for(const b of L.rec.rect) if(!(房内(r,b.x,b.y)&&房内(r,b.x+b.w,b.y+b.h))) 越界++;
+      for(const p of L.rec.seg) if(!房内(r,p.x,p.y)) 越界++;
+    }
+    ok(越界===0,'闸一·一笔都不出房间：两间共 '+笔数+' 个矩形 ＋ '+线数+' 段线，出界的 '+越界+' 笔');
+    const L2=tileLab();
+    const r0=Sim.ROOMS.find(x=>x.id===L2.M.TILE_ROOMS[0]);
+    L2.M.roomTile(r0);
+    const c=L2.rec.clip[0];
+    ok(L2.rec.clip.length===1 && Math.abs(c.x-300-r0.x*20)<1e-9 && Math.abs(c.y-100-r0.y*20)<1e-9
+       && Math.abs(c.w-r0.w*20)<1e-9 && Math.abs(c.h-r0.h*20)<1e-9,
+       '闸一·构造成立：剪切矩形就是房间自己的矩形（clip 恰 1 次，尺寸逐字对得上）');
+    ok(/ctx\.clip\(\)/.test(TILE_SRC),'闸一·由构造保证：源码里确实调了 `ctx.clip()`（不是靠作者自觉不画出界）');
+  }
+  // ── 闸二 · 只铺没被拼合图接管的房间 ─────────────────────────────────────
+  {
+    const M=tileLab().M;
+    const ids=Sim.ROOMS.map(r=>r.id);
+    ok(M.TILE_ROOMS.every(id=>ids.indexOf(id)>=0),'闸二·无幽灵房间：名单每一项都在 Sim.ROOMS 里');
+    const 交=M.TILE_ROOMS.filter(id=>PIX_IDS.indexOf(id)>=0);
+    // 「交集为空」自己会空转：名单读成空数组时它照样判绿。故把「名单真的读到了」并进同一条判据。
+    ok(交.length===0 && PIX_IDS.length===3,'闸二·与拼合图不重叠：TILE_ROOMS ∩ PIX_ROOMS = ∅（实测 '+交.length+' 个；'
+       +'拼合图名单现读为 ['+PIX_IDS.join('／')+']='+PIX_IDS.length+' 项——空名单不算通过，那会让本条空转）；'
+       +'日后把这两间加进 PIX_ROOMS，本段会自动跳过——交集非空说明两套铺装会打架）');
+    const 未铺=ids.filter(id=>M.TILE_ROOMS.indexOf(id)<0);
+    ok(JSON.stringify(未铺)===JSON.stringify(['living','kitchen','bedroom','park','river']),
+       '闸二·名单完整性：**没被铺装**的恰好是 ['+未铺.join('／')+']（公寓三间由拼合图接管、室外两间不铺）'
+       +' —— 日后往 ROOMS 加一间店面而忘了登记，这条当场判红');
+  }
+  // ── 闸三 · 不碰占格与站位 ＋ 零 rng ＋ 不改世界 ─────────────────────────
+  {
+    const bare=TILE_SRC.replace(/\/\*[\s\S]*?\*\//g,'').replace(/(^|[^:'"])\/\/.*$/gm,'$1');
+    ok(!/PIX_SOLID|ANCHORS|STAND_SPOTS/.test(bare),
+       '闸三·不碰占格与站位：ROOMTILE 段零 `PIX_SOLID`／零 `ANCHORS`／零 `STAND_SPOTS`'
+       +'—— 本单只画地面与墙，一件家具都不画（家具会占格，居住者会走上去，那是硬红线）');
+    ok(!/\.rng\s*\(|\bMath\.random|\bfetch\s*\(|rawCallClaude/.test(bare),
+       '闸三·零骰子零 AI 零出网：铺装是纯几何，不掷骰子');
+    const w=Sim.makeWorld(20260803), snap=Sim.serialize(w,null), L=tileLab();
+    for(const id of L.M.TILE_ROOMS) L.M.roomTile(Sim.ROOMS.find(x=>x.id===id));
+    ok(Sim.serialize(w,null)===snap,'闸三·运行侧：两间各铺一遍，世界逐字节不变（只读不写）');
+  }
+  // ── 闸四 · 反向自查 ＋ 结构侧 ──────────────────────────────────────────
+  {
+    // 病态一 · 一条线画到房外
+    const L=tileLab(s=>s.replace('ctx.lineTo(x0+i*s,y0+h);','ctx.lineTo(x0+i*s,y0+h+50);'));
+    const r=Sim.ROOMS.find(x=>x.id===L.M.TILE_ROOMS[0]);
+    L.M.roomTile(r);
+    const 出界=L.rec.seg.filter(p=>!房内(r,p.x,p.y)).length;
+    ok(出界>0,'闸四·反向一：把一道竖缝画到房外 50px ⇒ 逐笔核当场判红（实测出界 '+出界+' 个端点）');
+    // 病态二 · 把室外那间塞进名单
+    const L2=tileLab(s=>s.replace("const TILE_ROOMS=['store','office'];","const TILE_ROOMS=['store','office','park'];"));
+    const 未铺=Sim.ROOMS.map(x=>x.id).filter(id=>L2.M.TILE_ROOMS.indexOf(id)<0);
+    ok(JSON.stringify(未铺)!==JSON.stringify(['living','kitchen','bedroom','park','river']),
+       '闸四·反向二：把滨江公园塞进名单 ⇒ 「名单完整性」当场判红（未铺装的房间对不上了）');
+    // 不误伤
+    const M=tileLab().M;
+    const 未铺2=Sim.ROOMS.map(x=>x.id).filter(id=>M.TILE_ROOMS.indexOf(id)<0);
+    ok(JSON.stringify(未铺2)===JSON.stringify(['living','kitchen','bedroom','park','river']) && PIX_IDS.length===3,
+       '闸四·不误伤：生产原文两条判据全部照常放行（拼合图名单现读为 '+PIX_IDS.join('／')+'）');
+    // 结构侧
+    const nAll=(src.match(/roomTile/g)||[]).length;
+    ok(nAll===2,'结构侧：`roomTile` 全站只出现 2 次（定义 ＋ ROOMS 循环里那一处调用）');
+    const iCont=src.indexOf('if(pixOn && PIX_ROOMS[r.id]) continue;');
+    const iCall=src.indexOf('if(TILE_ROOMS.indexOf(r.id)>=0) roomTile(r);');
+    ok(iCont>=0 && iCall>iCont && iCall-iCont<600,
+       '结构侧：调用点落在**同一个房间循环**里、且在被拼合图接管的 `continue` 之后'
+       +'（保证只对没接管的房间铺装，不会盖在 apartment.png 上）');
+  }
+}
+
 console.log(fails? ('\n'+fails+' FAILURES') : '\nALL PASS');
 process.exit(fails?1:0);
