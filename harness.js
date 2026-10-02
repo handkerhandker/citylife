@@ -2641,5 +2641,142 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   }
 }
 
+// ═══ 第 38 单·夜里的路灯光斑（室外也亮起来）══════════════════════════════════
+/* 被验的是生产源码原文：SKYTINT ＋ NIGHTLAMP ＋ STREETGLOW 三段一起抠出来求值（光斑要调 lampLevel，
+   必须与室内灯同源）。四条闸：
+     闸一 · 同源：光斑亮度直接取 lampLevel ⇒ 与天色、室内灯同一套作息，不存在第三个开关
+     闸二 · 白天不亮、夜里够亮、上限保守
+     闸三 · **每个光斑中心都在室外**（不在任何房间矩形内）＋ 不占格（零 PIX_SOLID／ANCHORS／STAND_SPOTS）
+     闸四 · 反向自查（挪进屋里 ⇒ 判红；抹平亮度 ⇒ 判红）＋ 结构侧（画在室内灯之后） */
+{
+  const fs=require('fs'), path=require('path');
+  const src=fs.readFileSync(path.resolve(__dirname,'city-life-framework.html'),'utf8');
+  const grab=(re,name)=>{ const m=src.match(re); if(!m){ ok(false,'源码抽取失败:'+name); return ''; } return m[0]; };
+  const SKY_SRC=grab(/\/\*SKYTINT-START\*\/[\s\S]*?\/\*SKYTINT-END\*\//,'SKYTINT 段');
+  const LAMP_SRC=grab(/\/\*NIGHTLAMP-START\*\/[\s\S]*?\/\*NIGHTLAMP-END\*\//,'NIGHTLAMP 段');
+  const GLOW_SRC=grab(/\/\*STREETGLOW-START\*\/[\s\S]*?\/\*STREETGLOW-END\*\//,'STREETGLOW 段');
+  const DRAWFN=grab(/function draw\(now\)\{[\s\S]*?\n\}\n\/\/ 画布：拖动=平移镜头/,'draw() 全函数');
+
+  function glowLab(mut){
+    const rec={rect:[], grad:[], clipPath:[], fillRule:[]};
+    const ctx={
+      fillStyle:'',
+      save(){}, restore(){}, beginPath(){},
+      rect(x,y,w,h){ rec.clipPath.push({x,y,w,h}); },
+      clip(rule){ rec.fillRule.push(rule||'nonzero'); },
+      createRadialGradient(x0,y0,r0,x1,y1,r1){
+        const g={x0,y0,r0,x1,y1,r1,stops:[]}; rec.grad.push(g);
+        return { addColorStop(o,c){ g.stops.push({o,c}); } };
+      },
+      fillRect(x,y,w,h){ rec.rect.push({x,y,w,h,fill:ctx.fillStyle}); },
+    };
+    const state={view:{s:20}};
+    const sx=x=>300+x*20, sy=y=>100+y*20;
+    // 病态改写**只作用于 STREETGLOW 段**：`const k=lampLevel(t);` 这句在 lampPaint 与 streetGlow
+    // 里各有一份，整段拼起来再 replace 会命中前面那份（本单第一版就栽在这里：改的是室内灯，
+    // 却拿「光了」去判街灯 —— 判据与靶子对不上，反向自查当场变成假阳性）。
+    const code=SKY_SRC+'\n'+LAMP_SRC+'\n'+(mut?mut(GLOW_SRC):GLOW_SRC);
+    const M=new Function('ctx','PURE','Sim','state','sx','sy',
+      code+'\nreturn {lampLevel,streetGlow,GLOW_SPOTS,GLOW_COLOR,GLOW_MAX_ALPHA};')(ctx,PURE,Sim,state,sx,sy);
+    return {M,rec};
+  }
+  const 三更=180, 正午=720;
+  const 在房内=(x,y)=>Sim.ROOMS.some(r=>x>r.x && x<r.x+r.w && y>r.y && y<r.y+r.h);
+
+  // ── 闸一 · 同源 ────────────────────────────────────────────────────────
+  {
+    const bare=GLOW_SRC.replace(/\/\*[\s\S]*?\*\//g,'').replace(/(^|[^:'"])\/\/.*$/gm,'$1');
+    ok(/lampLevel\(/.test(bare),
+       '闸一·同源：光斑亮度直接取 `lampLevel(t)` ⇒ 与天色、室内灯**同一个源**，'
+       +'不存在「第三套作息表」（改天色两处灯一起跟着变）');
+    const M=glowLab().M;
+    ok(M.lampLevel(三更)>=0.99 && M.lampLevel(正午)===0,
+       '闸一·同源（读数）：03:00 灯亮度 '+M.lampLevel(三更).toFixed(2)+'、12:00 '+M.lampLevel(正午)+'');
+  }
+  // ── 闸二 · 白天不亮、夜里够亮、上限保守 ─────────────────────────────────
+  {
+    const L=glowLab();
+    L.M.streetGlow(正午);
+    ok(L.rec.rect.length===0,'闸二·白天一笔都不落：12:00 发 '+L.rec.rect.length+' 次 fillRect');
+    const N=glowLab(); N.M.streetGlow(三更);
+    ok(N.rec.rect.length===N.M.GLOW_SPOTS.length,
+       '闸二·夜里每盏都亮：03:00 落 '+N.rec.rect.length+' 笔 ＝ 灯位数 '+N.M.GLOW_SPOTS.length);
+    ok(N.rec.grad.length===N.M.GLOW_SPOTS.length && N.rec.grad.every(g=>g.stops.length===3),
+       '闸二·每盏都是三档渐变（中心／半程／边缘透明），实测 '+N.rec.grad.length+' 个梯度、'
+       +'渐变档数 '+JSON.stringify([...new Set(N.rec.grad.map(g=>g.stops.length))]));
+    const 中心=N.rec.grad[0].stops[0].c, 边=N.rec.grad[0].stops[2].c;
+    const a=parseFloat(String(中心).split(',')[3]);
+    ok(Math.abs(a-N.M.GLOW_MAX_ALPHA)<1e-6 && /,0\)$/.test(边),
+       '闸二·中心不透明度＝上限（实测 '+a+'）、边缘收到 0（实测「'+边+'」）');
+    ok(N.M.GLOW_MAX_ALPHA<=0.25,'闸二·上限保守：GLOW_MAX_ALPHA='+N.M.GLOW_MAX_ALPHA+' ≤ 0.25');
+  }
+  // ── 闸三 · 都在室外 ＋ 不占格 ──────────────────────────────────────────
+  {
+    const M=glowLab().M;
+    const 屋里=M.GLOW_SPOTS.filter(g=>在房内(g[0],g[1]));
+    ok(屋里.length===0,'闸三·都在室外：'+M.GLOW_SPOTS.length+' 盏灯**没有一盏**落在房间矩形内（实测 '
+       +屋里.length+' 盏）—— 路灯装在屋里既不合理，也会与第 35 单的室内灯叠成两层暖光');
+    ok(M.GLOW_SPOTS.every(g=>g[2]>0.5 && g[2]<6),
+       '闸三·半径在本项目的地图尺度内（>'+"0.5"+' 格、< 6 格）：实测 '
+       +JSON.stringify([...new Set(M.GLOW_SPOTS.map(g=>g[2]))]));
+    const bare=GLOW_SRC.replace(/\/\*[\s\S]*?\*\//g,'').replace(/(^|[^:'"])\/\/.*$/gm,'$1');
+    ok(!/PIX_SOLID|ANCHORS|STAND_SPOTS/.test(bare),
+       '闸三·不占格：STREETGLOW 段零 `PIX_SOLID`／零 `ANCHORS`／零 `STAND_SPOTS`'
+       +'—— 只画地面上的光、不画灯杆，故寻路与走位一个字都不受影响');
+    /* 光不穿墙：本单第一版没做这层剪切，半径 2.6 格的光斑够得着街对面公寓的下缘——
+       是交付前的**前后对照图**把它抓出来的（客厅对照组本该逐字节相同，却变了）。 */
+    const L0=glowLab(); L0.M.streetGlow(三更);
+    ok(L0.rec.fillRule.length===1 && L0.rec.fillRule[0]==='evenodd',
+       '闸三·光不穿墙：夜里恰好做 1 次**偶数-奇数剪切**（实测 ' + JSON.stringify(L0.rec.fillRule) + '）'
+       +'—— 把「整张地图」减去「所有房间」，光斑一个像素都进不了屋');
+    ok(L0.rec.clipPath.length===1+Sim.ROOMS.length
+       && Math.abs(L0.rec.clipPath[0].w-Sim.MAPW*20)<1e-9
+       && L0.rec.clipPath.slice(1).every((b,i)=>{
+            const r=Sim.ROOMS[i];
+            return Math.abs(b.x-(300+r.x*20))<1e-9 && Math.abs(b.y-(100+r.y*20))<1e-9
+                && Math.abs(b.w-r.w*20)<1e-9 && Math.abs(b.h-r.h*20)<1e-9;
+          }),
+       '闸三·剪切路径对得上：1 个地图矩形 ＋ ' + Sim.ROOMS.length + ' 个房间矩形，逐个尺寸与 Sim.ROOMS 一致'
+       +'（实测 ' + L0.rec.clipPath.length + ' 条）—— 日后往 ROOMS 加房间，这条自动跟着走');
+    ok(!/\.rng\s*\(|\bMath\.random|\bfetch\s*\(|rawCallClaude/.test(bare),
+       '闸三·零骰子零 AI 零出网');
+    const w=Sim.makeWorld(20260803), snap=Sim.serialize(w,null), L=glowLab();
+    for(let m=0;m<1440;m+=37) L.M.streetGlow(m);
+    ok(Sim.serialize(w,null)===snap,'闸三·运行侧：全天 39 次 streetGlow 跑完，世界逐字节不变（只读不写）');
+    const L2=glowLab();
+    let threw='';
+    try{ for(const t of [-1,0,1440,1441,1e9,NaN,undefined,null]) L2.M.streetGlow(t); }
+    catch(e){ threw=String((e&&e.message)||e); }
+    ok(!threw,'闸三·畸形钟点不抛错：8 种一律不出错'+(threw?('（实测抛了：'+threw+'）'):''));
+    const 坏=L2.rec.grad.flatMap(g=>g.stops.map(s=>s.c)).filter(c=>/NaN|undefined|null/.test(String(c))).length;
+    ok(坏===0,'闸三·畸形钟点不画坏色：落了 '+L2.rec.grad.length+' 个梯度，色值含 NaN／undefined 的 '+坏+' 档');
+  }
+  // ── 闸四 · 反向自查 ＋ 结构侧 ──────────────────────────────────────────
+  {
+    const sick1=glowLab(s=>s.replace('[ 3.0, Sim.STREET_Y+0.5, 2.6]','[ 3.0, 5.0, 2.6]')).M;   // 挪进公寓客厅
+    ok(sick1.GLOW_SPOTS.some(g=>在房内(g[0],g[1])),
+       '闸四·反向一：把一盏灯挪进公寓客厅 ⇒ 「都在室外」当场判红');
+    const sick2=glowLab(s=>s.replace('const k=lampLevel(t);','const k=0;'));
+    sick2.M.streetGlow(三更);
+    ok(sick2.rec.rect.length===0,
+       '闸四·反向二：把光斑亮度抹平（k 恒 0）⇒ 夜里一笔都不落，「夜里每盏都亮」当场判红（实测 '
+       +sick2.rec.rect.length+' 笔）');
+    const sick3=glowLab(s=>s.replace("ctx.clip('evenodd');",''));
+    sick3.M.streetGlow(三更);
+    ok(sick3.rec.fillRule.length===0,
+       '闸四·反向三：把「光不穿墙」那层偶数-奇数剪切删掉 ⇒ 剪切归零，「光不穿墙」当场判红（实测 '
+       +sick3.rec.fillRule.length+' 次）');
+    const M=glowLab().M;
+    ok(M.GLOW_SPOTS.every(g=>!在房内(g[0],g[1])) && M.GLOW_MAX_ALPHA<=0.25,
+       '闸四·不误伤：生产原文两条判据全部照常放行');
+    const nCall=(DRAWFN.match(/streetGlow\(/g)||[]).length;
+    ok(nCall===1,'结构侧：draw() 里 streetGlow 恰 1 个调用点（实测 '+nCall+' 处）');
+    ok(DRAWFN.lastIndexOf('streetGlow(')>DRAWFN.lastIndexOf('lampPaint('),
+       '结构侧：光斑画在**室内灯之后** —— 两者都在天色之上，夜里才亮得起来');
+    ok((src.match(/streetGlow/g)||[]).length===2,
+       '射程：streetGlow 全站只出现 2 次（定义 ＋ draw 末尾调用）；角色页／日志／剪辑／短信都是 DOM，零触碰');
+  }
+}
+
 console.log(fails? ('\n'+fails+' FAILURES') : '\nALL PASS');
 process.exit(fails?1:0);

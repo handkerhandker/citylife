@@ -420,7 +420,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v43</span>
+<span class="num dim" id="set-build">v44</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -3839,6 +3839,61 @@ function roomTile(r){
   ctx.restore();
 }
 /*ROOMTILE-END*/
+/*STREETGLOW-START*/
+/* ---------- 夜里的路灯光斑：室外也亮起来 ----------
+   缘由（第 38 单）：第 35 单点的是**室内**；室外入夜依旧全黑——街面、广场、岸线步道
+   一个光源都没有，夜里的城市像一块熄了灯的板子。
+
+   调研依据（出处与原文见 docs/规划/借鉴调研-2026-10-03.md 候选 5）：
+     · 环世界：「Artificial light sources can be used for lighting at night or in roofed areas」
+       （rimworldwiki.com/wiki/Light）—— 路灯是**室外**那一半，本单补的正是这半。
+     · 星露谷：「lamps and sconces light up」（stardewvalleywiki.com/Day_Cycle）
+       —— 夜里画面要能读出「哪里有灯、哪里有人」。
+
+   治法（纯显示层、零素材）：在**室外的**几个点位铺一圈暖色光斑（径向渐变）。亮度直接取
+   `lampLevel`——与室内灯、与天色**同一个源**，故「天黑才亮、天亮就灭」由构造保证。
+
+   射程与红线：
+     · **只画地面上的光**，不画灯杆、不画任何几何体 —— 故不占格、不进 `PIX_SOLID`，
+       寻路与走位一个字都不受影响（「逐帧脚底不得进实体格或家具占格」是硬红线）。
+     · **每个光斑中心都必须落在室外**（不在任何房间矩形内），由门禁逐点核 ——
+       路灯装在屋里既不合理、也会与第 35 单的室内灯叠成两层暖光。
+     · 只作用于画布；角色页／日志／剪辑／短信都是 DOM，零触碰。 */
+const GLOW_SPOTS=[
+  // [格 x, 格 y, 半径（格）] —— 街道贴路面、广场两处、岸线步道沿线；全部是室外地面
+  [ 3.0, Sim.STREET_Y+0.5, 2.6], [ 9.0, Sim.STREET_Y+0.5, 2.6], [15.0, Sim.STREET_Y+0.5, 2.6],
+  [22.0, Sim.STREET_Y+0.5, 2.6], [29.0, Sim.STREET_Y+0.5, 2.6], [36.0, Sim.STREET_Y+0.5, 2.6],
+  [43.0, Sim.STREET_Y+0.5, 2.6],
+  [21.0, 17.0, 3.0], [25.5, 20.2, 2.6],                                  // 广场：T 口 ＋ 夜谈角前
+  [ 4.0, 23.0, 2.4], [12.0, 23.0, 2.4], [30.0, 23.0, 2.4], [38.0, 23.0, 2.4], [44.5, 23.0, 2.4],  // 岸线步道（第 23 行）
+];
+const GLOW_COLOR={r:255,g:206,b:148};
+const GLOW_MAX_ALPHA=0.22;   // 上限：再高地面就成一块发光贴纸，也会盖住行人脚下的影子
+function streetGlow(t){
+  const k=lampLevel(t);
+  if(!(k>0.001)) return;     // 白天不亮：与室内灯、与天色同一套写法（NaN 也走这条）
+  const s=state.view.s, a=k*GLOW_MAX_ALPHA;
+  const rgb=GLOW_COLOR.r+','+GLOW_COLOR.g+','+GLOW_COLOR.b;
+  /* 光是不会穿墙进屋的：把「整张地图」减去「所有房间」做**偶数-奇数剪切**，
+     由构造保证光斑一个像素都进不了屋（本单第一版没有这一步，半径 2.6 格的光斑够得着
+     街对面公寓的下缘——是交付前的前后对照图把它抓出来的：客厅对照组本该逐字节相同，却变了）。 */
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(sx(0),sy(0),Sim.MAPW*s,Sim.MAPH*s);
+  for(const r of Sim.ROOMS) ctx.rect(sx(r.x),sy(r.y),r.w*s,r.h*s);
+  ctx.clip('evenodd');
+  for(const g of GLOW_SPOTS){
+    const cx=sx(g[0]), cy=sy(g[1]), r=g[2]*s;
+    const grd=ctx.createRadialGradient(cx,cy,0,cx,cy,r);
+    grd.addColorStop(0,   'rgba('+rgb+','+a.toFixed(3)+')');
+    grd.addColorStop(0.55,'rgba('+rgb+','+(a*0.5).toFixed(3)+')');
+    grd.addColorStop(1,   'rgba('+rgb+',0)');
+    ctx.fillStyle=grd;
+    ctx.fillRect(cx-r,cy-r,r*2,r*2);
+  }
+  ctx.restore();
+}
+/*STREETGLOW-END*/
 function draw(now){
   const {s,ox,oy}=state.view;
   ctx.setTransform(state.dpr,0,0,state.dpr,0,0);
@@ -3996,6 +4051,7 @@ function draw(now){
   }
   skyPaint(state.cvW,state.cvH,state.world.t);   // 第 33 单：天色罩层——画在最后一层，雨幕也一并跟着染色
   lampPaint(state.world.t);                       // 第 35 单：入夜点灯——画在天色**之上**，灯才亮得起来（否则被夜色吃掉）
+  streetGlow(state.world.t);                      // 第 38 单：室外路灯光斑——同样画在天色之上；只画地面，不占格
 }
 // 画布：拖动=平移镜头，点按=选中小人
 let drag=null;
