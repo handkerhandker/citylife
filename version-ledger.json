@@ -39,6 +39,14 @@
       "sha256": "7941066bf1c8bb161a2fa5cecb412a56a2696352e1d6657790d64f4f6e2302e3",
       "SIM块md5": "029ec0c39e362e9ba7f54165d6939a0c",
       "备注": "活动上画面（头顶活动指示器）。**未动 SIM 块**：SIM 块 md5 与 v36／v37／v38 逐字节相同，世界指纹 2d266238… 亦不变——新增的 ACTICON 段整块在渲染层，只读 `ag.activity.type` 与 `ag.workKind`，对世界零写入、零 rng、零 AI。改动三处：①渲染层新增 `/*ACTICON-START*/…/*ACTICON-END*/`（`ACT_ICON` 七类符号表＋`ACT_ICON_WORK` work 四档表＋`actIcon()`／`actChip()`）；②`draw()` 的两条人物路径（像素素材路径与素材未就位的色块兜底路径）各加一处 `actChip` 调用，画在名牌之上、不碰选中金框；③睡觉那个符号从名牌文本挪进符号表，名牌回归纯名字（不两套并存）。零新增素材、`assets/*.png` 与 `build_assets.py` 零触碰。"
+    },
+    {
+      "版本": "v40",
+      "单": "第32单",
+      "状态": "已发",
+      "sha256": "61ffe824f6e4f5e44e2fe7232e4e029e30f4b14751fe799849e2af80af5f0aa0",
+      "SIM块md5": "029ec0c39e362e9ba7f54165d6939a0c",
+      "备注": "名牌分道（把「几个人的名字叠成一行」拆开）。**未动 SIM 块**：SIM 块 md5 与世界指纹 2d266238… 逐字节不变——NAMECHIP 段整块在渲染层，零 rng、零 AI、零世界写入。改动四处：①渲染层新增 `/*NAMECHIP-START*/…/*NAMECHIP-END*/`（`NAME_CHIP_LANE_H=15`／`NAME_CHIP_GAP=3`／`nameChipReset()`／`nameChip()`，道数上限＝住户人数＝由构造保证零重叠）；②`draw()` 两条人物路径（像素素材路与色块兜底路）各把裸 `chip()` 换成 `nameChip()`，头顶活动指示器改吃它的返回值（分道抬高时跟着抬，仍不遮金框）；③人物绘制段之前每帧 `nameChipReset()` 清账；④`harness.js` 新增「闸五·名牌分道」13 条（含两条反向自查、五条结构侧／构造成立）。零新增素材、`assets/*.png` 与 `build_assets.py` 零触碰。"
     }
   ],
   "历史": [

@@ -420,7 +420,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-        <span class="num dim" id="set-build">v39</span>
+<span class="num dim" id="set-build">v40</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -3371,6 +3371,39 @@ function chip(x,y,text,color,size){
   ctx.textAlign='center'; ctx.textBaseline='middle';
   ctx.fillText(text, x, y-6.5);
 }
+/*NAMECHIP-START*/
+/* ---------- 名牌分道：把「几个人的名字叠成一行」拆开 ----------
+   病根（第 32 单取证，逐条实测于 v39）：名牌盒宽＝measureText+8（三个汉字约 38px），
+   而人物之间的横向距离随缩放走——手机上整张地图宽 390px，客厅餐桌四个站位只隔 1.5 格≈12px。
+   于是三个人并排站着时名牌首尾相接，读出来是一行「顾云帆 陆知秋 白一鸣」：
+   既分不清哪个名字是谁的，又像一条黑杠。房间名/地标名走的是随缩放的字号
+   （Math.max(9,Math.min(12,s*0.7))），名牌却是写死的 10px，故越缩小越挤。
+
+   治法：同一帧内给名牌排道，两两不许压——贪心，从最低的一道往上找第一条放得下的。
+   **由构造保证**：道数上限＝住户人数，故同一帧内任意多个名牌都能各占一道、零重叠，
+   且与缩放无关（判据落在像素上，不落在格上）。
+   只作用于名牌：房间名/地标名是静态背景，跟着抬会闪，一律不走这道闸。 */
+const NAME_CHIP_LANE_H=15;      // 道距＝名牌盒高（chip 的盒高恒 15）
+const NAME_CHIP_GAP=3;          // 同一道上两个盒子之间至少留的横向缝
+let nameChipBoxes=[];           // 本帧登记表（每帧绘制前由 nameChipReset 清账）
+function nameChipReset(){ nameChipBoxes=[]; }
+function nameChip(x,y,text){
+  ctx.font='10px system-ui,sans-serif';
+  const w=ctx.measureText(text).width+8;
+  let lane=0;
+  while(lane<state.world.agents.length){          // 上限＝住户人数 ⇒ 各占一道，结构上不可能重叠
+    let free=true;
+    for(const b of nameChipBoxes){
+      if(b.lane===lane && Math.abs(b.x-x)<(b.w+w)/2+NAME_CHIP_GAP){ free=false; break; }
+    }
+    if(free) break;
+    lane++;
+  }
+  nameChipBoxes.push({x,y,w,lane});
+  chip(x, y-lane*NAME_CHIP_LANE_H, text, '#ece5d0', 10);
+  return y-14-lane*NAME_CHIP_LANE_H;   // 盒顶：头顶指示器以它为盒底（ACT_CHIP.gap 口径同源）
+}
+/*NAMECHIP-END*/
 /*ACTICON-START*/
 /* ---------- 第 31 单·活动指示器（头顶符号档）：把「这个人在干什么」画到画布上 ----------
    病根（第 31 单取证复核，逐条实测于 v38）：`draw()` 全程只读 `v.moving`（走／站两种精灵行），
@@ -3772,6 +3805,7 @@ function draw(now){
     const v=state.vis[ag.id];
     dispPos[ag.id]={x:v.dspX,y:v.dspY};
   }
+  nameChipReset();   // 第 32 单：名牌分道按帧清账（每帧重排，故与上一帧无关）
   const ents=state.world.agents.map(ag=>({kind:'a',ag,fy:dispPos[ag.id].y+0.5}));
   if(pixOn) for(const f of PIX_FURN_TALL) ents.push({kind:'f',f,fy:f[4]});
   ents.sort((a,b)=>a.fy-b.fy);
@@ -3800,8 +3834,8 @@ function draw(now){
         ctx.strokeRect(dx0-3,dy0-3,dw+6,dh+6);
       }
       ctx.drawImage(img,(dir*6+fi)*fw,(ci*2+(walking?1:0))*fh,fw,fh,dx0,dy0,dw,dh);
-      chip(px, dy0-4, tag, '#ece5d0', 10);
-      actChip(px, dy0-4-ACT_CHIP.gap, ag);          // 第 31 单：指示器画在名牌之上（盒底＝名牌盒顶），不碰下方的选中金框
+      const nt=nameChip(px, dy0-4, tag);             // 第 32 单：名牌分道，返回盒顶
+      actChip(px, nt, ag);                           // 第 31 单：指示器画在名牌之上（盒底＝名牌盒顶）；分道抬高时跟着一起抬，仍不碰下方金框
       continue;
     }
     const R=Math.max(4, s*0.42);
@@ -3813,11 +3847,11 @@ function draw(now){
     ctx.fillRect(px-R-1,py-R-1,R*2+2,R*2+2);
     ctx.fillStyle=ag.color;
     ctx.fillRect(px-R,py-R,R*2,R*2);
-    chip(px, py-R-4, tag, '#ece5d0', 10);
+    const nt=nameChip(px, py-R-4, tag);              // 第 32 单：名牌分道，返回盒顶
     // 第 31 单：素材未就位／`pix.on` 关掉的兜底路径**照出指示器**。理由：这条路上人物退化成一个纯色方块，
     // 连走／站都分不出来，「在干什么」比有素材时更没有别的地方可看；而符号本身零素材依赖（canvas 画的字），
     // 出不出与素材加载成败无关。两条路的调用点各一处，harness 结构侧逐条钉住。
-    actChip(px, py-R-4-ACT_CHIP.gap, ag);
+    actChip(px, nt, ag);
   }
   // 雨幕
   if(state.world.weather.rain && !state.reduceMotion){

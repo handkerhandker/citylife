@@ -1917,6 +1917,11 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   // draw() 里的人物绘制段（含像素路径与色块兜底路径两支），锚在它后面那句「// 雨幕」上
   const AGENTLOOP=grab(/for\(const en of ents\)\{[\s\S]*?\n  \/\/ 雨幕/,'draw 的人物绘制段');
   const SIM_SRC=grab(/\/\*SIM-START\*\/[\s\S]*?\/\*SIM-END\*\//,'SIM 块');
+  // 第 32 单·名牌分道：被验的还是生产源码原文——chip() 函数体 ＋ NAMECHIP 段整块
+  const CHIP_SRC=grab(/function chip\(x,y,text,color,size\)\{[\s\S]*?\n\}/,'chip() 函数');
+  const NAMECHIP_SRC=grab(/\/\*NAMECHIP-START\*\/[\s\S]*?\/\*NAMECHIP-END\*\//,'NAMECHIP 段');
+  // draw() 的人物段整块（含建表与分道清账），锚在「// 雨幕」上
+  const DRAWSEC=grab(/const dispPos=\{\};[\s\S]*?\n  \/\/ 雨幕/,'draw 人物段（含建表）');
 
   // 假 ctx：只记账不作画。measureText 给每个码位记 1 个字宽（emoji 多为双码位，宽度不影响任何判据）
   function iconLab(mut){
@@ -1930,6 +1935,25 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
     };
     const code=(mut?mut(ICON_SRC):ICON_SRC)+'\nreturn {ACT_ICON,ACT_ICON_WORK,ACT_CHIP,actIcon,actChip};';
     const M=new Function('ctx','Object','String','Math',code)(ctx,Object,String,Math);
+    return {M, rec, ctx};
+  }
+
+  /* 第 32 单·名牌分道用的假 ctx：chip() 只画盒子（fillRect ＋ fillText），
+     故流水只需要 rect／text 两本账，加一个可算的 measureText。 */
+  function chipLab(mut,nAgents){
+    const rec={rect:[],text:[]};
+    const ctx={
+      set font(v){ ctx._f=String(v); }, get font(){ return ctx._f||''; },
+      fillStyle:'', textAlign:'', textBaseline:'',
+      measureText(s){ return {width:[...String(s)].length*13}; },
+      fillRect(x,y,w,h){ rec.rect.push({x,y,w,h}); },
+      fillText(s,x,y){ rec.text.push({s:String(s),x,y}); },
+    };
+    let code=CHIP_SRC+'\n'+NAMECHIP_SRC;
+    if(mut) code=mut(code);
+    const M=new Function('ctx','state',
+      code+'\nreturn {chip,nameChip,nameChipReset,NAME_CHIP_LANE_H,NAME_CHIP_GAP,boxes:()=>nameChipBoxes};')
+      (ctx,{world:{agents:new Array(nAgents||AG.length)}});
     return {M, rec, ctx};
   }
   const AG=Sim.makeWorld(20260803).agents;
@@ -2025,9 +2049,10 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
     ok(g3fb(AGENTLOOP)===1,
        '闸三·结构侧：**素材未就位／pix 关掉的色块兜底路**上也恰有 1 个 actChip 调用点 ⇒ 那条路照出指示器'
        +'（人退化成纯色方块，走／站都分不出来，「在干什么」在那儿比有素材时更没别处可看）');
-    ok(/chip\(px, dy0-4, tag[\s\S]*?actChip\(px, dy0-4-ACT_CHIP\.gap, ag\)/.test(AGENTLOOP)
-       && /chip\(px, py-R-4, tag[\s\S]*?actChip\(px, py-R-4-ACT_CHIP\.gap, ag\)/.test(AGENTLOOP),
-       '闸三·结构侧：两条路的指示器都取「名牌盒顶」为盒底（y−gap），叠放口径同源');
+    ok(/const nt=nameChip\(px, dy0-4, tag\)[\s\S]*?actChip\(px, nt, ag\)/.test(AGENTLOOP)
+       && /const nt=nameChip\(px, py-R-4, tag\)[\s\S]*?actChip\(px, nt, ag\)/.test(AGENTLOOP),
+       '闸三·结构侧：两条路的指示器都取「名牌盒顶」为盒底（＝nameChip 的返回值），叠放口径同源；'
+       +'第 32 单起名牌分道抬高时指示器跟着抬，故盒底只能取返回值、不许再自己算 y−gap');
     // 畸形输入：一律不抛错，且认不出就一笔都不画
     {
       const L=iconLab();
@@ -2047,19 +2072,101 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
                       {activity:{type:'work'},workKind:'从未见过的工种'}])
         ok(L.M.actIcon(b)===L.M.ACT_ICON.work,'闸三·畸形 workKind「'+String(b.workKind)+'」落通用档 '+L.M.ACT_ICON.work+'（不沿原型链取到函数）');
     }
-    // 叠放：指示器的盒子恒在选中金框上边线之上，逐像素算一遍
+    // 叠放：指示器的盒子恒在选中金框上边线之上，逐像素算一遍（第 32 单起逐道都算）
     {
-      const L=iconLab(); L.rec.rect.length=0;
+      const L=iconLab();
       const dy0=200;                                   // 精灵顶（金框 strokeRect 的 y＝dy0−3，lineWidth 2 ⇒ 上边线占 [dy0−4, dy0−2]）
-      L.M.actChip(100, dy0-4-L.M.ACT_CHIP.gap, posed(AG[0],'sleep'));
-      const r=L.rec.rect[0];
-      const 金框顶=dy0-4, 名牌顶=dy0-4-14, 指示器底=r.y+r.h;
-      ok(指示器底<=名牌顶 && 指示器底<金框顶,
-         '闸三·不遮金框：指示器盒底 y='+指示器底+' ≤ 名牌盒顶 '+名牌顶+' ＜ 金框上边线 '+金框顶
-         +'（相隔 '+(金框顶-指示器底)+'px）⇒ 2px 金框结构上不可能被遮');
+      const 金框顶=dy0-4;
+      const laneH=chipLab().M.NAME_CHIP_LANE_H;
+      const got=[];
+      for(let lane=0;lane<AG.length;lane++){
+        L.rec.rect.length=0;
+        const 名牌顶=dy0-4-14-lane*laneH;              // 分道后的名牌盒顶（与 nameChip 的返回值同式）
+        L.M.actChip(100, 名牌顶, posed(AG[0],'sleep'));
+        const r=L.rec.rect[0];
+        got.push({lane, 底:r.y+r.h});
+        ok(r.y+r.h<=名牌顶 && r.y+r.h<金框顶,
+           '闸三·不遮金框（道 '+lane+' ／ 共 '+AG.length+' 道）：指示器盒底 y='+(r.y+r.h)+' ≤ 名牌盒顶 '+名牌顶
+           +' ＜ 金框上边线 '+金框顶+'（相隔 '+(金框顶-(r.y+r.h))+'px）⇒ 2px 金框结构上不可能被遮');
+      }
+      ok(new Set(got.map(g=>g.底)).size===AG.length,
+         '闸三·不遮金框：四道各抬 15px、盒底两两不同（实测 '+JSON.stringify(got.map(g=>g.底))+'）'
+         +'⇒ 「抬到第几道都压不住金框」是算遍了的，不是只验了第 0 道');
       ok(/strokeRect\(dx0-3,dy0-3,dw\+6,dh\+6\)/.test(AGENTLOOP) && /strokeRect\(px-R-3,py-R-3,R\*2\+6,R\*2\+6\)/.test(AGENTLOOP),
          '闸三构造成立：两条路的金框几何逐字未动（上面那个算式喂的就是生产源码里的数）');
       ok((AGENTLOOP.match(/ctx\.lineWidth=2;/g)||[]).length===2,'闸三：金框仍是 2px（两条路各一处），本单零触碰');
+    }
+  }
+
+  // ── 闸五（第 32 单）· 名牌分道：几个人的名字不许叠成一行 ─────────────────────
+  /* 病根：名牌盒宽＝文字宽＋8（三个汉字约 38px），横向间距却随缩放走——
+     手机竖屏整图 390px／47 格 ⇒ 一格约 8.3px，客厅餐桌四个站位只隔 1.5 格≈12px。
+     三个人并排就必然首尾相接，读出来是一行「顾云帆 陆知秋 白一鸣」。
+     治法＝同帧内贪心排道，道数上限＝住户人数 ⇒ 各占一道、零重叠，与缩放无关。 */
+  {
+    const laneH=chipLab().M.NAME_CHIP_LANE_H;
+    const boxOf=r=>({l:r.x, r:r.x+r.w, t:r.y, b:r.y+r.h});
+    const 相交=(a,b)=>a.l<b.r && b.l<a.r && a.t<b.b && b.t<a.b;
+    const 数重叠=bs=>{ let n=0; for(let i=0;i<bs.length;i++) for(let j=i+1;j<bs.length;j++) if(相交(bs[i],bs[j])) n++; return n; };
+    const 挤=[0,12,24,36];             // 真实病例：客厅餐桌四人，中心相距 12px
+    {
+      const L=chipLab(); L.M.nameChipReset();
+      for(const x of 挤) L.M.nameChip(100+x, 200, '顾云帆');
+      const bs=L.rec.rect.map(boxOf);
+      ok(数重叠(bs)===0,'闸五·零重叠（由构造保证）：四个人名牌中心只隔 12px（照手机竖屏客厅餐桌那一档）时，'
+         +bs.length+' 个盒子两两不相交（实测 '+数重叠(bs)+' 对相交）—— 道数上限＝住户人数，故各占一道');
+      const lanes=L.M.boxes().map(b=>b.lane).sort((a,b)=>a-b);
+      ok(JSON.stringify(lanes)==='[0,1,2,3]','闸五·构造成立：最挤那一档各自占 0/1/2/3 道（实测 ['+lanes.join(',')+']）'
+         +'—— 不是「刚好没撞上」，是排出来的');
+      const tops=L.rec.rect.map(r=>r.y).sort((a,b)=>a-b);
+      ok(JSON.stringify(tops)===JSON.stringify([200-14-3*laneH,200-14-2*laneH,200-14-laneH,200-14]),
+         '闸五·构造成立：四条名牌盒顶恰为四道的高度（实测 '+JSON.stringify(tops)+'，道距 '+laneH+'px）');
+    }
+    {
+      const L=chipLab(); L.M.nameChipReset();
+      for(const x of [0,400,800,1200]) L.M.nameChip(x, 200, '顾云帆');
+      const lanes=L.M.boxes().map(b=>b.lane);
+      ok(lanes.every(v=>v===0),'闸五·不误伤：四个名牌横向隔开 400px 时全部留在第 0 道（实测 ['+lanes.join(',')+']）'
+         +'—— 不挤就不抬，画面不无故长高');
+      ok(new Set(L.rec.rect.map(r=>r.y)).size===1,'闸五·不误伤：不挤时四个盒子顶边同高（实测 '
+         +JSON.stringify([...new Set(L.rec.rect.map(r=>r.y))])+'）');
+    }
+    {
+      // 反向自查一：道数上限压到 1 ＝ 退回改前那种「所有人挤同一行」
+      const L=chipLab(s=>s.replace('lane<state.world.agents.length','lane<1'));
+      L.M.nameChipReset();
+      for(const x of 挤) L.M.nameChip(100+x, 200, '顾云帆');
+      const n=数重叠(L.rec.rect.map(boxOf));
+      ok(n>0,'闸五·反向自查一：把道数上限压到 1（＝退回改前「所有人挤同一行」）后，同样四个人实测 '+n
+         +' 对重叠 ⇒ 上面那条「零重叠」不是恒绿的闸');
+    }
+    {
+      // 反向自查二：把横向间距判据摘掉（＝只管抬不抬、不管让不让）
+      const L=chipLab(s=>s.replace('Math.abs(b.x-x)<(b.w+w)/2+NAME_CHIP_GAP','false'));
+      L.M.nameChipReset();
+      for(const x of 挤) L.M.nameChip(100+x, 200, '顾云帆');
+      const lanes=L.M.boxes().map(b=>b.lane);
+      ok(lanes.every(v=>v===0),'闸五·反向自查二：把「横向间距判据」摘掉后四个人全落第 0 道（实测 ['
+         +lanes.join(',')+']）⇒ 那条判据真的在管事，不是摆设');
+    }
+    {
+      // 结构侧：每帧清账、清在绘制循环之前；人物段零裸 chip 调用（分道绕不过去）
+      const iReset=DRAWSEC.indexOf('nameChipReset()');
+      const iLoop=DRAWSEC.indexOf('for(const en of ents)');
+      ok((DRAWSEC.match(/nameChipReset\(\)/g)||[]).length===1 && iReset>=0 && iReset<iLoop,
+         '闸五·结构侧：draw 的人物段里 nameChipReset() 恰 1 处、且排在绘制循环之前'
+         +'（实测 '+((DRAWSEC.match(/nameChipReset\(\)/g)||[]).length)+' 处；漏清会让牌子跨帧越抬越高）');
+      const nBare=(AGENTLOOP.match(/(?<![a-zA-Z])chip\(/g)||[]).length;
+      ok(nBare===0,'闸五·结构侧：人物段零裸 chip() 调用（实测 '+nBare+' 处）—— 名牌必须走 nameChip，'
+         +'否则分道被绕开、几个人又叠回一行');
+      ok(/while\(lane<state\.world\.agents\.length\)/.test(NAMECHIP_SRC),
+         '闸五·构造成立：道数上限直接取住户人数（不是写死的数字）—— 住户加到几个就分几道');
+      ok(/const NAME_CHIP_LANE_H=15;/.test(NAMECHIP_SRC) && /const NAME_CHIP_GAP=3;/.test(NAMECHIP_SRC),
+         '闸五·构造成立：分道常量在生产源码里可抽取（道距 '+laneH+'px）');
+      // 只作用于名牌：房间名/地标名仍走裸 chip()，不被这道闸碰
+      ok((src.match(/\bchip\(sx\(/g)||[]).length>=6,
+         '闸五·射程：房间名/地标名仍走裸 chip()（实测 '+(src.match(/\bchip\(sx\(/g)||[]).length
+         +' 处），分道只作用于名牌 —— 静态标签跟着抬会闪');
     }
   }
 
@@ -2121,7 +2228,8 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
     }
     // 病态 3a · 把兜底路径的 actChip 调用删掉（＝「素材没就位就没指示器」那种做法）
     {
-      const sick=AGENTLOOP.replace(/\n\s*\/\/ 第 31 单：素材未就位[\s\S]*?actChip\(px, py-R-4-ACT_CHIP\.gap, ag\);/,'');
+      // 第 32 单：兜底路的指示器改吃 nameChip 的返回值（分道抬高时跟着抬），病态改写的靶子随之换字
+      const sick=AGENTLOOP.replace(/\n\s*\/\/ 第 31 单：素材未就位[\s\S]*?actChip\(px, nt, ag\);/,'');
       ok(sick!==AGENTLOOP,'反向·闸三：病态改写命中了生产原文');
       ok(g3fb(sick)===0 && g3pix(sick)===1,'反向·闸三：兜底路径的调用点被删掉 ⇒ 「那条路也有 1 个调用点」当场判红');
     }

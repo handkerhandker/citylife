@@ -20,10 +20,13 @@
 import http from 'http';
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import { execFileSync } from 'child_process';
 import { chromium } from 'playwright';
 
-const REPO = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../..');
+// 第 32 单：Windows 上 URL.pathname 会是 '/F:/…'（带前导斜杠＋盘符），path.resolve 会拼出
+// 'F:\F:\…' 这种怪路径；fileURLToPath 是跨平台的正确写法（Linux 沙箱下两者等价）。
+const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const OUT = path.resolve(process.argv[2] || path.join(REPO, 'docs/交付/第31单-图'));
 const BEFORE = (process.argv.find(a => a.startsWith('--改前=')) || '').split('=')[1] || '';
 const PORT = 18931;
