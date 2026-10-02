@@ -219,13 +219,28 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   const w=Sim.makeWorld(2026);
   const textK={};
   for(const k in Sim.PEER_EVENTS) Sim.PEER_EVENTS[k].forEach(e=>{ textK[e.text]=e.k; });
-  // 工作时段外沿（含 工作狂 −30 与 短信「别迟到」earlyWork −30 两档提前量）
-  const WIN={a1:[8.5*60,18*60], a2:[9.5*60,19*60], a3:[8*60,18*60], a4:[9*60,17*60]};
-  // 饭点那一小时挖空。第 22 单起饭点逐人化＝本人上班起点（含工作狂 −30，不含 earlyWork）
-  // ＋ RHY_LUNCH_AFTER，四人互异；本表照 decide() 的算法按真值算出来，改常量不必改门禁。
-  const LUNCH={}; for(const k in WIN) LUNCH[k]=0;
-  { const base={a1:9*60, a2:10*60, a3:9*60-30, a4:9.5*60};   // startBase ＋ 工作狂 −30
-    for(const k in base) LUNCH[k]=base[k]+Sim.RHY_LUNCH_AFTER; }
+  /* 第 46 单：工作时段改由**源码那一份算法**算（`Sim.workWindow`），不再在闸里另写一套。
+     本单第一版就是栽在这里：闸硬编码的窗口不含周末偏移，世界一改就假红（越界 2 次）。
+     另加一条**不恒真**的旁证：把「周一 vs 周六」的窗口并排打出来，让人一眼看出表真的在管事。 */
+  {
+    const w0=Sim.makeWorld(2026);
+    const 例={}; for(const k in Sim.WEEK_RULES) 例[k]=Sim.WEEK_RULES[k];
+    const 人={a1:'work', a2:'clerk', a3:'trade', a4:'write'};
+    const 周内={}, 周末={};
+    for(const id in 人){ const ag={workKind:人[id], traits:[], flags:{} };
+      周内[id]=Sim.workWindow({t:0, rng:()=>0}, ag);            // D1 是周一
+      周末[id]=Sim.workWindow({t:5*1440, rng:()=>0}, ag); }    // D6 是周六
+    ok(Object.keys(例).length===4,'闸：WEEK_RULES 四个工种齐（'+Object.keys(例).join('／')+'）');
+    ok(Sim.workWindow({t:0,rng:()=>0},{workKind:'从未见过的工种',traits:[],flags:{}}).start===9*60,
+       '闸：未知 workKind 零偏移、不抛错（照 PEER_EVENTS 先例）');
+    const 现=id=>'周内 '+PURE.fmtTime(周内[id].start)+'–'+PURE.fmtTime(周内[id].end)
+                 +' ／ 周末 '+PURE.fmtTime(周末[id].start)+'–'+PURE.fmtTime(周末[id].end);
+    ok(true,'读数·上班时段（a1／a2／a3／a4）：'+['a1','a2','a3','a4'].map(id=>PURE.fmtTime(周内[id].start).slice(0,2)+'时起→'+PURE.fmtTime(周末[id].end).slice(0,2)+'时收').join('　'));
+    ok(周末.a1.end<周内.a1.end && 周末.a1.start>周内.a1.start,'闸·a1 程序员：周末晚到早退（'+现('a1')+'）');
+    ok(周末.a2.start===周内.a2.start && 周末.a2.end===周内.a2.end,'闸·a2 店员：排班制照常（'+现('a2')+'）');
+    ok(周末.a3.end<周内.a3.end,'闸·a3 交易员：周末早收工（'+现('a3')+'）');
+    ok(周末.a4.start<周内.a4.start,'闸·a4 撰稿人：周末更早开工（'+现('a4')+'）');
+  }
   const perDay={}, hitBy={}, sawKind=new Set(), lastText={}, prevSit={};
   let outOfWindow=0, repeat=0, logLeak=0, ttlBad=0;
   const logLen0=w.log.length;
@@ -235,9 +250,9 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
       const s=ag.sit;
       const stamp=s?(s.until+'|'+s.text):'';
       if(s && stamp!==prevSit[ag.id]){                  // 新挂上一条（until 变化即为新事件）
-        const mod=PURE.minuteOfDay(w.t), win=WIN[ag.id];
-        const lu=LUNCH[ag.id];
-        if(!win || mod<win[0] || mod>=win[1] || (mod>=lu && mod<lu+60)) outOfWindow++;
+        const mod=PURE.minuteOfDay(w.t);
+        const W=Sim.workWindow(w, ag), lu=W.lunchS;
+        if(mod<W.start || mod>=W.end || (mod>=lu && mod<lu+60)) outOfWindow++;
         if(s.until!==w.t+Sim.SIT_TTL) ttlBad++;         // 时效＝SIT_TTL（补充指令一裁定 14 小时）
         perDay[ag.id+'|'+PURE.dayOf(w.t)]=(perDay[ag.id+'|'+PURE.dayOf(w.t)]||0)+1;
         hitBy[ag.id]=(hitBy[ag.id]||0)+1;
@@ -1719,12 +1734,21 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
       ok(stray.length===0,'乙·取材表完整：六段窗口全扫，没被单列的条目**全部带住户名**（即全是个人记录）'
          +(stray.length?('；漏登：'+stray[0]):'；世界级播报七种逐条有桶'));
     }
-    // 什么都没发生就照实说，不硬凑
-    const Q=scene(111, 14*60, 20/60);      // 离开 20 分钟：补算发生了，但这一段确实一条日志都没落
-    const LQ=backLab(Q.w); LQ.M.openBackPopup(Q.catchup);
-    const sq=LQ.M.backSummary(Q.catchup);
-    ok(sq.total===0,'乙构造成立：离开 20 分钟这一段确实一条新记录都没有（实测 '+sq.total+' 条）');
-    ok(LQ.text().indexOf('这段时间城市很安静，一条新记录都没有。')>=0 && sq.lines.length===0,
+    /* 什么都没发生就照实说，不硬凑。
+       第 46 单：这一段原先钉死 D111 14:00 起 20 分钟，而**世界一改，那 20 分钟就不再安静**
+       （实测 1 条）⇒ 假红。改成**搜一个仍然安静的 20 分钟窗口**：断言一字未松
+       （仍要求 total===0 且文案逐字相同），松的只是"哪一段"这个前置条件。 */
+    let Q=null, LQ=null, sq=null;
+    for (const [d0,m0] of [[111,14*60],[111,10*60],[111,20*60],[111,6*60],[112,14*60],[110,14*60],[113,14*60]]) {
+      const S0=scene(d0, m0, 20/60);
+      if(!S0.catchup) continue;
+      const L0=backLab(S0.w); L0.M.openBackPopup(S0.catchup);
+      const s0=L0.M.backSummary(S0.catchup);
+      if(s0.total===0){ Q=S0; LQ=L0; sq=s0; break; }
+    }
+    ok(!!sq,'乙构造成立：七个候选窗口里找到了一个安静的 20 分钟（找不到即判红，不许悄悄跳过）');
+    ok(sq && sq.total===0,'乙构造成立：那一段确实一条新记录都没有（实测 '+(sq?sq.total:'—')+' 条）');
+    ok(sq && LQ.text().indexOf('这段时间城市很安静，一条新记录都没有。')>=0 && sq.lines.length===0,
        '乙·不硬凑：什么都没发生就照实说，不编一行出来');
     // 封顶：跳过了多少必须自己说出来
     const C=scene(111, 10*60, 24*7);

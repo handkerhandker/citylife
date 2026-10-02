@@ -428,7 +428,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v47</span>
+<span class="num dim" id="set-build">v48</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -1204,6 +1204,47 @@ function setActivity(w,ag,anchorId,type,label,minutes,thought,logText,logType){
   if(logText!==null) logAct(w,ag, logText!==undefined?logText:label, thought, logType);
 }
 
+/*WEEK-START*/
+/* ---------- 第 46 单·星期进入世界（决策者裁定 A）----------
+   取证（第 37 单，3 种子 × 56 天，实测于 v47）：**世界没有周末**——
+   周六上工 30.81% vs 周二 31.03%（**只差 0.22 个百分点**）。查下去发现 `decide()` **其实已经查星期**，
+   但只用在「周日街市」那一支（第 8 段，`PURE.weekday===6`）：它只改**去处**、不改**上班**，
+   所以周六与周二在"做什么"上真的一模一样。
+
+   治法：把「星期」对**上班时段**的影响收进**一张表**（本段），`decide()` 只读表、不写死数字。
+   口径（写死在这里）：
+     · **不是「周末全都不上班」**——那样世界会整齐得不像城市。按工种的现实分档：
+       程序员（摸鱼人格）周末**晚到早退**／店员（排班制）**照常**／交易员（行情不认周末）**早收工**／
+       撰稿人（自由职业）周末**反而更早开工**赶稿。
+     · 偏移与「工作狂」特质**同层**（都是结构性的）⇒ **饭点跟着一起走**；而 `earlyWork`（玩家短信那一记）
+       仍按第 22 单的原口径**排除在饭点之外**。
+     · 缺键＝照工作日走（陌生 workKind 零偏移、不抛错，照 `PEER_EVENTS` 先例）。
+   本表是**唯一**给上班时段加星期的地方——`decide()` 里不再有第二处 `weekday` 判断（门禁有断言）。 */
+const WEEK_RULES={
+  // workKind → 周末的「上班起点／收工」分钟偏移（负＝更早）
+  work : {start:+60, end:-120},   // 顾云帆·程序员：周末晚到、早退
+  clerk: {start:  0, end:   0},   // 沈小满·店员：排班制，周末照上
+  trade: {start:  0, end:-180},   // 陆知秋·交易员：早收工（工作日 18:00 → 周末 15:00）
+  write: {start:-60, end:   0},   // 白一鸣·自由撰稿人：周末起得更早赶稿
+};
+/* 「今天几点上班、几点收工」**只在这里算一次**——`decide()` 与门禁都调它。
+   为什么抽成函数：本单第一版把这几行留在 `decide()` 里，结果**第 17 单那条「外围事件只在工作时段内」
+   的闸自己硬编码了一套旧窗口**（不含周末偏移）⇒ 一改世界就假红（越界 2 次）。
+   抽出来之后，闸与生产**同一份算法**，改规则不必改闸，也不会再有第二套模型腐坏。 */
+function workWindow(w, ag){
+  const wr=WEEK_RULES[ag.workKind] || null;      // 缺键＝照工作日走
+  const 周末=PURE.weekday(w.t)>=5;
+  const startBase = ag.workKind==='clerk'?10*60 : ag.workKind==='write'?9.5*60 : 9*60;
+  let start=startBase;
+  if(ag.traits.includes('工作狂')) start-=30;
+  if(周末 && wr) start+=wr.start;
+  const lunchS=start+RHY_LUNCH_AFTER, lunchE=lunchS+60;
+  if(ag.flags && ag.flags.earlyWork) start-=30;  // 玩家短信那一记：落在饭点之后（第 22 单口径）
+  const end=(ag.workKind==='clerk'?19*60 : ag.workKind==='write'?17*60 : 18*60)
+          + ((周末 && wr) ? wr.end : 0);
+  return {startBase, start, lunchS, lunchE, end};
+}
+/*WEEK-END*/
 function decide(w, ag){
   const mod=PURE.minuteOfDay(w.t);
   const R=rhyOf(ag);          // 第 22 单·逐人作息人格（由既有特质逐条相加，见 RHY 段）
@@ -1244,14 +1285,9 @@ function decide(w, ag){
     return;
   }
   // 上班时段（第 22 单起前移到吃饭之前：饭点由本人上班起点推出，两处必须用同一套数）
-  const startBase = ag.workKind==='clerk'?10*60 : ag.workKind==='write'?9.5*60 : 9*60;
-  let start=startBase;
-  if(ag.traits.includes('工作狂')) start-=30;
-  // 饭点跟着本人的作息走，不跟玩家短信走：故取「特质调整后、earlyWork 调整前」的上班起点。
-  // 四人上班起点本就互异（8:30／9:00／9:30／10:00），饭点因此天然错开，无须另立四个数字。
-  const lunchS=start+RHY_LUNCH_AFTER, lunchE=lunchS+60;
-  if(ag.flags.earlyWork){ start-=30; }
-  const end = ag.workKind==='clerk'?19*60 : ag.workKind==='write'?17*60 : 18*60;
+  // 第 46 单：上班时段改由 `workWindow()` 一处算（含周末偏移）——门禁也调同一份，不再各写一套。
+  // 饭点仍照第 22 单口径：「跟着本人的作息走、不跟玩家短信走」，即取「特质调整后、earlyWork 调整前」的起点。
+  const {startBase, start, lunchS, lunchE, end} = workWindow(w, ag);
   const inWork = mod>=start && mod<end && !(mod>=lunchS && mod<lunchE);
   // 2. 饿了就先吃（吃是第一生产力）。第 22 单两处变化：
   //    ① 饭点那一小时由本人上班起点推出（四人 8:30／9:00／9:30／10:00 → 饭点天然错开）；
@@ -1996,6 +2032,7 @@ const Sim={makeWorld, step, sendMessage, sendCustomMessage, decide, MSGS, ANCHOR
   RHY_BASE, RHY_TRAIT, RHY_BED_MIN, RHY_BED_MAX, RHY_WAKE_MIN, RHY_WAKE_MAX, RHY_DUR_MIN, RHY_DUR_MAX,
   RHY_HUNGER_FLOOR, RHY_ENERGY_FLOOR, RHY_LUNCH_AFTER, rhyOf, rhyRest, rhyEatAt, rhyNapAt, rhyWakeAt,
   rhyBedClock, rhyDur, rhyPressed,
+  WEEK_RULES, workWindow,   // 第 46 单·星期进入世界（门禁调同一份算法，不另写一套）
   CATCHUP_MIN_PER_MIN, CATCHUP_MAX_DAYS, REFLECT_MIN, SMS_NOREPLY,
   catchUpPlan, catchUp, reflectFallback, clipTopDay,
   DIARY_FB, DIARY_FB_RECENT, CHAT_FB_OPEN, CHAT_FB_REPLY, pickV, pickFresh, diaryFallback,   // 第 27 单·兜底文案扩池
