@@ -1,0 +1,231 @@
+{
+  "场景": [
+    {
+      "场景": "①什么都不动",
+      "期望": "无提示",
+      "实测": "无提示",
+      "判定": "✓"
+    },
+    {
+      "场景": "②只翻页面标识",
+      "期望": "出提示",
+      "实测": "有提示",
+      "判定": "✓"
+    },
+    {
+      "场景": "②点它",
+      "期望": "网址带 ?fresh=",
+      "实测": "带上了",
+      "判定": "✓"
+    },
+    {
+      "场景": "③只翻素材标识",
+      "期望": "出提示（素材也在缓存里）",
+      "实测": "有提示",
+      "判定": "✓"
+    },
+    {
+      "场景": "④服务端不给标识",
+      "期望": "无提示（不猜不误报）",
+      "实测": "无提示",
+      "判定": "✓"
+    }
+  ],
+  "请求流水": [
+    {
+      "方法": "GET",
+      "路径": "/city-life-framework.html",
+      "带标识": true
+    },
+    {
+      "方法": "GET",
+      "路径": "/assets/apartment.png",
+      "带标识": true
+    },
+    {
+      "方法": "GET",
+      "路径": "/assets/characters.png",
+      "带标识": true
+    },
+    {
+      "方法": "HEAD",
+      "路径": "/city-life-framework.html",
+      "带标识": true
+    },
+    {
+      "方法": "GET",
+      "路径": "/favicon.ico",
+      "带标识": false
+    },
+    {
+      "方法": "HEAD",
+      "路径": "/assets/apartment.png",
+      "带标识": true
+    },
+    {
+      "方法": "HEAD",
+      "路径": "/assets/characters.png",
+      "带标识": true
+    },
+    {
+      "方法": "POST",
+      "路径": "/relay",
+      "带标识": false
+    },
+    {
+      "方法": "HEAD",
+      "路径": "/city-life-framework.html",
+      "带标识": true
+    },
+    {
+      "方法": "HEAD",
+      "路径": "/assets/apartment.png",
+      "带标识": true
+    },
+    {
+      "方法": "HEAD",
+      "路径": "/assets/characters.png",
+      "带标识": true
+    },
+    {
+      "方法": "POST",
+      "路径": "/relay",
+      "带标识": false
+    },
+    {
+      "方法": "HEAD",
+      "路径": "/city-life-framework.html",
+      "带标识": true
+    },
+    {
+      "方法": "HEAD",
+      "路径": "/assets/apartment.png",
+      "带标识": true
+    },
+    {
+      "方法": "HEAD",
+      "路径": "/assets/characters.png",
+      "带标识": true
+    },
+    {
+      "方法": "GET",
+      "路径": "/city-life-framework.html",
+      "带标识": true
+    },
+    {
+      "方法": "HEAD",
+      "路径": "/city-life-framework.html",
+      "带标识": true
+    },
+    {
+      "方法": "HEAD",
+      "路径": "/assets/apartment.png",
+      "带标识": true
+    },
+    {
+      "方法": "HEAD",
+      "路径": "/assets/characters.png",
+      "带标识": true
+    },
+    {
+      "方法": "HEAD",
+      "路径": "/city-life-framework.html",
+      "带标识": true
+    },
+    {
+      "方法": "HEAD",
+      "路径": "/assets/apartment.png",
+      "带标识": true
+    },
+    {
+      "方法": "HEAD",
+      "路径": "/assets/characters.png",
+      "带标识": true
+    },
+    {
+      "方法": "HEAD",
+      "路径": "/city-life-framework.html",
+      "带标识": true
+    },
+    {
+      "方法": "HEAD",
+      "路径": "/assets/apartment.png",
+      "带标识": true
+    },
+    {
+      "方法": "HEAD",
+      "路径": "/assets/characters.png",
+      "带标识": true
+    },
+    {
+      "方法": "POST",
+      "路径": "/relay",
+      "带标识": false
+    },
+    {
+      "方法": "POST",
+      "路径": "/relay",
+      "带标识": false
+    },
+    {
+      "方法": "HEAD",
+      "路径": "/city-life-framework.html",
+      "带标识": true
+    },
+    {
+      "方法": "HEAD",
+      "路径": "/assets/apartment.png",
+      "带标识": true
+    },
+    {
+      "方法": "HEAD",
+      "路径": "/assets/characters.png",
+      "带标识": true
+    },
+    {
+      "方法": "POST",
+      "路径": "/relay",
+      "带标识": false
+    },
+    {
+      "方法": "HEAD",
+      "路径": "/city-life-framework.html",
+      "带标识": false
+    },
+    {
+      "方法": "HEAD",
+      "路径": "/assets/apartment.png",
+      "带标识": false
+    },
+    {
+      "方法": "HEAD",
+      "路径": "/assets/characters.png",
+      "带标识": false
+    },
+    {
+      "方法": "POST",
+      "路径": "/relay",
+      "带标识": false
+    },
+    {
+      "方法": "POST",
+      "路径": "/relay",
+      "带标识": false
+    },
+    {
+      "方法": "HEAD",
+      "路径": "/city-life-framework.html",
+      "带标识": false
+    },
+    {
+      "方法": "HEAD",
+      "路径": "/assets/apartment.png",
+      "带标识": false
+    },
+    {
+      "方法": "HEAD",
+      "路径": "/assets/characters.png",
+      "带标识": false
+    }
+  ]
+}

@@ -2828,5 +2828,49 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   }
 }
 
+// ═══ 第 45 单·「有新版」提示（把「你手机上还是旧版」变成一句能点的话）════════════
+/* 缘由（待办「下一单候选」第 7 条）：决策者不止一次打开的是**缓存里的旧版**——
+   旧版与新版界面上长得一模一样，只有设置页那行构建版本号不同，没人会去看。
+   待办点名要求「治本方案须**代码与素材一并覆盖**」（代码与 assets/*.png 各有一套缓存）。
+   治法：开页 ＋ 每 5 分钟 ＋ **每次页面重新可见**时，对**三件**各发一次 `HEAD`，
+   比 `Last-Modified`（取不到退回 `ETag`）；任一件变了才挂一条可关闭的提示，
+   点击走**带尾巴的网址**（HTTP 缓存只认完整 URL）。**取不到标识就静默**——宁可不出提示，不许误报。
+   本闸是**源码级**的（纯 DOM 行为，node 假 ctx 跑不到）；行为级证据由
+   `tools/fresh-gate/probe.mjs` 承担（本地起一个会翻 `Last-Modified` 的站，实测提示出不出来）。 */
+{
+  const fs=require('fs'), path=require('path');
+  const src=fs.readFileSync(path.resolve(__dirname,'city-life-framework.html'),'utf8');
+  const 段 = src.match(/\/\*FRESHGATE-START\*\/[\s\S]*?\/\*FRESHGATE-END\*\//);
+  ok(!!段,'闸十一·段存在：FRESHGATE 段可抽取');
+  const X=段?段[0]:'';
+  const bare=X.replace(/\/\*[\s\S]*?\*\//g,'').replace(/(^|[^:'"])\/\/.*$/gm,'$1');
+  const 判据 = S => {
+    const Y=S.replace(/\/\*[\s\S]*?\*\//g,'').replace(/(^|[^:'"])`/g,'$1');
+    return /const FRESH_PATHS=\['',\s*'assets\/apartment\.png',\s*'assets\/characters\.png'\]/.test(S)
+        && /method:'HEAD'/.test(S)
+        && /last-modified/.test(S) && /etag/.test(S)
+        && /if\(now\.some\(x=>x===null\)\)\{ return; \}/.test(S)
+        && /visibilitychange/.test(S)
+        && /setInterval\(freshCheck/.test(S)
+        && /addEventListener\('load',\(\)=>\{ freshCheck\(\); \}\)/.test(S)
+        && /u\.searchParams\.set\('fresh'/.test(S)
+        && /document\.getElementById\('app'\)\.appendChild/.test(S)
+        && S.includes('/^https?:$/.test(location.protocol)');   // 退化：file:// 下静默
+  };
+  ok(判据(X),'闸十一·源码侧：**三件一并盯**（本页 ＋ 两张素材）＋ 三个时机（load／5 分钟／重新可见）'
+     +'＋ 比 `Last-Modified`（退回 `ETag`）＋ **取不到标识就静默**＋ 点击走带尾巴的网址');
+  ok(!/Sim\.|state\.world|\.rng\(/.test(bare),'闸十一·零 SIM 触碰：本段不读世界、不掷骰子（纯 DOM 提示）');
+  {
+    // 反向自查一：只盯本页、把两张素材漏掉 ⇒ 待办点名的「代码与素材一并覆盖」不成立，当场判红
+    const sick1=X.replace("const FRESH_PATHS=['', 'assets/apartment.png', 'assets/characters.png'];",
+                           "const FRESH_PATHS=[''];");
+    ok(sick1!==X && !判据(sick1),'闸十一·反向自查一：只盯本页、漏掉两张素材 ⇒ 当场判红（缓存两套，缺一件就漏一半）');
+    // 反向自查二：把「取不到标识就静默」删掉 ⇒ 会拿 null 去比、可能误报，当场判红
+    const sick2=X.replace('if(now.some(x=>x===null)){ return; }','');
+    ok(sick2!==X && !判据(sick2),'闸十一·反向自查二：删掉「取不到标识就静默」⇒ 当场判红（宁可不出提示，不许误报）');
+    ok(判据(X),'闸十一·不误伤：生产原文照常放行');
+  }
+}
+
 console.log(fails? ('\n'+fails+' FAILURES') : '\nALL PASS');
 process.exit(fails?1:0);

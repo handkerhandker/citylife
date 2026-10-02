@@ -281,6 +281,14 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
 ::-webkit-scrollbar{ width:8px; height:8px; }
 ::-webkit-scrollbar-thumb{ background:var(--bg3); border-radius:8px; }
 @media (prefers-reduced-motion:reduce){ *{ animation:none !important; transition:none !important; } }
+  /* 第 45 单：「有新版」提示——只在**真的检测到新版**时才出现（判据见 FRESHGATE 段；
+     注意：这条注释里**不许写出那对标记的字面量**，否则抓段的脚本会从这里就开始抓） */
+  #fresh-hint{ position:fixed; left:50%; transform:translateX(-50%);
+    top:calc(env(safe-area-inset-top,0px) + 8px); z-index:99;
+    border:1px solid #d9b96c; background:rgba(14,17,26,.94); color:#f0d9a8;
+    font:600 12px/1 system-ui,sans-serif; padding:8px 14px; border-radius:999px;
+    cursor:pointer; box-shadow:0 4px 14px rgba(0,0,0,.35); }
+  #fresh-hint:hover{ background:rgba(32,28,18,.96); }
 </style>
 </head>
 <body>
@@ -420,7 +428,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v46</span>
+<span class="num dim" id="set-build">v47</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -2735,6 +2743,58 @@ if(saveMode==='normal'){
   document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='hidden') saveNow(); });
 }
 refreshSaveLine();
+/*FRESHGATE-START*/
+/* ---------- 「有新版」提示：把「你手机上还是旧版」这件事变成一句能点的话 ----------
+   缘由（第 45 单，待办「下一单候选」第 7 条）：决策者不止一次打开的是**缓存里的旧版**——
+   旧版与新版在界面上长得一模一样，只有设置页那行构建版本号不同，没人会去看。
+   待办原文要求「治本方案须**代码与素材一并覆盖**」（代码与 assets/*.png 各有一套缓存，
+   网址尾巴只管代码），故本段**同时盯三件**：页面本身 ＋ 两张素材图。
+
+   治法（零新增文件、零新增字段、零 SIM）：
+     · 开页时对三件各发一次 `HEAD`，记下 `Last-Modified`（取不到则退回 `ETag`）；
+     · 之后**每 5 分钟**再查一次，**以及每次页面重新可见时**（切回标签页——那正是"回来看看"的时刻）；
+     · 任一件的标识变了 ⇒ 在顶部挂一条**可关闭**的提示：「有新版 · 点这里刷新」；
+     · 点它走**带尾巴的网址**（`?fresh=<时间戳>`）——HTTP 缓存只认完整 URL，加了尾巴才拿得到新版；
+       本页只认 `seed` 参数（那是 ephemeral 试玩档），多一个 `fresh` 不影响存档。
+
+   射程与退化：**只在 http(s) 下工作**（`file://` 直接开本地文件时 HEAD 必然失败 ⇒ 静默不提示）；
+   服务端不给 `Last-Modified`／`ETag` 时同样静默——**宁可不出提示，也不许误报**。 */
+const FRESH_CHECK_MS=300000;   // 5 分钟一查（可调）
+const FRESH_PATHS=['', 'assets/apartment.png', 'assets/characters.png'];   // '' ＝本页
+let freshMarks=null, freshShown=false;
+async function freshMarkOf(u){
+  const r=await fetch(u,{method:'HEAD',cache:'no-store'});
+  if(!r.ok) return null;
+  return r.headers.get('last-modified') || r.headers.get('etag') || null;
+}
+async function freshCheck(){
+  if(!/^https?:$/.test(location.protocol)) return;      // file:// 下静默
+  try{
+    const now=[];
+    for(const p of FRESH_PATHS) now.push(await freshMarkOf(new URL(p, location.href).href));
+    if(now.some(x=>x===null)){ return; }                 // 服务端不给标识 ⇒ 不猜、不提示
+    if(freshMarks===null){ freshMarks=now; return; }     // 第一次只记账
+    if(now.some((x,i)=>x!==freshMarks[i]) && !freshShown) showFresh();
+  }catch(_){ /* 断网/被拦一律静默——这是提示，不是门禁 */ }
+}
+function showFresh(){
+  if(freshShown) return;
+  freshShown=true;
+  const el=document.createElement('button');
+  el.id='fresh-hint'; el.type='button'; el.setAttribute('data-fx','');
+  el.textContent='有新版 · 点这里刷新';
+  el.addEventListener('click',()=>{
+    const u=new URL(location.href); u.searchParams.set('fresh', String(Date.now()));
+    location.href=u.href;
+  });
+  document.getElementById('app').appendChild(el);
+}
+if(saveMode==='normal'){                                  // 试玩档（ephemeral）不挂这个——它本来就不落盘
+  addEventListener('load',()=>{ freshCheck(); });
+  setInterval(freshCheck, FRESH_CHECK_MS);
+  document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible') freshCheck(); });
+}
+/*FRESHGATE-END*/
 
 /* ---------- AI 层：三级兜底链（Claude 直连 → 同源中转站 /relay → 模板），给三处最该有灵魂的地方换脑 ---------- */
 function hungerWord(h){ return h>65?'很饿':h>40?'有点饿':'不饿'; }
