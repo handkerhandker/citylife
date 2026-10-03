@@ -109,6 +109,14 @@ button{ font:inherit; color:inherit; }
   text-align:center; font-weight:700;
 }
 .tab .tab-dot[hidden]{ display:none; }
+/* 第 129 单·分人未读：短信页每个人都挂一个自己的小角标（照第 80 单 tab-dot 口径；只占角标、不改按钮尺寸） */
+#ph-agents button{ position:relative; }
+#ph-agents .ph-dot{
+  position:absolute; top:-4px; right:-4px; min-width:14px; height:14px; padding:0 3px;
+  border-radius:999px; background:var(--gold); color:#1b2130; font-size:.6rem; line-height:14px;
+  text-align:center; font-weight:700;
+}
+#ph-agents .ph-dot[hidden]{ display:none; }
 
 /* ---- 内容区：每个屏幕自己滚，body 永不滚 ---- */
 #content{ grid-area:content; min-height:0; min-width:0; position:relative; overflow:hidden; background:var(--bg0); }
@@ -446,7 +454,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v112</span>
+<span class="num dim" id="set-build">v113</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -3891,12 +3899,22 @@ if(saveMode==='normal'){
     else{ try{ localStorage.setItem(BAK_KEY,raw); localStorage.removeItem(SAVE_KEY); }catch(_){} }  // 坏档/畸形档移入备份再开新城，绝不静默覆盖
   }
 }
+/* 第 129 单·分人未读的水位：优先读存档信封里的 phSeenBy；旧档没这项 ⇒ 先按全局水位（phSeen）对齐，
+   绝不把历史往来全炸成一排红点。取值一律归一到非负有限数。 */
+const bootPhSeenBy=(()=>{
+  const m=(bootMeta && bootMeta.phSeenBy && typeof bootMeta.phSeenBy==='object') ? bootMeta.phSeenBy : {};
+  const g=(bootMeta && isFinite(bootMeta.phSeen)) ? (bootMeta.phSeen|0) : 0;
+  const o={};
+  for(const id of ['a1','a2','a3','a4']){ const v=m[id]; o[id]=(isFinite(v)&&v>=0)?(v|0):g; }
+  return o;
+})();
 const state={
   world:bootWorld||Sim.makeWorld(bootSeed),
   selected:(bootMeta && bootWorld && bootWorld.agents.some(a=>a&&a.id===bootMeta.selected))?bootMeta.selected:'a1',
   /* 第 80 单·未读小圆点：**读到哪一条**的水位（存的是日志序号）。它属"界面读到哪了"，
      不进世界状态（`state.world` 一个字节不动），随存档信封走（见 `saveMeta`／引导读取那两处）。 */
   phSeen:(bootMeta && isFinite(bootMeta.phSeen))?(bootMeta.phSeen|0):0,
+  phSeenBy:bootPhSeenBy,   // 第 129 单·分人水位（短信页每个人的小角标各读各的）
   screen:'live',
   soundOn:true,            // 第 124 单·提示音（默认开；与"减少动效"同口径：只活在本次会话里）
   forcedLayout:'auto',
@@ -4487,7 +4505,8 @@ function openAgentDialog(id){
 function buildPhone(){
   $('#ph-agents').innerHTML=state.world.agents.map(ag=>
     '<button class="btn small" data-fx data-to="'+ag.id+'">'
-    +'<span class="dotc" style="background:'+ag.color+'"></span>'+esc(ag.name)+'</button>').join('');
+    +'<span class="dotc" style="background:'+ag.color+'"></span>'+esc(ag.name)
+    +'<span class="ph-dot" data-ph-dot hidden></span></button>').join('');   // 第 129 单：分人未读角标
   $('#ph-msgs').innerHTML=Sim.MSGS.map(m=>
     '<button class="btn" data-fx data-msg="'+m.id+'">'+esc(m.label)+'</button>').join('');
   $('#ph-history').innerHTML=phoneHistoryHTML(state.world, state.selected);
@@ -4525,6 +4544,15 @@ function renderPhone(){
   const w=state.world;
   $('#ph-credits').textContent=w.credits;
   $$('#ph-agents [data-to]').forEach(b=>b.classList.toggle('gold', b.dataset.to===state.selected));
+  /* 第 129 单·分人未读：每个人的小角标各读各的水位（进这一页只清"总角标"，分人角标要点到那个人才算读过） */
+  $$('#ph-agents [data-to]').forEach(b=>{
+    const id=b.dataset.to;
+    const 水=isFinite(state.phSeenBy[id])?state.phSeenBy[id]:0;
+    const n=未读条数(w, 水, id);
+    const d=b.querySelector('.ph-dot');
+    if(d){ d.hidden=n<=0; d.textContent=n>9?'9+':String(n); }
+    b.dataset.unread=String(n);
+  });
   $$('#ph-msgs [data-msg]').forEach(b=>{ b.disabled = w.credits<=0; });
   $('#ph-input').disabled = w.credits<=0;
   $('#ph-send').disabled = w.credits<=0;
@@ -4535,13 +4563,14 @@ function renderPhone(){
    第 75 单把往来记录接上了，第 76／77 单让居民也会留话——可**新回音不会提示你**（那条已登记为欠账）。
    本单补一个角标：**水位之后**的往来条数 >0 就在"短信"页签上点一个小圆点；进那一页即清零。
    水位 `state.phSeen` 属"界面读到哪了"，**不进世界状态**，随存档信封走。 */
-function 未读条数(w, 水位){
+function 未读条数(w, 水位, id){    // 第 129 单：带 id ⇒ 只数那一个人的（分人角标与总角标共用这一处口径）
   let n=0;
   const 起=isFinite(水位)?水位:0;
   for(let i=w.log.length-1;i>=0;i--){
     const e=w.log[i];
     /* 只数**来的**：`read`（TA 读了）／`noreply`（已读不回）／`note`（TA 留话）；
        `out` 是**你发出去的**——刚发完就给自己点个红点，那是噪声。 */
+    if(id && e && e.agent!==id) continue;
     if(e && e.type==='player' && isFinite(e.lid) && e.lid>起
        && (e.sms==='read'||e.sms==='noreply'||e.sms==='note')) n++;
   }
@@ -4604,7 +4633,10 @@ $('#ph-send').addEventListener('click',sendCustom);
 $('#ph-input').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); sendCustom(); } });
 $('#ph-agents').addEventListener('click',e=>{
   const b=e.target.closest('button[data-to]'); if(!b) return;
-  state.selected=b.dataset.to; renderPhone(); renderTopbar();
+  state.selected=b.dataset.to;
+  state.phSeenBy[state.selected]=state.world.lidSeq;   // 第 129 单：点到谁＝这一路读过了（分人角标清零）
+  renderPhone(); saveNow();
+  renderTopbar();
 });
 $('#ph-msgs').addEventListener('click',e=>{
   const b=e.target.closest('button[data-msg]'); if(!b) return;
@@ -4688,7 +4720,7 @@ function refreshSaveLine(){
 }
 let saveHold=false;   // 导入/重开已定稿到 reload 之间，封锁自动写档，防止 pagehide 把旧世界覆盖回去
 function saveMeta(){ return {selected:state.selected, lastReflectDay:state.lastReflectDay,
-  phSeen:(state.phSeen|0), at:Date.now()}; }   // 第 80 单：未读水位随存档信封走
+  phSeen:(state.phSeen|0), phSeenBy:Object.assign({},state.phSeenBy), at:Date.now()}; }   // 第 80／129 单：总水位与分人水位随存档信封走
 function saveNow(){
   if(saveHold || saveMode!=='normal') return false;
   const meta=saveMeta();

@@ -4263,9 +4263,15 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   ok((src.match(/function phoneHistory\(/g)||[]).length===1
      &&(src.match(/function phoneHistoryHTML\(/g)||[]).length===1,
      '第 75 单·结构：`phoneHistory`／`phoneHistoryHTML` 各一处定义');
-  ok(/buildPhone\(\)[\s\S]{0,400}phoneHistoryHTML\(state\.world, state\.selected\)/.test(src)
-     &&/renderPhone\(\)\{[\s\S]{0,600}phoneHistoryHTML\(w, state\.selected\)/.test(src),
-     '第 75 单·结构：建页面与每次刷新**两处**都调同一处取词（不再有写死的占位文案）');
+  /* 第 129 单改型：原来用"buildPhone() 后 400 字以内"这种长度窗口——本单往 buildPhone 里加了分人角标，
+     窗口被挤爆（典型"闸咬版式"）。改成**按函数体抽取**再查调用：口径不松，也不再随排版漂。 */
+  {
+    const BP=(src.match(/function buildPhone\(\)\{[\s\S]*?\n\}/)||[''])[0];
+    const RP=(src.match(/function renderPhone\(\)\{[\s\S]*?\n\}/)||[''])[0];
+    ok(BP.indexOf('phoneHistoryHTML(state.world, state.selected)')>=0
+       &&RP.indexOf('phoneHistoryHTML(w, state.selected)')>=0,
+       '第 75 单·结构：建页面与每次刷新**两处**都调同一处取词（按函数体抽取；不再有写死的占位文案）');
+  }
   // 抽生产原文里的两个函数，在一个小台子上跑
   const A=(src.match(/function phoneHistory\(w, id, 上限\)\{[\s\S]*?\n\}/)||[''])[0];
   const B=(src.match(/function phoneHistoryHTML\(w, id\)\{[\s\S]*?\n\}/)||[''])[0];
@@ -4508,9 +4514,9 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
 {
   const fs=require('fs'), path=require('path');
   const src=fs.readFileSync(path.resolve(__dirname,'city-life-framework.html'),'utf8');
-  const FN=(src.match(/function 未读条数\(w, 水位\)\{[\s\S]*?\n\}/)||[''])[0];
+  const FN=(src.match(/function 未读条数\(w, 水位, id\)\{[\s\S]*?\n\}/)||[''])[0];   // 第 129 单：多了可选的"只数某个人"
   ok(FN.length>0&&(src.match(/function 未读条数\(/g)||[]).length===1,
-     '第 80 单·结构：`未读条数` 一处定义（'+FN.length+' 字符）');
+     '第 80 单·结构：`未读条数` 一处定义（'+FN.length+' 字符；第 129 单起多一个可选 id＝分人角标共用同一处口径）');
   ok(/id="tab-dot"/.test(src)&&/\.tab \.tab-dot\{/.test(src.replace(/\s+/g,' '))===false
      ? /\.tab-dot/.test(src) : true,
      '第 80 单·结构：页签上有未读角标（元素 ＋ 样式）');
@@ -6956,6 +6962,34 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   }
 }
 
+// ═══ 第 129 单·短信页「分人未读」═══════════════════════════════════════════════
+/* 被验的是生产源码（行为面由真浏览器探针 `tools/sms-audit/unread.mjs` 验：开局 0／发一条→他的角标非 0
+   其余 0／点别人不清／点他清零且 1.2 秒后仍 0／刷新仍 0；零 pageerror）：
+     ① 结构：`state.phSeenBy` 随存档信封走（saveMeta 写、引导读、旧档用全局水位兜底）；
+        `未读条数(w,水位,id)` 可选按人过滤（与总角标同一处口径）；
+        `buildPhone` 给每个人挂 `.ph-dot`，`renderPhone` 逐人刷新 `data-unread`；
+        点击某一路 ⇒ 那一路水位推进到 `lidSeq` ＋ 存盘（分人角标清零）；
+     ② 反向自查：把"点谁清谁"那行从源码里抠掉 ⇒ ① 的结构判据当场判红（行为面另有真浏览器探针）。 */
+{
+  const fs129=require('fs'), path129=require('path');
+  const src129=fs129.readFileSync(path129.resolve(__dirname,'city-life-framework.html'),'utf8');
+  ok(/phSeenBy:bootPhSeenBy/.test(src129)&&/phSeenBy:Object\.assign\(\{\},state\.phSeenBy\)/.test(src129)
+     &&/bootMeta\.phSeenBy/.test(src129),
+     '第 129 单·结构：分人水位随存档信封走（saveMeta 写／引导读／旧档用全局水位兜底）');
+  ok(/未读条数\(w, 水, id\)/.test(src129)&&/if\(id && e && e\.agent!==id\) continue;/.test(src129),
+     '第 129 单·结构：`未读条数` 多一个可选 id（分人角标与总角标共用同一处口径）');
+  ok(/class="ph-dot"/.test(src129)&&/#ph-agents \.ph-dot\{/.test(src129)
+     &&/b\.dataset\.unread=String\(n\)/.test(src129),
+     '第 129 单·结构：每个人挂 `.ph-dot`、renderPhone 逐人刷 `data-unread`');
+  ok(/state\.phSeenBy\[state\.selected\]=state\.world\.lidSeq/.test(src129)&&/renderPhone\(\); saveNow\(\);/.test(src129),
+     '第 129 单·结构：点谁＝这一路读过了（水位推进＋存盘）');
+  {
+    const 病源129=src129.replace('state.phSeenBy[state.selected]=state.world.lidSeq;','/* 第 129 单：清零那行被抠掉 */');
+    ok(病源129!==src129 && !/state\.phSeenBy\[state\.selected\]=state\.world\.lidSeq/.test(病源129),
+       '第 129 单·反向自查·拦得住：把"点谁清谁"那行从源码里抠掉 ⇒ 上面那条结构判据当场判红（行为面另有真浏览器探针）');
+  }
+}
+
 // ═══ 第 35 单·入夜点灯（屋里亮起来）═════════════════════════════════════════
 /* 被验的是生产源码原文：SKYTINT ＋ NIGHTLAMP 两段一起抠出来求值（灯要调 skyTint，两段必须同源），
    在一个只记账的假 ctx 上跑。四条闸：
@@ -7569,7 +7603,7 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   ok(恒绿===0,'第 66 单·闸二：`ok` 第一参数写死 true 的**读数型假断言**为 0 条（实测 '+恒绿+'；读数一律走 `读数()`）');
   // 闸三 · 反向自查登记（防整条被删）
   const 登记=['第 48 单','第 49 单','第 51 单','第 52 单','第 53 单','第 54 单','第 56 单','第 57 单',
-              '第 58 单','第 59 单','第 62 单','第 63 单','第 64 单','第 65 单','第 67 单','第 70 单','第 71 单','第 72 单','第 73 单','第 74 单','第 75 单','第 76 单','第 77 单','第 79 单','第 80 单','第 81 单','第 84 单','第 85 单','第 87 单','第 88 单','第 90 单','第 91 单','第 92 单','第 93 单','第 94 单','第 95 单','第 96 单','第 97 单','第 98 单','第 99 单','第 100 单','第 102 单','第 103 单','第 106 单','第 107 单','第 109 单','第 110 单','第 111 单','第 112 单','第 113 单','第 115 单','第 116 单','第 117 单','第 118 单','第 119 单','第 120 单','第 121 单','第 123 单','第 124 单','第 125 单','第 126 单',
+              '第 58 单','第 59 单','第 62 单','第 63 单','第 64 单','第 65 单','第 67 单','第 70 单','第 71 单','第 72 单','第 73 单','第 74 单','第 75 单','第 76 单','第 77 单','第 79 单','第 80 单','第 81 单','第 84 单','第 85 单','第 87 单','第 88 单','第 90 单','第 91 单','第 92 单','第 93 单','第 94 单','第 95 单','第 96 单','第 97 单','第 98 单','第 99 单','第 100 单','第 102 单','第 103 单','第 106 单','第 107 单','第 109 单','第 110 单','第 111 单','第 112 单','第 113 单','第 115 单','第 116 单','第 117 单','第 118 单','第 119 单','第 120 单','第 121 单','第 123 单','第 124 单','第 125 单','第 126 单','第 129 单',
               '闸四','闸五','闸十','闸十一','闸十二'];
   const 实有=[...new Set((自源.match(/(第 \d+ 单|闸[一二三四五六七八九十]+)·反向自查/g)||[])
                             .map(x=>x.replace('·反向自查','')))];
