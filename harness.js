@@ -372,7 +372,8 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   const src=fs.readFileSync(path.resolve(__dirname,'city-life-framework.html'),'utf8');
   const grab=(re,name)=>{ const m=src.match(re); if(!m){ ok(false,'源码抽取失败:'+name); return '""'; } return m[0]; };
   const vcState={world:null};
-  const mk=new Function('Sim','state','return (function(){'
+  // 第 117 单：`agentCard` 的 sms 挂点要读 `relYouWord` ⇒ 这门抠源码求值的闸把它一起喂进来（同源：SIM 一处定义）
+  const mk=new Function('Sim','state','relYouWord','return (function(){'
     +grab(/const AI_VOICE=\{[\s\S]*?\n\};/,'AI_VOICE')+'\n'
     +grab(/const SIT_MOOD=\{[\s\S]*?\};/,'SIT_MOOD')+'\n'
     +grab(/function hungerWord\(h\)\{[^\n]*\}/,'hungerWord')+'\n'
@@ -380,7 +381,7 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
     +grab(/const LEAD_INTERJ=\[[\s\S]*?\nfunction redoLead\(who, kind\)\{[\s\S]*?\n\}/,'方案乙闸')+'\n'
     +grab(/function agentCard\(ag, hook\)\{[\s\S]*?\n\}/,'agentCard')
     +'\nreturn {agentCard, styleAssign, SIT_MOOD, OPEN_KINDS, DIARY_OPEN_KINDS, leadsWithInterj, chatLeadBad, reOpenKind, redoLead, LEAD_INTERJ, LEAD_INTERJ_AMB};})()');
-  const V=mk(Sim, vcState);
+  const V=mk(Sim, vcState, Sim.relYouWord);
   const w=Sim.makeWorld(31337);
   for(let i=0;i<200;i++) Sim.step(w,10);
   vcState.world=w;                                  // agentCard 经 state.world 取当天处境，取卡前对齐
@@ -4255,8 +4256,9 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
      从真 `Sim` 里传进来（同源：显示层读的就是同一份账、同一张档位表）。 */
   const C=(src.match(/function relYouText\(ag\)\{[\s\S]*?\n\}/)||[''])[0];
   ok(A.length>0&&B.length>0&&C.length>0,'第 75 单·构造成立：三个函数都抽得到（'+A.length+' / '+B.length+' / '+C.length+' 字符）');
-  const 台=(a,b)=>new Function('PURE','esc','relYouGet','relTierName',
-    'return (function(){'+C+'\n'+a+'\n'+b+'\nreturn {phoneHistory,phoneHistoryHTML};})()')(PURE, s=>String(s), Sim.relYouGet, Sim.relTierName);
+  // 第 117 单：`relYouText` 改成委派 `relYouWord`、`phoneHistoryHTML` 读 `等你天数` ⇒ 两个依赖一起喂进来（同源：SIM 一处定义）
+  const 台=(a,b)=>new Function('PURE','esc','relYouWord','等你天数',
+    'return (function(){'+C+'\n'+a+'\n'+b+'\nreturn {phoneHistory,phoneHistoryHTML};})()')(PURE, s=>String(s), Sim.relYouWord, Sim.等你天数);
   const 健=台(A,B);
   // 行为：给 a1 发一条，跑 12 拍
   const w=Sim.makeWorld(20260803);
@@ -5356,11 +5358,11 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   const fs=require('fs'), path=require('path');
   const src=fs.readFileSync(path.resolve(__dirname,'city-life-framework.html'),'utf8');
   ok((src.match(/ag\.waiting=\{ t:w\.t, line:话 \};/g)||[]).length===2
-     &&/for\(const x of w\.agents\) if\(x\.waiting && isFinite\(x\.waiting\.t\) && w\.t-x\.waiting\.t>2\*1440\) delete x\.waiting;/.test(src)
+     &&/for\(const x of w\.agents\) if\(x\.waiting && isFinite\(x\.waiting\.t\) && w\.t-x\.waiting\.t>等你天数\(x\)\*1440\) delete x\.waiting;/.test(src)
      &&/const 等他=!!\(ag\.waiting&&isFinite\(ag\.waiting\.t\)\);/.test(src)
      &&/\(等他\?'（等了两天，总算等到了。）':''\)/.test(src),
      '第 98 单·结构：留话两处都记等待、`noteStep` 每天扫过期、读信那一支撤等待并补一句专属 thought');
-  ok(/ph-wait">TA 留了话，在等你回一句。/.test(src)&&/\(w\.t-ag\.waiting\.t\)<=2\*1440/.test(src),
+  ok(/ph-wait">TA 留了话，在等你回一句。/.test(src)&&/\(w\.t-ag\.waiting\.t\)<=等你天数\(ag\)\*1440/.test(src),
      '第 98 单·结构：往来记录里那行"在等你回话"**只在还在等的时候**出现（过期即消失）');
   {
     const 跑=(留话)=>{
@@ -5399,8 +5401,10 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
     const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
     const PURE={ fmtStamp:t=>'D'+Math.floor(t/1440)+' 00:00' };
     // 第 115 单：这一行顶上多了"你在他心里"那一句 ⇒ 把 `relYouText` 的桩一起喂进来（只补它用到的外部名字）
+    // 第 117 单：这一行还要读 `等你天数`（窗口按档位）⇒ 桩也补上，取真值（同一张表）
     const relYouText=()=>'还没说上过话';
-    const fn=(FN&&取史&&new Function('esc','PURE','phoneHistory','relYouText','return '+FN)(esc, PURE, 取史, relYouText))||null;
+    const fn=(FN&&取史&&new Function('esc','PURE','phoneHistory','relYouText','等你天数','return '+FN)
+      (esc, PURE, 取史, relYouText, Sim.等你天数))||null;
     const w=Sim.makeWorld(20260803), a=w.agents[0];
     w.t=20*1440+21*60;
     const 现在=fn?fn(w,a.id):'', 等=fn?(a.waiting={t:w.t-360}, fn(w,a.id)):'',   // 6 小时前留的话 ⇒ 还在等
@@ -6410,6 +6414,87 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   }
 }
 
+// ═══ 第 117 单·玩家篇②期（回信语气读档位 ＋「等你回话」窗口按档位）═══════════════
+/* 被验的是生产源码与真值：
+     ① 结构：`REL_WAIT_DAYS` 一处定义（键＝档位下限）；`等你天数(` 全站 3 次（定义 1 ＋ 过期扫描 1 ＋ 短信页 1）；
+        `relYouWord(` 全站 3 次（定义 1 ＋ 角色卡短信挂点 1 ＋ `relYouText` 委派 1）；短信提示词仍走 `agentCard(ag,'sms')`；
+     ② 窗口表：生疏／点头之交 2 天、熟 3、老友 4、家人一样 5；**默认（没发过信）人人 2 天**；
+     ③ 行为（真跑 21:00 的那次扫描）：3 天前的等待 ⇒ 生疏**撤**、熟**仍在**；5 天前的等待 ⇒ 老友**撤**、家人一样**仍在**；
+     ④ 角色卡（抠源码喂桩）：`sms` 挂点带「和这个号码的来往:‹档位›」且**跟着账变**（30→熟（30）／抹掉→还没说上过话／坏值不抛错）；
+        `chat`／`diary` 挂点**不带**这一行；
+     ⑤ 反向自查：把 `REL_WAIT_DAYS` 全抹成 2 ⇒「越近等越久」当场判红（跑完复原）。 */
+{
+  const fs=require('fs'), path=require('path');
+  const src=fs.readFileSync(path.resolve(__dirname,'city-life-framework.html'),'utf8');
+  ok(/const REL_WAIT_DAYS=\{ 0:2, 10:2, 20:3, 35:4, 50:5 \};/.test(src)
+     &&(src.match(/等你天数\(/g)||[]).length===3
+     &&(src.match(/relYouWord\(/g)||[]).length===3
+     &&/agentCard\(ag,'sms'\)/.test(src)
+     &&/和这个号码的来往:'\+relYouWord\(ag\)/.test(src),
+     '第 117 单·结构：窗口表一处（键＝档位下限）；`等你天数(` 3 次（定义＋扫描＋短信页）；`relYouWord(` 3 次'
+     +'（定义＋角色卡＋`relYouText` 委派）；短信提示词仍走 `agentCard(ag,\'sms\')`');
+  // ── 窗口表 ＋ 默认路径 ─────────────────────────────────────────────────
+  {
+    const 假=v=>({relYou:v>0?{v,day:1}:undefined});
+    const 表=[0,10,20,35,50].map(v=>Sim.等你天数(假(v)));
+    ok(JSON.stringify(表)===JSON.stringify([2,2,3,4,5]),
+       '第 117 单·窗口表：生疏/点头之交 2 天、熟 3、老友 4、家人一样 5（实测 '+表.join('/')+' 天）');
+    const w=Sim.makeWorld(20260803);
+    ok(w.agents.every(a=>Sim.等你天数(a)===2),
+       '第 117 单·默认路径：没发过信的世界里人人都是「生疏」⇒ 窗口仍是 2 天（这一期不动默认轨迹）');
+  }
+  // ── 行为：21:00 的那次扫描 ─────────────────────────────────────────────
+  {
+    const 试=(relYouV,等分)=>{
+      const w=Sim.makeWorld(20260803), a=w.agents[0];
+      a.relYou={v:relYouV,day:PURE.dayOf(w.t)};
+      w.t=5*1440+21*60-10; a.waiting={ t:w.t-等分 };      // 再走 10 分钟到 21:00 那次扫描
+      Sim.step(w,10);                     // 走到 21:00（noteStep 那一支的扫描）
+      return !!a.waiting;
+    };
+    ok(!试(0,2*1440+20)&&试(30,3*1440-10)&&!试(30,3*1440+20)&&!试(40,4*1440+20)&&试(50,5*1440-10),
+       '第 117 单·行为（21:00 那次扫描）：生疏 2 天+20 分 ⇒ 撤；熟 3 天−10 分 ⇒ 仍在、3 天+20 分 ⇒ 撤；'
+       +'老友 4 天+20 分 ⇒ 撤；家人一样 5 天−10 分 ⇒ 仍在（实测 '
+       +[!试(0,2*1440+20),试(30,3*1440-10),!试(30,3*1440+20),!试(40,4*1440+20),试(50,5*1440-10)].join('/')+'）');
+  }
+  // ── 角色卡（抠源码喂桩）────────────────────────────────────────────────
+  {
+    const CARD=(src.match(/function agentCard\(ag, hook\)\{[\s\S]*?\n\}/)||[''])[0];
+    const w=Sim.makeWorld(20260803), ag=w.agents[0];
+    const 卡=(hook)=>new Function('state','Sim','hungerWord','AI_VOICE','styleAssign','SIT_MOOD','relYouWord',
+        'return (function(){'+CARD+'\nreturn agentCard;})()')
+      ({world:w}, Sim, ()=>'半饱', {}, ()=>'', {}, Sim.relYouWord)(ag,hook);
+    ag.relYou={v:30,day:1};
+    const 熟=卡('sms'), 日=卡('diary'), 聊=卡('chat');
+    ok(熟.indexOf('和这个号码的来往:熟（30）')>=0&&日.indexOf('和这个号码的来往')<0&&聊.indexOf('和这个号码的来往')<0,
+       '第 117 单·角色卡：`sms` 挂点带上「和这个号码的来往:熟（30）」；`diary`／`chat` 挂点不带它（那是"他和别人"的事）');
+    ag.relYou={v:'坏值',day:1};
+    let 崩='';
+    let 坏='';
+    try{ 坏=卡('sms'); }catch(e){ 崩=String((e&&e.message)||e); }
+    ok(!崩&&坏.indexOf('和这个号码的来往:还没说上过话')>=0,
+       '第 117 单·角色卡：坏值（`relYou={v:\'坏值\'}`）不抛错、照实说"还没说上过话"'+(崩?('（实测抛了：'+崩+'）'):''));
+    delete ag.relYou;
+    ok(卡('sms').indexOf('和这个号码的来往:还没说上过话')>=0,
+       '第 117 单·角色卡：**跟着账变**——把账抹掉，同一张卡那一行就回到"还没说上过话"');
+  }
+  // ── 反向自查 ＋ 复原 ───────────────────────────────────────────────────
+  {
+    const 原={...Sim.REL_WAIT_DAYS};
+    let 病=null;
+    try{
+      for(const k of Object.keys(Sim.REL_WAIT_DAYS)) Sim.REL_WAIT_DAYS[k]=2;
+      const w=Sim.makeWorld(20260803), a=w.agents[0];
+      a.relYou={v:30,day:PURE.dayOf(w.t)}; w.t=5*1440+21*60-10; a.waiting={ t:w.t-(3*1440-10) };
+      Sim.step(w,10); 病=!!a.waiting;   // 窗口被抹平 ⇒ 熟的人"差 10 分钟满 3 天"也被撤
+    } finally { for(const k of Object.keys(原)) Sim.REL_WAIT_DAYS[k]=原[k]; }
+    ok(病===false,'第 117 单·反向自查·拦得住：把 `REL_WAIT_DAYS` 全抹成 2 ⇒「熟的人等 3 天」这条当场判红'
+       +'（实测"差 10 分钟满 3 天"时等待被撤＝'+病+'，表已复原）');
+    ok(Sim.REL_WAIT_DAYS[20]===3&&Sim.REL_WAIT_DAYS[50]===5&&Sim.REL_WAIT_DAYS[0]===2,
+       '第 117 单·复原：反向自查跑完，窗口表逐项回到 2／2／3／4／5');
+  }
+}
+
 // ═══ 第 35 单·入夜点灯（屋里亮起来）═════════════════════════════════════════
 /* 被验的是生产源码原文：SKYTINT ＋ NIGHTLAMP 两段一起抠出来求值（灯要调 skyTint，两段必须同源），
    在一个只记账的假 ctx 上跑。四条闸：
@@ -7023,7 +7108,7 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   ok(恒绿===0,'第 66 单·闸二：`ok` 第一参数写死 true 的**读数型假断言**为 0 条（实测 '+恒绿+'；读数一律走 `读数()`）');
   // 闸三 · 反向自查登记（防整条被删）
   const 登记=['第 48 单','第 49 单','第 51 单','第 52 单','第 53 单','第 54 单','第 56 单','第 57 单',
-              '第 58 单','第 59 单','第 62 单','第 63 单','第 64 单','第 65 单','第 67 单','第 70 单','第 71 单','第 72 单','第 73 单','第 74 单','第 75 单','第 76 单','第 77 单','第 79 单','第 80 单','第 81 单','第 84 单','第 85 单','第 87 单','第 88 单','第 90 单','第 91 单','第 92 单','第 93 单','第 94 单','第 95 单','第 96 单','第 97 单','第 98 单','第 99 单','第 100 单','第 102 单','第 103 单','第 106 单','第 107 单','第 109 单','第 110 单','第 111 单','第 112 单','第 113 单','第 115 单','第 116 单',
+              '第 58 单','第 59 单','第 62 单','第 63 单','第 64 单','第 65 单','第 67 单','第 70 单','第 71 单','第 72 单','第 73 单','第 74 单','第 75 单','第 76 单','第 77 单','第 79 单','第 80 单','第 81 单','第 84 单','第 85 单','第 87 单','第 88 单','第 90 单','第 91 单','第 92 单','第 93 单','第 94 单','第 95 单','第 96 单','第 97 单','第 98 单','第 99 单','第 100 单','第 102 单','第 103 单','第 106 单','第 107 单','第 109 单','第 110 单','第 111 单','第 112 单','第 113 单','第 115 单','第 116 单','第 117 单',
               '闸四','闸五','闸十','闸十一','闸十二'];
   const 实有=[...new Set((自源.match(/(第 \d+ 单|闸[一二三四五六七八九十]+)·反向自查/g)||[])
                             .map(x=>x.replace('·反向自查','')))];

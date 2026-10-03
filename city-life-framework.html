@@ -442,7 +442,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v103</span>
+<span class="num dim" id="set-build">v104</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -2017,7 +2017,7 @@ function noteStep(w){
   const d=PURE.dayOf(w.t), 年=d-((d-1)%FESTIVAL.yearDays);
   /* 第 98 单·等太久就不等了：**每天 21:00 扫一遍**，两天没回音 ⇒ 撤掉"在等你回话"那行
      （只动 `ag.waiting` 一个数，不写日志、不叨叨；落在这里是因为这一支本来每天都会跑）。 */
-  for(const x of w.agents) if(x.waiting && isFinite(x.waiting.t) && w.t-x.waiting.t>2*1440) delete x.waiting;
+  for(const x of w.agents) if(x.waiting && isFinite(x.waiting.t) && w.t-x.waiting.t>等你天数(x)*1440) delete x.waiting;   // 第 117 单：窗口按档位（生疏 2 天 → 家人一样 5 天）
   for(const ag of w.agents){
     if(ag.noteDay===d) continue;                       // 一天最多一句（惦记那句若已留过，这里跳过）
     let 话='';
@@ -2371,6 +2371,22 @@ function relYouStep(w){
       logAct(w, ag, 句, '（手机安安静静的。）');
     }
   }
+}
+/* ---------- 第 117 单·玩家篇②期（两件）----------
+   （一）**「等你回话」的窗口按档位**：越近的人等得越久（生疏／点头之交 2 天 → 熟 3 → 老友 4 → 家人一样 5）。
+   键＝`REL_TIERS` 的档位下限（同一张表，照第 107 单 `REL_CHAT_MUL` 先例）；**一处定义、两处调用**——
+   SIM 的过期扫描（`noteStep` 每天 21:00）与短信页那一行（`phoneHistoryHTML`）。
+   口径：**你不发声的默认世界里人人都是「生疏」⇒ 窗口仍是 2 天**（这一期不动默认轨迹，见交付件）。
+   （二）**把"你在他心里"那句话一处定义**（`relYouWord`）：角色卡的短信挂点（喂给 AI 的语气提示）
+   与短信页显示共用一套词——空账照实说"还没说上过话"、坏值不抛错。 */
+const REL_WAIT_DAYS={ 0:2, 10:2, 20:3, 35:4, 50:5 };   // 键＝`REL_TIERS` 的档位下限
+function 等你天数(ag){
+  const k=relTier(relYouGet(ag)).lo, d=REL_WAIT_DAYS[k];
+  return (isFinite(d)&&d>0)?d:2;
+}
+function relYouWord(ag){
+  const v=relYouGet(ag);
+  return v>0 ? (relTierName(v)+'（'+v+'）') : '还没说上过话';
 }
 /* ---------- 第 91 单·交心（照星露谷的 heart events）----------
    出处（**本单复核：2026-10-03 实测 HTTP 200**，整句逐字摘）：
@@ -3712,6 +3728,7 @@ const Sim={makeWorld, step, sendMessage, sendCustomMessage, decide, MSGS, ANCHOR
   BDAY_CO, 陪过,   // 第 110 单·生日有人陪（门禁按真值读：时长与独白一处定义、一年一对人一次）
   SEASON_OUT, seasonIdx, seasonOutMul,   // 第 113 单·四季行为二期（门禁按真值读：因子表一处定义＋三支调用）
   REL_YOU, relYouOf, relYouGet, relYouBump, relYouStep,   // 第 115 单·玩家篇①期（门禁按真值读：涨落一处定义）
+  REL_WAIT_DAYS, 等你天数, relYouWord,   // 第 117 单·玩家篇②期（门禁按真值读：窗口表＋那句"你在他心里"一处定义）
   HEART, heartMate,   // 第 91 单·交心（门禁按真值读：门槛与时长一处定义）
   RAIN_STROLL_THOUGHTS, RAIN_IDLE_THOUGHTS, 天气词,   // 第 97 单·雨天的独白（门禁按真值读同一份池）
   IDLE_THOUGHTS, STROLL_THOUGHTS,                     // 第 97 单：两张基础池也一并导出（门禁要按真值比对"串没串池"）
@@ -4262,9 +4279,7 @@ function relText(w, ag){
      · `relYouText` 读的是 `ag.relYou`（**你**在他那儿的分量，0–60，涨落见 SIM 段）。
    空账照实说"还没说上过话"（照第 67 单"空账照实说"先例）。 */
 function relYouText(ag){
-  const v=relYouGet(ag);
-  if(!(v>0)) return '还没说上过话';
-  return relTierName(v)+'（'+v+'）';
+  return relYouWord(ag);   // 第 117 单：那句话收进 SIM 一处定义（角色卡的短信挂点与这里共用一套词）
 }
 /* ---------- 第 79 单·云港日历（把"接下来会发生什么"摆出来）----------
    出处（2026-10-03 实测可访问）：星露谷 wiki·Festivals／Birthdays——村民的生日与节日都挂在**日历**上，
@@ -4416,7 +4431,7 @@ function phoneHistoryHTML(w, id){
   /* 第 98 单·"他留了话，在等你回一句"：等过两天就不再显示（`ag.waiting` 由 noteStep／missStep 维护）。
      这一行是**跟着那个人当前的状态**走的，不是历史条目——所以他回了话/等过期，它就没了。 */
   const ag=(w.agents||[]).find(a=>a.id===id);
-  const 等=(ag&&ag.waiting&&isFinite(ag.waiting.t)&&(w.t-ag.waiting.t)<=2*1440)
+  const 等=(ag&&ag.waiting&&isFinite(ag.waiting.t)&&(w.t-ag.waiting.t)<=等你天数(ag)*1440)   // 第 117 单：窗口按档位
     ? '<li class="faint ph-wait">TA 留了话，在等你回一句。</li>' : '';
   /* 第 115 单·玩家篇①期：顶上再挂一行"你在他心里"（与"在等你回话"并排；空账照实说）。 */
   const 你=ag?'<li class="faint ph-you">你在他心里：'+esc(relYouText(ag))+'</li>':'';
@@ -4845,7 +4860,10 @@ function agentCard(ag, hook){
     +'｜说话方式:'+(AI_VOICE[ag.id]||ag.voice)
     +styleAssign(ag, hook)
     +(last?'｜上次开口:「'+last+'」（这句的开法与比喻对象都不得重复）':'')
-    +'｜最近:'+recent;
+    +'｜最近:'+recent
+    /* 第 117 单·玩家篇②期：短信挂点把"和这个号码的来往"也写上——AI 据此换语气（越熟越随意、越生越客气）。
+       只挂在 `sms` 这一路（聊天的角色卡、日记的角色卡都不带它——那是"他和别人"的事，与这个号码无关）。 */
+    +(hook==='sms'?('｜和这个号码的来往:'+relYouWord(ag)):'');
 }
 function syncLLMStat(){
   const L=state.llm;
