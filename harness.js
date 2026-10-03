@@ -6990,6 +6990,69 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   }
 }
 
+// ═══ 第 131 单·云港手账（玩家侧里程碑；只读世界＋自己的小账）═══════════════════════
+/* 被验的是生产源码与真值（行为面另有真浏览器探针 `tools/miles-audit/probe.mjs`：
+   开局 0/10 → 发一条→小账 sms=1、replies=1（已读不回也算"回音"）→ 刷新不重不漏）：
+     ① 结构：`bootMiles` 随存档信封走；`milesStep()` 一处定义且在 tick 里被调；`milesList()` 十条；
+        `#mile-card` 元素在、`renderRoles` 里刷新；
+     ② 行为（抽源码喂桩）：四种条目各记一笔（out／reply／noreply／note）＋生日那天的 out 记 bdays；
+        水位推进后**再跑一遍不重复计**；
+     ③ 反向自查：把"按 lid 水位过滤"拿掉 ⇒ 第二遍翻倍 ⇒ 判红。 */
+{
+  const fs131=require('fs'), path131=require('path');
+  const src131=fs131.readFileSync(path131.resolve(__dirname,'city-life-framework.html'),'utf8');
+  ok(/miles:bootMiles/.test(src131)&&/miles:Object\.assign\(\{\},state\.miles\)/.test(src131)&&/bootMeta\.miles/.test(src131),
+     '第 131 单·结构：手账小账随存档信封走（saveMeta 写／引导读）');
+  const STEP=(src131.match(/function milesStep\(\)\{[\s\S]*?\n\}/)||[''])[0];
+  const LIST=(src131.match(/function milesList\(\)\{[\s\S]*?\n\}/)||[''])[0];
+  ok(STEP.length>0&&LIST.length>0&&(src131.match(/function milesStep\(/g)||[]).length===1
+     &&(src131.match(/milesStep\(\);/g)||[]).length===1,
+     '第 131 单·结构：`milesStep`／`milesList` 各一处定义、且 tick 里调 `milesStep()` 一次');
+  ok(/id="mile-card"/.test(src131)&&/id="mile-list"/.test(src131)&&/milesList\(\)/.test(src131),
+     '第 131 单·结构：角色页有 `#mile-card`／`#mile-list`，`renderRoles` 里刷新');
+  const 台=(world,miles)=>{
+    const state={world,miles};
+    const PURE={dayOf:t=>Math.floor(t/1440)+1};
+    const Sim={inBirthday:(w,ag)=>!!ag.__bday, relYouGet:a=>(a.relYouV|0)};
+    const M=new Function('state','PURE','Sim', STEP+'\n'+LIST+'\nreturn {milesStep,milesList};')(state,PURE,Sim);
+    return {M,state};
+  };
+  const 造世界=()=>({t:0,lidSeq:4,agents:[{id:'a1',__bday:true,relYouV:0}]});
+  {
+    const w=造世界();
+    w.log=[
+      {type:'player',sms:'out',lid:1,text:'给顾云帆发了短信「生日快乐」',agent:'a1'},
+      {type:'player',sms:'reply',lid:2,text:'回了你的短信',agent:'a1'},
+      {type:'player',sms:'noreply',lid:3,text:'看了你的短信，没有回。',agent:'a1'},
+      {type:'player',sms:'note',lid:4,text:'给你留了一句：嗯。',agent:'a1'},
+    ];
+    const {M,state}=台(w,{sms:0,replies:0,notes:0,bdays:0,countedLid:0});
+    M.milesStep();
+    const 一=JSON.parse(JSON.stringify(state.miles));
+    M.milesStep();
+    const 二=JSON.parse(JSON.stringify(state.miles));
+    ok(一.sms===1&&一.replies===2&&一.notes===1&&一.bdays===1&&一.countedLid===4,
+       '第 131 单·行为：四种条目各记一笔（out 1／reply+noreply 2／note 1）＋生日那天的 out 记 bdays 1（实测 '+JSON.stringify(一)+'）');
+    ok(JSON.stringify(一)===JSON.stringify(二),'第 131 单·行为：水位推进后再跑一遍**不重复计**（第二遍 '+JSON.stringify(二)+'）');
+  }
+  {
+    const w=造世界(); w.t=0; w.agents[0].relYouV=20;   // D1：只有"处到熟"这一条该亮
+    const {M}=台(w,{sms:0,replies:0,notes:0,bdays:0,countedLid:0});
+    const 条=M.milesList();
+    ok(条.length===10&&条.filter(x=>x.成).length===1&&条.find(x=>x.名.indexOf('「熟」')>=0).成,
+       '第 131 单·行为：清单十条、D1＋关系「熟(20)」时只解锁那条（实测 '+条.filter(x=>x.成).map(x=>x.名).join('／')+'）');
+  }
+  {
+    const 病源=src131.replace('  if(M.countedLid>=w.lidSeq) return;','')
+                      .replace('    if(!e || !isFinite(e.lid) || e.lid<=M.countedLid) continue;','    if(!e) continue;');
+    ok(病源!==src131&&!/e\.lid<=M\.countedLid/.test(病源),'第 131 单·反向自查构造成立：病态改写命中了生产原文（拿掉按 lid 水位过滤）');
+    const st={world:{t:0,lidSeq:1,agents:[],log:[{type:'player',sms:'out',lid:1,text:'x'}]},miles:{sms:0,replies:0,notes:0,bdays:0,countedLid:0}};
+    const F=new Function('state','PURE','Sim', 病源.match(/function milesStep\(\)\{[\s\S]*?\n\}/)[0]+'\nreturn milesStep;')(st,{dayOf:t=>1},{inBirthday:()=>false,relYouGet:()=>0});
+    F(); F();
+    ok(st.miles.sms===2,'第 131 单·反向自查·拦得住：拿掉水位过滤 ⇒ 同一条被数两次（实测 sms='+st.miles.sms+'）⇒ 判据不是恒绿');
+  }
+}
+
 // ═══ 第 35 单·入夜点灯（屋里亮起来）═════════════════════════════════════════
 /* 被验的是生产源码原文：SKYTINT ＋ NIGHTLAMP 两段一起抠出来求值（灯要调 skyTint，两段必须同源），
    在一个只记账的假 ctx 上跑。四条闸：
@@ -7603,7 +7666,7 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   ok(恒绿===0,'第 66 单·闸二：`ok` 第一参数写死 true 的**读数型假断言**为 0 条（实测 '+恒绿+'；读数一律走 `读数()`）');
   // 闸三 · 反向自查登记（防整条被删）
   const 登记=['第 48 单','第 49 单','第 51 单','第 52 单','第 53 单','第 54 单','第 56 单','第 57 单',
-              '第 58 单','第 59 单','第 62 单','第 63 单','第 64 单','第 65 单','第 67 单','第 70 单','第 71 单','第 72 单','第 73 单','第 74 单','第 75 单','第 76 单','第 77 单','第 79 单','第 80 单','第 81 单','第 84 单','第 85 单','第 87 单','第 88 单','第 90 单','第 91 单','第 92 单','第 93 单','第 94 单','第 95 单','第 96 单','第 97 单','第 98 单','第 99 单','第 100 单','第 102 单','第 103 单','第 106 单','第 107 单','第 109 单','第 110 单','第 111 单','第 112 单','第 113 单','第 115 单','第 116 单','第 117 单','第 118 单','第 119 单','第 120 单','第 121 单','第 123 单','第 124 单','第 125 单','第 126 单','第 129 单',
+              '第 58 单','第 59 单','第 62 单','第 63 单','第 64 单','第 65 单','第 67 单','第 70 单','第 71 单','第 72 单','第 73 单','第 74 单','第 75 单','第 76 单','第 77 单','第 79 单','第 80 单','第 81 单','第 84 单','第 85 单','第 87 单','第 88 单','第 90 单','第 91 单','第 92 单','第 93 单','第 94 单','第 95 单','第 96 单','第 97 单','第 98 单','第 99 单','第 100 单','第 102 单','第 103 单','第 106 单','第 107 单','第 109 单','第 110 单','第 111 单','第 112 单','第 113 单','第 115 单','第 116 单','第 117 单','第 118 单','第 119 单','第 120 单','第 121 单','第 123 单','第 124 单','第 125 单','第 126 单','第 129 单','第 131 单',
               '闸四','闸五','闸十','闸十一','闸十二'];
   const 实有=[...new Set((自源.match(/(第 \d+ 单|闸[一二三四五六七八九十]+)·反向自查/g)||[])
                             .map(x=>x.replace('·反向自查','')))];

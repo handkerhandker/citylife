@@ -352,6 +352,10 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
         <div class="row"><b class="grow">云港日历 · 接下来七天</b><span class="chip" id="cal-today">—</span></div>
         <ul class="log-ul" id="cal-list"></ul>
       </div>
+      <div class="card" id="mile-card" style="margin-bottom:var(--sp2)">   <!-- 第 131 单·云港手账 -->
+        <div class="row"><b class="grow">云港手账 · 你做到过的事</b><span class="chip" id="mile-count">—</span></div>
+        <ul class="log-ul" id="mile-list"></ul>
+      </div>
       <div id="roles-grid"></div>
     </section>
 
@@ -454,7 +458,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v113</span>
+<span class="num dim" id="set-build">v114</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -3908,6 +3912,14 @@ const bootPhSeenBy=(()=>{
   for(const id of ['a1','a2','a3','a4']){ const v=m[id]; o[id]=(isFinite(v)&&v>=0)?(v|0):g; }
   return o;
 })();
+/* 第 131 单·云港手账的小账：优先读存档信封里的 miles；旧档没有 ⇒ 从 0 起算、水位取当前 lidSeq
+   （不再追溯可见日志——日志墙只留 400 条，追溯出来的数会随日志被挤掉而"倒退"，不如从本版起算干净）。 */
+const bootMiles=(()=>{
+  const m=(bootMeta && bootMeta.miles && typeof bootMeta.miles==='object') ? bootMeta.miles : {};
+  const n=x=>(isFinite(x)&&x>=0)?Math.floor(x):0;
+  return { sms:n(m.sms), replies:n(m.replies), notes:n(m.notes), bdays:n(m.bdays),
+           countedLid:(isFinite(m.countedLid)&&m.countedLid>=0)?Math.floor(m.countedLid):(bootWorld?bootWorld.lidSeq:0) };
+})();
 const state={
   world:bootWorld||Sim.makeWorld(bootSeed),
   selected:(bootMeta && bootWorld && bootWorld.agents.some(a=>a&&a.id===bootMeta.selected))?bootMeta.selected:'a1',
@@ -3915,6 +3927,7 @@ const state={
      不进世界状态（`state.world` 一个字节不动），随存档信封走（见 `saveMeta`／引导读取那两处）。 */
   phSeen:(bootMeta && isFinite(bootMeta.phSeen))?(bootMeta.phSeen|0):0,
   phSeenBy:bootPhSeenBy,   // 第 129 单·分人水位（短信页每个人的小角标各读各的）
+  miles:bootMiles,         // 第 131 单·云港手账（玩家侧里程碑的小账）
   screen:'live',
   soundOn:true,            // 第 124 单·提示音（默认开；与"减少动效"同口径：只活在本次会话里）
   forcedLayout:'auto',
@@ -4451,6 +4464,15 @@ function renderRoles(){
     }
     if(chip) chip.textContent='D'+PURE.dayOf(state.world.t)+' 周'+'一二三四五六日'[(PURE.dayOf(state.world.t)-1)%7];
   }
+  /* 第 131 单·云港手账：与日历同一处刷新（只读） */
+  {
+    const list=$('#mile-list'), chip=$('#mile-count');
+    if(list){
+      const 条=milesList();
+      list.innerHTML=条.map(x=>'<li>'+(x.成?'✓ ':'○ ')+esc(x.名)+' <span class="faint">'+esc(String(x.进度))+'</span></li>').join('');
+      if(chip) chip.textContent=条.filter(x=>x.成).length+'/'+条.length;
+    }
+  }
   for(const ag of state.world.agents){
     const c=grid.querySelector('[data-role="'+ag.id+'"]'); if(!c) continue;
     const loc=Sim.ANCHORS[ag.anchor];
@@ -4623,6 +4645,49 @@ function refreshUnread(){
   dot.textContent = n>9?'9+':String(n);
   if(新到) 提示音();
 }
+/* ---------- 第 131 单·云港手账（玩家侧里程碑：只读世界＋自己的小账，不改世界）----------
+   出处（2026-10-04 实测 HTTP 200）：Nookipedia·Nook Miles（「…showing various achievements, their
+   milestones, and daily goals」）；星露谷 wiki·Achievements——生活模拟里"长期目标清单"是标配。
+   口径：计数**只看日志**（发出去的短信／收到的回音／留言），按 lid 水位增量扫 ⇒ 重载不重复计；
+   "生日那天说声快乐"扫到 out 条目时对一下当天；旧档从 0 起算（见 bootMiles 的登记）。 */
+function milesStep(){
+  const w=state.world, M=state.miles;
+  if(!isFinite(M.countedLid)) M.countedLid=0;
+  if(M.countedLid>=w.lidSeq) return;
+  for(const e of w.log){
+    if(!e || !isFinite(e.lid) || e.lid<=M.countedLid) continue;
+    if(e.type!=='player') continue;
+    if(e.sms==='out'){
+      M.sms++;
+      if(String(e.text||'').indexOf('生日快乐')>=0){
+        const ag=w.agents.find(a=>a.id===e.agent);
+        if(ag && Sim.inBirthday(w,ag)) M.bdays++;
+      }
+    }
+    /* "回音"两种都算：真回信（reply）与已读不回（noreply）——没有中转站时后者是常态，
+       不把它算进来，玩家永远解锁不了这条（本探针第一版就栽在这）。 */
+    else if(e.sms==='reply'||e.sms==='noreply') M.replies++;
+    else if(e.sms==='note') M.notes++;
+  }
+  M.countedLid=w.lidSeq;
+}
+function milesList(){
+  const w=state.world, M=state.miles, d=PURE.dayOf(w.t);
+  const 最深=w.agents.reduce((s,a)=>Math.max(s, Sim.relYouGet(a)), 0);
+  const 条=[];
+  const 加=(名,成,进度)=>条.push({名,成,进度});
+  加('看过一星期', d>=7, 'D'+Math.min(d,7)+'/7');
+  加('发过第一条短信', M.sms>=1, M.sms>=1?'✓':'0/1');
+  加('收到第一封回音', M.replies>=1, M.replies>=1?'✓':'0/1');
+  加('收到第一句留言', M.notes>=1, M.notes>=1?'✓':'0/1');
+  加('在他生日那天说声快乐', M.bdays>=1, M.bdays>=1?'✓':M.bdays+'/1');
+  加('和一个人处到「熟」', 最深>=20, Math.min(最深,20)+'/20');
+  加('和一个人处到「老友」', 最深>=35, Math.min(最深,35)+'/35');
+  加('赶上第一场江灯节', d>=45, 'D'+Math.min(d,45)+'/45');
+  加('发满 100 条短信', M.sms>=100, Math.min(M.sms,100)+'/100');
+  加('看过一整年', d>=360, 'D'+Math.min(d,360)+'/360');
+  return 条;
+}
 function sendCustom(){
   const inp=$('#ph-input');
   const t=inp.value.trim();
@@ -4720,7 +4785,7 @@ function refreshSaveLine(){
 }
 let saveHold=false;   // 导入/重开已定稿到 reload 之间，封锁自动写档，防止 pagehide 把旧世界覆盖回去
 function saveMeta(){ return {selected:state.selected, lastReflectDay:state.lastReflectDay,
-  phSeen:(state.phSeen|0), phSeenBy:Object.assign({},state.phSeenBy), at:Date.now()}; }   // 第 80／129 单：总水位与分人水位随存档信封走
+  phSeen:(state.phSeen|0), phSeenBy:Object.assign({},state.phSeenBy), miles:Object.assign({},state.miles), at:Date.now()}; }   // 第 80／129／131 单：总水位、分人水位与手账小账随存档信封走
 function saveNow(){
   if(saveHold || saveMode!=='normal') return false;
   const meta=saveMeta();
@@ -6505,7 +6570,7 @@ function loop(now){
   drainLog();
   penSweep(now);   // 第 29 单：占位符收尾死线按真实时钟在这里判（不用 setTimeout：后台标签页会把它节流到分钟级）
   const tick=Math.floor(w.t/10);
-  if(tick!==lastTick){ lastTick=tick; renderTopbar(); refreshUnread();   // 第 80 单：未读角标跟着世界走
+  if(tick!==lastTick){ lastTick=tick; renderTopbar(); refreshUnread(); milesStep();   // 第 80／131 单：未读角标与手账小账跟着世界走
     if(state.llm.on){
       const d=PURE.dayOf(w.t);
       if(d!==state.lastReflectDay && PURE.minuteOfDay(w.t)>=REFLECT_MIN){ state.lastReflectDay=d; runReflection(); }
