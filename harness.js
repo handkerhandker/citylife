@@ -4871,12 +4871,19 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
 {
   const fs=require('fs'), path=require('path');
   const src=fs.readFileSync(path.resolve(__dirname,'city-life-framework.html'),'utf8');
-  ok(/const HEART=\{ at:35, dur:90 \}/.test(src)&&(src.match(/const HEART=\[/g)||[]).length===0,
-     '第 91 单·结构：`HEART` 表一处定义（门槛 '+Sim.HEART.at+'／时长 '+Sim.HEART.dur+' 分钟）');
-  ok(/心\.r\.heart=1; relRec\(o, ag\.id\)\.heart=1;/.test(src)
+  /* 第 96 单改：原来这条把表里的字面写法整串锁死（`const HEART={ at:35, dur:90 }`）——
+     第 96 单往表里加"家人一样那一场"（`at2`／`dur2`）当场假红。改成**按真值读**＋**唯一一处定义**。 */
+  ok((src.match(/const HEART=\{/g)||[]).length===1
+     &&Sim.HEART.at===35&&Sim.HEART.dur===90&&Sim.HEART.at2===50&&Sim.HEART.dur2===150,
+     '第 91 单·结构：`HEART` 表**唯一一处定义**（老友档 ≥'+Sim.HEART.at+'／'+Sim.HEART.dur+' 分钟；'
+     +'家人档 ≥'+Sim.HEART.at2+'／'+Sim.HEART.dur2+' 分钟）——按真值读，不锁表里的字面写法');
+  /* 第 96 单改：旗子从"有没有交过心"变成**心级**（1／2），写入那一行换成了 `记心级(...)`；
+     两场戏的日志前缀都固定"交心："。这里断的是"记在既有条目里、两边一起记"这件事，不锁写法。 */
+  ok(/记心级\(ag, o\.id, 心\.lv\); 记心级\(o, ag\.id, 心\.lv\);/.test(src)
      &&/'交心：和'\+o\.name\+'坐下来好好聊了一回'/.test(src)
-     &&(src.match(/交心：和/g)||[]).length===2,
-     '第 91 单·结构：旗子写进**既有的**关系条目（两边一起记，零新增世界状态）＋两条日志前缀都固定"交心："');
+     &&/'交心：和'\+o\.name\+'一起出门走了一趟'/.test(src),
+     '第 91 单·结构：旗子（第 96 单起是**心级**）写进**既有的**关系条目、两边一起记（零新增世界状态）'
+     +'＋两场戏的日志前缀都固定"交心："');
   ok(src.indexOf('第 91 单·交心：这一支排在平常闲聊')>0
      &&src.indexOf('第 91 单·交心：这一支排在平常闲聊')<src.indexOf('// 5. 社交：同屋且对方空闲'),
      '第 91 单·结构：这一支排在**平常闲聊之前**（关系到了老友，那一次见面就不是闲聊了）');
@@ -4923,6 +4930,60 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
     Sim.HEART.at=原;
     ok(病.一交===0,'第 91 单·反向自查·拦得住：把门槛抬到不可能 ⇒ 同一构造下一条也不发生（实测 '
        +病.一交+' 条）⇒ 这条判据不是恒绿');
+  }
+}
+
+// ═══ 第 96 单·交心（二）：「家人一样」那一场（一起出门走一趟）══════════════════════
+/* 出处沿用第 91 单那条（星露谷 wiki·Friendship：「…cut-scenes called **heart events** occur…」）——
+   heart events 本来就不止一场：**关系每深一档，就有一场自己的戏**。
+   本单补上顶格（两边都 ≥50）那一场：**一起出门走一趟**（两人都到江边、150 分钟、两条日志、同一张甲级卡）；
+   旗子从"有没有交过心"变成**心级**（1＝老友那场／2＝家人那场），旧档的 `heart:1` 照旧算"老友那场已发生"。
+   被验的是生产源码与真值：
+     ① 结构：`HEART` 表里有 `at2`／`dur2`；`心级()`／`记心级()` 各一处定义；心级只升不降（`Math.max`）；
+     ② 行为（构造）：两边 55 ⇒ **一起出门走一趟**（两人锚点都到江边、心级都到 2、再来一次不触发）；
+        先演过老友场（`heart:1`）再升到 55 ⇒ **补上**家人那场；只有 40（老友档）⇒ 还是"坐下来聊"那场；
+     ③ 反向自查：把 `HEART.at2` 抬到不可能 ⇒ 同一 55 构造只演得出的**老友场**，家人场 0 场 ⇒ 判据不是恒绿。 */
+{
+  const fs=require('fs'), path=require('path');
+  const src=fs.readFileSync(path.resolve(__dirname,'city-life-framework.html'),'utf8');
+  ok(/function 心级\(r, 对方值\)\{/.test(src)&&/function 记心级\(ag, id, lv\)\{/.test(src)
+     &&/r\.heart=Math\.max\(r\.heart\|0, lv\|0\);/.test(src),
+     '第 96 单·结构：`心级()`／`记心级()` 各一处定义，且心级**只升不降**（Math.max）');
+  const 摆=(w,v,已心级)=>{
+    const a1=w.agents[0], a2=w.agents[1];
+    w.t=20*1440+20*60;
+    for(const a of w.agents){ a.anchor='home_table'; a.activity={type:'idle'}; a.busyUntil=0; a.hunger=30; a.energy=80; }
+    const 日=PURE.dayOf(w.t);
+    a1.rel={a2:{v:v, day:日, heart:已心级}}; a2.rel={a1:{v:v, day:日, heart:已心级}};
+    const 已=w.lidSeq; Sim.decide(w,a1);
+    const 条=[]; for(const e of w.log){ if(e.lid<=已) continue; 条.push(e.text); }
+    return {w,a1,a2,条,交心:条.filter(t=>t.indexOf('交心：')===0)};
+  };
+  {
+    const r=摆(Sim.makeWorld(20260803), 55, 0);
+    ok(r.交心.length===2&&r.交心.every(t=>t.indexOf('一起出门')>0)
+       &&r.a1.anchor==='river_walk'&&r.a2.anchor==='river_walk'
+       &&(r.a1.rel.a2.heart|0)===2&&(r.a2.rel.a1.heart|0)===2,
+       '第 96 单·行为：两边都到「家人一样」⇒ **一起出门走一趟**（'+r.交心.join(' ／ ')+'），两人都到江边、心级都到 2');
+    const 已=r.w.lidSeq; r.a1.activity={type:'idle'}; r.a1.busyUntil=0; Sim.decide(r.w,r.a1);
+    let 又=0; for(const e of r.w.log){ if(e.lid<=已) continue; if(String(e.text).indexOf('交心：')===0) 又++; }
+    ok(又===0,'第 96 单·每档只一回：同一场再来一次不触发（新交心日志 '+又+' 条）');
+  }
+  {
+    const r=摆(Sim.makeWorld(20260803), 55, 1);
+    ok(r.交心.length===2&&r.交心.every(t=>t.indexOf('一起出门')>0)&&(r.a1.rel.a2.heart|0)===2,
+       '第 96 单·补场：老友那场演过（`heart:1`）之后升到「家人一样」⇒ **补上**家人那场（'+r.交心.join(' ／ ')+'）');
+    const 老=摆(Sim.makeWorld(20260803), 40, 0);
+    ok(老.交心.length===2&&老.交心.every(t=>t.indexOf('坐下来')>0)&&(老.a1.rel.a2.heart|0)===1,
+       '第 96 单·分档：只有「老友」（40）⇒ 还是"坐下来好好聊了一回"那场（心级 1）');
+  }
+  {
+    const 原=Sim.HEART.at2; Sim.HEART.at2=999;
+    const 病=摆(Sim.makeWorld(20260803), 55, 0);
+    Sim.HEART.at2=原;
+    ok(病.交心.length===2&&病.交心.every(t=>t.indexOf('坐下来')>0)&&(病.a1.rel.a2.heart|0)===1,
+       '第 96 单·反向自查·拦得住：把 `HEART.at2` 抬到不可能 ⇒ 同一 55 构造只演得出**老友那场**（'
+       +病.交心.join(' ／ ')+'）⇒ 「家人一样那一场」不是恒发生');
   }
 }
 
@@ -5932,7 +5993,7 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   ok(恒绿===0,'第 66 单·闸二：`ok` 第一参数写死 true 的**读数型假断言**为 0 条（实测 '+恒绿+'；读数一律走 `读数()`）');
   // 闸三 · 反向自查登记（防整条被删）
   const 登记=['第 48 单','第 49 单','第 51 单','第 52 单','第 53 单','第 54 单','第 56 单','第 57 单',
-              '第 58 单','第 59 单','第 62 单','第 63 单','第 64 单','第 65 单','第 67 单','第 70 单','第 71 单','第 72 单','第 73 单','第 74 单','第 75 单','第 76 单','第 77 单','第 79 单','第 80 单','第 81 单','第 84 单','第 85 单','第 87 单','第 88 单','第 90 单','第 91 单','第 92 单','第 93 单','第 94 单','第 95 单',
+              '第 58 单','第 59 单','第 62 单','第 63 单','第 64 单','第 65 单','第 67 单','第 70 单','第 71 单','第 72 单','第 73 单','第 74 单','第 75 单','第 76 单','第 77 单','第 79 单','第 80 单','第 81 单','第 84 单','第 85 单','第 87 单','第 88 单','第 90 单','第 91 单','第 92 单','第 93 单','第 94 单','第 95 单','第 96 单',
               '闸四','闸五','闸十','闸十一','闸十二'];
   const 实有=[...new Set((自源.match(/(第 \d+ 单|闸[一二三四五六七八九十]+)·反向自查/g)||[])
                             .map(x=>x.replace('·反向自查','')))];

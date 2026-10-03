@@ -440,7 +440,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v88</span>
+<span class="num dim" id="set-build">v89</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -2233,22 +2233,41 @@ function relStep(w){
    **不掷骰子**：到了就发生（照第 64 单生日蛋糕那条"他的日子，必买"）。
    不夺走：只占**空闲**那一档——上班／吃饭／睡觉一概不碰；§关系值本身也不因这一场而变（它是"关系深了"的后果，不是原因）。
    ⚠ 两边都要过线：关系是**半张表**（A 觉得熟、B 未必），而"交心"这场戏要**两个人都认**才算数。 */
-const HEART={ at:35, dur:90 };
-// 谁跟我到了「老友」两边都认、又还没交过心？——没有就返回 null（坏数据一律跳过，绝不抛错）
+/* 第 96 单·交心（二）：**「家人一样」那一场**（星露谷的 heart events 本来就不止一场：
+   「As friendships deepen, … cut-scenes called heart events occur」——关系每深一档，就有一场自己的戏）。
+   顶格（两边都 ≥`at2`）再加一场：**一起出门走一趟**（`dur2` 分钟、两人都去江边、两条日志、同一张甲级卡）。
+   旗子还是那一面，只是从"有没有交过心"变成**心级**（1＝老友那场，2＝家人那场）——
+   零新增世界状态，旧档的 `heart:1` 照旧算"老友那场已发生"。 */
+const HEART={ at:35, dur:90, at2:50, dur2:150 };
+// 心级：两边都认的那一档（取两半里的较小值——关系是半张表，"两个人都认"才算数）
+function 心级(r, 对方值){
+  const v=Math.min(relV(r&&r.v), relV(对方值));
+  if(v>=HEART.at2) return 2;
+  if(v>=HEART.at) return 1;
+  return 0;
+}
+// 谁跟我到了「老友」两边都认、而且还有**没演过的那一场**？——没有就返回 null（坏数据一律跳过，绝不抛错）
 function heartMate(w, ag){
   const R=(ag&&ag.rel); if(!R||typeof R!=='object'||Array.isArray(R)) return null;
   for(const id in R){
     const r=R[id];
-    if(!r||typeof r!=='object'||r.heart) continue;
-    if(relV(r.v)<HEART.at) continue;
+    if(!r||typeof r!=='object') continue;
     const o=(w.agents||[]).find(x=>x.id===id);
     if(!o||o===ag) continue;
-    if(relGet(o, ag.id)<HEART.at) continue;                      // 对方那半张也要过线
+    const lv=心级(r, relGet(o, ag.id));
+    const 对方心级=((o.rel&&o.rel[ag.id]&&o.rel[ag.id].heart)|0);
+    const 演过=Math.min(r.heart|0, 对方心级);                     // 两边都演过才算演过
+    if(lv<=演过) continue;                                        // 这一档演过了（或还没够）
     if(roomOf(o.anchor)!==roomOf(ag.anchor)) continue;            // 当面（与第 81 单同一条口径）
     if(!(o.activity&&(o.activity.type==='idle'||o.activity.type==='stroll'))) continue;
-    return {mate:o, r:r};
+    return {mate:o, r:r, lv:lv, 演过:演过};
   }
   return null;
+}
+// 记心级（两边一起记）：`ag.rel[对方].heart` 从 1 变 2 也是这一处写
+function 记心级(ag, id, lv){
+  const r=relRec(ag, id);
+  r.heart=Math.max(r.heart|0, lv|0);
 }
 function decide(w, ag){
   const mod=PURE.minuteOfDay(w.t);
@@ -2387,13 +2406,25 @@ function decide(w, ag){
     const 心=heartMate(w, ag);
     if(心){
       const o=心.mate;
-      心.r.heart=1; relRec(o, ag.id).heart=1;
-      ag.activity={type:'chat',label:'和'+o.name+'聊了很久'}; ag.busyUntil=w.t+HEART.dur;
-      o.activity={type:'chat',label:'和'+ag.name+'聊了很久'}; o.busyUntil=w.t+HEART.dur;
-      const 句='交心：和'+o.name+'坐下来好好聊了一回';
-      ag.lastHeart={ t:w.t, to:o.name, tx:句 };
-      logAct(w, ag, 句, '有些话平时说不出口，今天一口气说完了。');
-      logAct(w, o, '交心：和'+ag.name+'坐下来好好聊了一回', '原来他也是这么想的。');
+      记心级(ag, o.id, 心.lv); 记心级(o, ag.id, 心.lv);
+      if(心.lv>=2){
+        /* 第 96 单·家人一样那一场：**一起出门走一趟**（两人都到江边，走 `dur2` 分钟）。
+           与"坐下来聊"那一场的区别写在日志与卡面文案里（同一面旗、同一张甲级卡）。 */
+        ag.anchor='river_walk'; o.anchor='river_walk';
+        ag.activity={type:'stroll',label:'和'+o.name+'出门走走'}; ag.busyUntil=w.t+HEART.dur2;
+        o.activity={type:'stroll',label:'和'+ag.name+'出门走走'}; o.busyUntil=w.t+HEART.dur2;
+        const 句='交心：和'+o.name+'一起出门走了一趟';
+        ag.lastHeart={ t:w.t, to:o.name, lv:2, tx:句 };
+        logAct(w, ag, 句, '攒了半辈子的话，正好走一路说一路。');
+        logAct(w, o, '交心：和'+ag.name+'一起出门走了一趟', '有人一道走，江风都顺。');
+      }else{
+        ag.activity={type:'chat',label:'和'+o.name+'聊了很久'}; ag.busyUntil=w.t+HEART.dur;
+        o.activity={type:'chat',label:'和'+ag.name+'聊了很久'}; o.busyUntil=w.t+HEART.dur;
+        const 句='交心：和'+o.name+'坐下来好好聊了一回';
+        ag.lastHeart={ t:w.t, to:o.name, lv:1, tx:句 };
+        logAct(w, ag, 句, '有些话平时说不出口，今天一口气说完了。');
+        logAct(w, o, '交心：和'+ag.name+'坐下来好好聊了一回', '原来他也是这么想的。');
+      }
       return;
     }
   }
@@ -2871,6 +2902,7 @@ function clipSample(w,sh){
     const lh=ag.lastHeart;
     if(lh && typeof lh==='object' && isFinite(lh.t) && lh.t>=t0 && lh.t<t1 && r.heartT!==lh.t){
       r.heartT=lh.t; r.heartTo=(typeof lh.to==='string')?lh.to:'';
+      r.heartLv=(lh.lv|0);                                   // 第 96 单：1＝老友那场／2＝家人那场
       r.heartTx0=(typeof lh.tx==='string')?lh.tx:'';
     }
   }
@@ -2901,7 +2933,7 @@ function clipMake(w,sh,ent,ag,sum,base){
   if(r.giftT) push('gift',{to:r.giftTo, tx:r.giftTx0},r.giftT);              // 第 81 单·生日礼物（每人每年至多一条；落笔抄录）
   if(r.relUpT)   push('rel_up',  {to:r.relUpTo, tier:r.relUpTier, v:r.relUpV, tx:r.relUpTx0}, r.relUpT);   // 第 88 单·关系升档
   if(r.relColdT) push('rel_cold',{to:r.relColdTo, tx:r.relColdTx0}, r.relColdT);                            // 第 88 单·关系冷线
-  if(r.heartT)   push('heart',   {to:r.heartTo, tx:r.heartTx0}, r.heartT);                                  // 第 91 单·交心（一对人只一次）
+  if(r.heartT)   push('heart',   {to:r.heartTo, lv:r.heartLv, tx:r.heartTx0}, r.heartT);                    // 第 91／96 单·交心（一对人每档一次）
   // 甲/乙 · 处境（第 17 单 ag.sit 的预留去处：事件原文不喂 AI，本页是它唯一的现身处）
   if(r.sitK){
     const v={from:r.sitFrom||'那边', tx:r.sitTx};
@@ -2976,7 +3008,7 @@ function clipItemText(it){
     case 'gift':       return '生日 · 给'+(v.to||'人')+'带了点东西';
     case 'rel_up':     return '关系 · 升到「'+(v.tier||'新档')+'」：和'+(v.to||'人')+'（'+(v.v|0)+'）';
     case 'rel_cold':   return '关系 · 冷下来了：好几天没和'+(v.to||'人')+'说上话';
-    case 'heart':      return '交心 · 和'+(v.to||'人')+'坐下来好好聊了一回';
+    case 'heart':      return '交心 · 和'+(v.to||'人')+((v.lv|0)>=2?'一起出门走了一趟':'坐下来好好聊了一回');
     case 'sit_bad':   return '处境 · 逆：'+v.from+'那边——「'+v.tx+'」';
     case 'sit_good':  return '处境 · 顺：'+v.from+'那边——「'+v.tx+'」';
     case 'sit_flat':  return '处境 · 平：'+v.from+'那边——「'+v.tx+'」';

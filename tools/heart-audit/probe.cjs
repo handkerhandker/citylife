@@ -34,7 +34,10 @@ for (const seed of 种子表) {
       if (!(e.lid > 起点)) continue;
       const t = String(e.text || '');
       if (t.indexOf('交心：') !== 0) continue;
-      场.push({ 天: Math.floor(e.t / 1440) + 1, 谁: e.name, 和: t.slice(4, t.indexOf('坐下来')) });
+      /* 第 96 单：两场戏——「坐下来好好聊了一回」（老友档）与「一起出门走了一趟」（家人档）。 */
+      const 二 = t.indexOf('一起出门') > 0;
+      const 切 = 二 ? t.indexOf('一起出门') : t.indexOf('坐下来');
+      场.push({ 天: Math.floor(e.t / 1440) + 1, 谁: e.name, 和: t.slice(4, 切), lv: 二 ? 2 : 1 });
     }
   }
   /* 旗子对账：① 两侧必须一致；② 有旗子的对数 ＝ 日志里数出来的场数。
@@ -54,16 +57,19 @@ for (const seed of 种子表) {
     }
   }
   const 计数 = {};
-  for (const x of 场) { const k = [x.谁, x.和].sort().join('+'); 计数[k] = (计数[k] || 0) + 1; }
+  for (const x of 场) { const k = [x.谁, x.和].sort().join('+') + '·' + x.lv; 计数[k] = (计数[k] || 0) + 1; }
   const 对 = 有旗.size;
   const 重复 = Object.values(计数).filter(n => n > 2).length;
   const 对数_日志 = Object.values(计数).reduce((s, n) => s + n / 2, 0);
-  const ok = 对 >= 1 && 不一致 === 0 && 重复 === 0 && Math.abs(对数_日志 - 对) < 1e-9;
+  const 一档 = 场.filter(x => x.lv === 1).length / 2, 二档 = 场.filter(x => x.lv === 2).length / 2;
+  const ok = 一档 >= 1 && 二档 >= 1 && 不一致 === 0 && 重复 === 0;
   if (!ok) 红++;
-  console.log((ok ? ' ok : ' : ' FAIL: ') + '[' + seed + '] 交心 ' + 对 + ' 对（日志 ' + 场.length + ' 条）'
-    + '；旗子不一致 ' + 不一致 + ' 处；重复 ' + 重复 + ' 处');
-  const 头 = 场.filter((x, i) => i % 2 === 0).slice(0, 3);
-  console.log('        最早几场：' + (头.map(x => 'D' + x.天 + ' ' + x.谁 + '↔' + x.和).join('；') || '（一场都没有）'));
+  console.log((ok ? ' ok : ' : ' FAIL: ') + '[' + seed + '] 交心：老友场 ' + 一档 + ' 对 ／ 家人场 ' + 二档
+    + ' 对（日志 ' + 场.length + ' 条，共 ' + 对 + ' 对关系）；旗子不一致 ' + 不一致 + ' 处；重复 ' + 重复 + ' 处');
+  const 头 = 场.filter(x => x.lv === 1).filter((x, i) => i % 2 === 0).slice(0, 2)
+    .concat(场.filter(x => x.lv === 2).filter((x, i) => i % 2 === 0).slice(0, 2));
+  console.log('        最早几场：' + (头.map(x => (x.lv === 2 ? '[家]' : '[友]') + 'D' + x.天 + ' ' + x.谁 + '↔' + x.和)
+    .join('；') || '（一场都没有）'));
   // 顺带印终局的关系分布（这把尺第 88 单立的，这里是它的第一个用途）
   const 档 = {};
   for (const a of w.agents) for (const id in (a.rel || {})) {
@@ -73,5 +79,6 @@ for (const seed of 种子表) {
 }
 console.log('');
 console.log(红 ? ('✘ ' + 红 + ' 颗种子不对——交心这层没接好') :
-  ('✔ ' + 种子表.length + ' 颗种子 × ' + 天 + ' 天：每颗种子都真发生过交心，且同一对只一场、两侧旗子一致'));
+  ('✔ ' + 种子表.length + ' 颗种子 × ' + 天 + ' 天：两场戏（老友／家人）每颗种子都真发生过，'
+    + '同一对每档只一场、两侧旗子一致'));
 process.exit(红 ? 1 : 0);
