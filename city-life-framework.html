@@ -332,6 +332,10 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
 
     <section class="screen" id="scr-roles">
       <h2 class="sec">住户 · 点选跟随，查看特质与心愿</h2>
+      <div class="card" id="cal-card" style="margin-bottom:var(--sp2)">
+        <div class="row"><b class="grow">云港日历 · 接下来七天</b><span class="chip" id="cal-today">—</span></div>
+        <ul class="log-ul" id="cal-list"></ul>
+      </div>
       <div id="roles-grid"></div>
     </section>
 
@@ -428,7 +432,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v75</span>
+<span class="num dim" id="set-build">v76</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -3588,6 +3592,42 @@ function relText(w, ag){
   const mate=bestId ? (w.agents||[]).find(a=>a.id===bestId) : null;
   return (n>0&&mate) ? ('和 '+mate.name+' 聊过 '+n+' 次') : '还没跟谁聊过';
 }
+/* ---------- 第 79 单·云港日历（把"接下来会发生什么"摆出来）----------
+   出处（2026-10-03 实测可访问）：星露谷 wiki·Festivals／Birthdays——村民的生日与节日都挂在**日历**上，
+   玩家靠"看日历"安排；Nookipedia·Event 同理（动森的公告栏提前贴出活动）。
+   本作这几年把日程越挂越多（周五夜市／周日街市／周日 18:00 惦记／周日 20:00 夜谈／每月 2 号交租／
+   四人各一个生日／一年一次的江灯节），可**玩家只能靠记性**——公告散在晨报与播报里。
+   本单做一张只读清单：**接下来七天有什么 ＋ 再远一点的两件事**。数据全部来自既有表，
+   **零新增世界状态、零 rng、零写操作**（纯 DOM 层）。 */
+function calLines(w, 天){
+  const n=isFinite(天)?天:7;
+  const 今=PURE.dayOf(w.t);
+  const 名='一二三四五六日';
+  const 行=[];
+  for(let k=0;k<n;k++){
+    const d=今+k, 周='周'+名[(d-1)%7];
+    const 条=[];
+    if((d-1)%7===4) 条.push('19:00 夜市', '18:00 发薪');
+    if((d-1)%7===6) 条.push('白天街市', '20:00 夜谈角');
+    if(d%30===2) 条.push('交租日');
+    if(PURE.dayOf(Sim.thisYearFestAt(w))===d) 条.push('19:00 '+Sim.FESTIVAL.name+'（江边）');
+    for(const ag of (w.agents||[])){
+      if(PURE.dayOf(Sim.thisYearBdayAt(w,ag))===d) 条.push(ag.name+'生日');
+    }
+    const 前缀=k===0?'今天':(k===1?'明天':'');
+    行.push('D'+d+'（'+周+'）'+(前缀?前缀+'：':'：')+(条.length?条.join(' ／ '):'没什么特别的'));
+  }
+  // 再远一点：下一场江灯节 ＋ 下一个生日
+  const 节=Sim.festAt(w), 节日差=PURE.dayOf(节)-今;
+  行.push('江灯节：'+(节日差<=0?'就在今晚':(节日差+' 天后（D'+PURE.dayOf(节)+'）')));
+  let 最近=null;
+  for(const ag of (w.agents||[])){
+    const 差=PURE.dayOf(Sim.bdayAt(w,ag))-今;
+    if(差>=0 && (!最近||差<最近.差)) 最近={差, name:ag.name};
+  }
+  if(最近) 行.push('下一个生日：'+最近.name+'（'+(最近.差===0?'就是今天':最近.差+' 天后')+'）');
+  return 行;
+}
 function buildRoles(){
   $('#roles-grid').innerHTML=state.world.agents.map(ag=>
     '<div class="card" data-role="'+ag.id+'">'
@@ -3613,6 +3653,15 @@ function buildRoles(){
 function renderRoles(){
   const grid=$('#roles-grid');
   if(!grid.children.length) buildRoles();
+  /* 第 79 单·云港日历：与角色卡同一处刷新（只读，不改世界） */
+  {
+    const list=$('#cal-list'), chip=$('#cal-today');
+    if(list){
+      const 行=calLines(state.world, 7);
+      list.innerHTML=行.map(t=>'<li>'+esc(t)+'</li>').join('');
+    }
+    if(chip) chip.textContent='D'+PURE.dayOf(state.world.t)+' 周'+'一二三四五六日'[(PURE.dayOf(state.world.t)-1)%7];
+  }
   for(const ag of state.world.agents){
     const c=grid.querySelector('[data-role="'+ag.id+'"]'); if(!c) continue;
     const loc=Sim.ANCHORS[ag.anchor];
