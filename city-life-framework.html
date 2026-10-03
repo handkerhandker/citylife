@@ -470,7 +470,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v117</span>
+<span class="num dim" id="set-build">v118</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -6503,18 +6503,30 @@ function streetGlow(t){
   ctx.restore();
 }
 /*STREETGLOW-END*/
-/* 第 85 单·门洞记号：门框柱 ＋ 地垫（**零素材**，只读 ROOMS[].door，一处定义） */
+/* 第 85 单·门洞记号：门框柱 ＋ 地垫（**零素材**，只读 ROOMS[].door，一处定义）
+   第 142 单·可见度增强：141 单目验巡查在 4× 放大下都几乎认不出记号——柱只有 2.5px 高 4px、
+   地垫是与木地板同系的淡黄半透明（木地板上糊、深色地板上也糊）。本单按"同一处定义"加两件：
+   柱子加高到 6px、加宽到 0.16s；地垫改成**深色底（#2e3650）＋暖金描边**两色块——
+   木地板与深色地板上都读得出来。数据仍只用 ROOMS[].door：只读、不进 SIM、三指纹原样。 */
 function 门洞记号(r){
   if(!r||!r.door||!isFinite(r.door.x)) return;
   const s=state.view.s, dx=r.door.x+0.5, 底=(r.door.side==='b');
   const y=sy(底 ? (r.y+r.h) : r.y);
-  // 门框：贴着门洞两侧各一小节（暖色，跟路灯/摊位同一族的金）
+  // 门框：贴着门洞两侧各一节（暖色，跟路灯/摊位同一族的金）——第 142 单：加宽加高
+  const 柱W=Math.max(3,s*0.16), 柱H=6;
   ctx.fillStyle='#b6924a';
-  ctx.fillRect(sx(dx-0.5), y-2, Math.max(2,s*0.12), 4);
-  ctx.fillRect(sx(dx+0.5)-Math.max(2,s*0.12), y-2, Math.max(2,s*0.12), 4);
-  // 地垫：门**内侧**半格（底门 ⇒ 往上；顶门 ⇒ 往下）
-  ctx.fillStyle='rgba(182,146,74,.30)';
-  ctx.fillRect(sx(dx-0.35), 底 ? y-s*0.55 : y+s*0.1, s*0.7, Math.max(2,s*0.45));
+  ctx.fillRect(sx(dx-0.5), y-柱H/2, 柱W, 柱H);
+  ctx.fillRect(sx(dx+0.5)-柱W, y-柱H/2, 柱W, 柱H);
+  // 地垫：门**内侧**半格多一点；第 142 单：深色底 ＋ 暖金四边描边（两色）
+  const 垫W=s*0.8, 垫H=s*0.5, 边=Math.max(1, Math.round(s*0.09));
+  const x0=sx(dx)-垫W/2, y0=底 ? y-s*0.62 : y+s*0.12;
+  ctx.fillStyle='#2e3650';
+  ctx.fillRect(x0, y0, 垫W, 垫H);
+  ctx.fillStyle='#b6924a';
+  ctx.fillRect(x0, y0, 垫W, 边);
+  ctx.fillRect(x0, y0+垫H-边, 垫W, 边);
+  ctx.fillRect(x0, y0, 边, 垫H);
+  ctx.fillRect(x0+垫W-边, y0, 边, 垫H);
 }
 function draw(now){
   const {s,ox,oy}=state.view;
