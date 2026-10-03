@@ -554,5 +554,69 @@ console.log('\n── 第 26 单 · 离线追帧补算的位置判据与反向�
     +'故本单的判据只能立在调用点的位置上，立在帧上是抓不到的');
 }
 
+/* ═══ 第 50 单 · 每帧 DOM 侧动作对「走位／显示」模型零写入 ═══
+   第 25 单登记的账：上面那些「复演主循环」的场景只复演了
+   累时 → Sim.step → updateWalkers → stepDisplay 四步；而**真主循环**每帧还跑
+   updateCamera / drainLog / penSweep，切到别的页时按拍还要跑 renderRoles / renderClips /
+   renderPhone / renderStats。若这几个函数会碰走位／显示那套字段，上面所有读数就都是**在错误的模型上量的**。
+   本段把这条账关掉：机械普查这七段的源码，断言它们对走位／显示模型**只读不写**，
+   并把**允许写的东西**逐条点名（DOM、追新游标、日志条目字段、相机、占位符登记表）。
+   真页面上另有一条腿（`tools/live-walkgate/audit.mjs`：真浏览器逐帧量同样三条铁律）。 */
+console.log('\n── 第 50 单 · 每帧 DOM 侧动作对走位模型零写入 ────────────');
+{
+  // 按花括号配平取函数全文（与上面 grab() 的正则取法互补：这几个函数形状各不相同）
+  const 取函数=n=>{
+    const a=DOM.indexOf('function '+n+'(');
+    if(a<0) return null;
+    let d=0, i=DOM.indexOf('{',a), j=i;
+    for(;j<DOM.length;j++){ if(DOM[j]==='{') d++; else if(DOM[j]==='}'){ d--; if(d===0) break; } }
+    return DOM.slice(a,j+1);
+  };
+  const 名单=['updateCamera','drainLog','penSweep','renderRoles','renderClips','renderPhone','renderStats'];
+  // 「走位／显示模型」的写动作——这七段里**一次都不许出现**
+  const 禁写=[
+    ['v.dspX/v.dspY 赋值', /\bv\.dsp[XY]\s*=(?!=)/],
+    ['v.warp 赋值',        /\bv\.warp\s*=(?!=)/],
+    ['v.path 赋值',        /\bv\.path\s*=(?!=)/],
+    ['v.x / v.y 赋值',     /\bv\.[xy]\s*=(?!=)/],
+    ['调用 setActivity()', /setActivity\(/],
+    ['调用 updateWalkers()', /updateWalkers\(/],
+    ['调用 stepDisplay()',  /stepDisplay\(/],
+    ['ag.anchor 赋值',      /\bag\.anchor\s*=(?!=)/],
+    ['ag.activity 赋值',    /\bag\.activity\s*=(?!=)/],
+    ['ag.busyUntil 赋值',   /\bag\.busyUntil\s*=(?!=)/],
+    ['w.log 结构改动',      /\bw\.log\.(push|splice|shift|pop|unshift)\(/],
+  ];
+  const 汇总={};
+  let 缺函数=0;
+  for(const n of 名单){
+    const 源=取函数(n);
+    if(!源){ 缺函数++; continue; }
+    const 中=禁写.filter(([,re])=>re.test(源)).map(([k])=>k);
+    汇总[n]={字节:源.length, 命中:中};
+    ok(中.length===0, `${n}（${源.length} 字节）对走位／显示模型零写入`+(中.length?` —— 命中 ${中.join('／')}`:''));
+  }
+  ok(缺函数===0, `七段全部取到（缺 ${缺函数} 段）`);
+  // 允许写的东西**逐条点名**，免得「零写入」变成一句没人知道边界的话
+  const 允=[['state.logSeenLid（日志追新游标）',/state\.logSeenLid\s*=(?!=)/,['drainLog']],
+            ['日志条目字段 e.thought／e.fb',/\be\.(thought|fb)\s*=(?!=)/,['drainLog']],
+            ['相机 state.view／state.cam',/(state\.view|state\.cam)\.\w+\s*=(?!=)/,['updateCamera']],
+            ['占位符登记表 it.*',/\bit\.(text|llm|ready|after|fbAfter)\s*=(?!=)/,['penSweep']]];
+  for(const [名,re,许] of 允){
+    const 越界=名单.filter(n=>{ const 源=取函数(n); return 源 && re.test(源) && 许.indexOf(n)<0; });
+    ok(越界.length===0, `白名单外无人写「${名}」（越界：${越界.join('／')||'无'}；白名单：${许.join('／')}）`);
+  }
+  // 反向自查：把病态写法喂给同一把尺子，必须当场命中
+  const 病1='function renderRoles(){ const v=state.vis.a1; v.dspX=1; }';
+  const 病2='function drainLog(){ updateWalkers(1); }';
+  const 病3='function penSweep(){ state.world.agents[0].activity.label="x"; }';
+  ok(禁写.some(([,re])=>re.test(病1)), '第 50 单·反向自查·拦得住：在 render 里写 v.dspX 会被这组尺子当场命中');
+  ok(禁写.some(([,re])=>re.test(病2)), '第 50 单·反向自查·拦得住：在 drainLog 里偷偷调 updateWalkers 会被命中');
+  ok(!禁写.some(([,re])=>re.test(病3)),
+     '第 50 单·反向自查·尺子有边界（照实说明）：改 activity.label 属于「渲染层文案」不在禁写表内 —— '
+     +'禁写表管的是**走位与显示**那七类字段，管不到别的写法');
+  console.log('   注：真页面那条腿在 tools/live-walkgate/audit.mjs（真浏览器、三种页面条件、逐帧量同样三条铁律）。');
+}
+
 console.log(fails? ('\n'+fails+' FAILURES') : '\n走位三铁律 ALL PASS');
 process.exit(fails?1:0);
