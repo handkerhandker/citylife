@@ -115,13 +115,25 @@ hr('定容量的两个底数（曲线只证「够不够 3 天」，容量按这�
   const dPeak=[], oPeak=[], rPeak=[];
   const KS=Sim.CHAT_KINDS, KI=Sim.CHAT_OPEN_KIND;
   const gPeakO={}, gPeakR={};        // 第 48 单：按 (人 × 开口类别) 的单日峰值——分组后的容量依据
+  // 第 52 单改：种子里**必须带上门禁用的那三颗**（20260803／424242／777）——
+  // 原先一律用 1000000+i*7919，测出来的峰值对门禁那三颗不构成上界
+  // （实测门禁样本里 write 的某组一天抽了 3 次，而矩阵里那一格只报到 2）。
+  const 门禁种子=[20260803,424242,777];
   for(let s=0;s<N;s++){
-    const w=Sim.hydrate(Sim.serialize(Sim.makeWorld(1000000+s*7919),null)).world;
+    const 种子=(s<门禁种子.length)?门禁种子[s]:(1000000+(s-门禁种子.length)*7919);
+    /* 第 52 单改：**两种推法都量**（取二者最大值）——
+       原版只走「补算模式」（hydrate＋catchUp，第 27 单的口径：AI 缺席那条路），
+       但门禁里那条「同日零重复」是用**直接 step** 跑的活世界，两条路轨迹不同：
+       实测直接 step 下 write 的两组一天抽到 3／4 次，而补算模式只报到 2／3 ⇒ 矩阵对门禁不构成上界。
+       口径不放宽：两种推法里更高的那个，才算「该组容量的依据」。 */
+    for(const 模式 of ['直接step','补算']){
+    const w=Sim.hydrate(Sim.serialize(Sim.makeWorld(种子),null)).world;
     let dPk=0,oPk=0,rPk=0, rd=0, curDay=PURE.dayOf(w.t);
     const dayO={}, dayR={}, dayOK={}, dayRK={};
     for(let i=0;i<D*144;i++){
       const lid0=w.lidSeq;
-      const c=Sim.catchUp(w,1,rd); rd=c.lastReflectDay;
+      const c=(模式==='补算')?Sim.catchUp(w,1,rd):(Sim.step(w,10),null);
+      if(c) rd=c.lastReflectDay;
       const added=w.lidSeq-lid0;
       for(let j=Math.max(0,w.log.length-added);j<w.log.length;j++){
         const e=w.log[j];
@@ -146,12 +158,13 @@ hr('定容量的两个底数（曲线只证「够不够 3 天」，容量按这�
           }
         }
       }
-      if(c.nights){
+      if(c&&c.nights){
         const cnt={}; for(const e of w.log) if(e && e.type==='diary' && e.agent) cnt[e.agent]=(cnt[e.agent]||0)+1;
         for(const k in cnt) if(cnt[k]>dPk) dPk=cnt[k];
       }
     }
     dPeak.push(dPk); oPeak.push(oPk); rPeak.push(rPk);
+    }
   }
   const st=(a,label,unit)=>{
     const n=a.length, mu=a.reduce((x,y)=>x+y,0)/n;

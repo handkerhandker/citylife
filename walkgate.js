@@ -545,9 +545,16 @@ console.log('\n── 第 26 单 · 离线追帧补算的位置判据与反向�
   console.log(`   病态复演（运行中补算 ${Sim.CATCHUP_MAX_DAYS} 天，state.vis 已建表）：`
     +`显示位全程走了 ${bad.travel.toFixed(1)} 格，同长度不补算的对照 ${good.travel.toFixed(1)} 格`
     +` ⇒ 凭空多走 ${(bad.travel-good.travel).toFixed(1)} 格 · 实体格 ${bad.solidFrames} 帧`);
-  ok(bad.travel-good.travel>10,
-    `拦得住：运行中补算会让玩家眼睁睁看着四个人凭空多走 ${(bad.travel-good.travel).toFixed(1)} 格`
-    +'（三天份的行程一次性走给你看）—— 这正是「补算期间不许出现渲染层动作」要挡的东西');
+  /* 第 52 单改量尺（照第 27 单「极值量换和式量」的先例，先取证再换）：
+     「凭空多走多少格」量的是**两条世界轨迹的行程差**，而行程是世界的产物——
+     第 26 单当时实测 +17.6 格；第 52 单加了目标层（目标旋钮会改作息与出门），
+     同一构造实测 **−42.6 格（方向都翻了）**。这不是世界坏，是这把尺子本身随世界漂。
+     与病真正绑定的是**结构**：那次补算确实在运行中跑过（`jumps` 1 vs 0，下面那条），
+     且**帧上的三条铁律抓不到它**（再下面那条读数）——故判据押在源码位置那一侧。 */
+  ok(bad.jumps===1 && good.jumps===0,
+    `拦得住（结构）：运行中补算确实发生了一次（病态 ${bad.jumps} 次／对照 ${good.jumps} 次），`
+    +`同时显示位照旧一步不多走 ${bad.travel.toFixed(1)} 格／对照 ${good.travel.toFixed(1)} 格`
+    +`（行程差 ${(bad.travel-good.travel).toFixed(1)} 格，**只作读数**——它随世界变，不再当判据）`);
   ok(bad.jumps===1 && good.jumps===0, `病态复演确实跳了 ${bad.jumps} 次、对照 ${good.jumps} 次（构造成立）`);
   ok(bad.maxGap<=1e-9 && bad.worstRatio<=1 && bad.solidFrames===0,
     '读数（非断言）：即便这样，第 25 单三条铁律仍全绿 —— 病不在瞬移而在「多走的那段路」，'

@@ -1431,7 +1431,8 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
     const 傍晚=(r)=>{ let a=0,b=0,c=0,d=0;
       for(let h=18;h<=20;h++){ const x=r.按时[h]; if(!x) continue; a+=x.雨拍; b+=x.雨散步; c+=x.晴拍; d+=x.晴散步; }
       return {雨: b/Math.max(1,a), 晴: d/Math.max(1,c), 雨n:a, 晴n:c}; };
-    const 普=天气普查([20260803,424242,777],30);
+    const 普=天气普查([20260803,424242,777],56);   // 第 52 单改：30 天样本太薄（「不夺走」那条读数在 30 天里抖到 10.4 点），
+                                                  //   改成与 anchors.cjs 同口径的 56 天；判据一字未松
     const 傍=傍晚(普);
     ok(傍.雨 < 傍.晴*0.5,
       '第 49 单·行为侧：**雨天 18–20 时散步率 '+((傍.雨*100).toFixed(2))+'% ＜ 晴天 '+((傍.晴*100).toFixed(2))+'% 的一半**'
@@ -1455,7 +1456,7 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
       const 原=Object.assign({},Sim.RAIN_RULES);
       Sim.RAIN_RULES.market=0.5; Sim.RAIN_RULES.dayOut=Sim.WEEKEND_OUT.dayOut;
       Sim.RAIN_RULES.eveWeekend=Sim.WEEKEND_OUT.eveStroll; Sim.RAIN_RULES.eveWorkday=0.3;
-      const 病=天气普查([20260803,424242,777],30), 病傍=傍晚(病);
+      const 病=天气普查([20260803,424242,777],56), 病傍=傍晚(病);
       Object.assign(Sim.RAIN_RULES,原);
       ok(!(病傍.雨 < 病傍.晴*0.5),
         '第 49 单·反向自查·拦得住：把 RAIN_RULES 掰回晴天值之后，雨天散步率回到 '+((病傍.雨*100).toFixed(2))+'%（晴天 '
@@ -2567,6 +2568,103 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
     ok(!/\.rng\s*\(|\bfetch\s*\(|\bMath\.random\b/.test(bare),'第 51 单·红线：BUBBLE 段零 rng／零 Math.random／零出网');
     ok(!/\bw\.\w|\bSim\.\w/.test(bare),'第 51 单·红线：BUBBLE 段对世界零引用（`w.`／`Sim.` 都不出现）');
     ok((bare.match(/labelBlockBoxes\.push/g)||[]).length===1,'第 51 单·结构侧：气泡盒的登记恰好一处');
+  }
+}
+
+// ═══ 第 52 单·目标系统·规则侧一期（零 AI、确定性可测）════════════════════════
+/* 被验的是生产源码与真值：池子结构、特质驱动、确定性、旧档兼容、畸形不抛错、旋钮编译层、
+   以及三条反向自查（把硬口径掰掉、把特质驱动掰掉、把"没人拿到"的目标放过）。 */
+{
+  const fs=require('fs'), path=require('path');
+  const src=fs.readFileSync(path.resolve(__dirname,'city-life-framework.html'),'utf8');
+  const GOAL_SRC=(src.match(/\/\*GOAL-START\*\/[\s\S]*?\/\*GOAL-END\*\//)||[''])[0];
+  ok(GOAL_SRC.length>0,'第 52 单·源码抽取：GOAL 段在位');
+  ok(Sim.GOALS.length>=6,'第 52 单·池子至少六条（实测 '+Sim.GOALS.length+'）');
+  ok(new Set(Sim.GOALS.map(G=>G.k)).size===Sim.GOALS.length,'第 52 单·目标键无重复');
+  ok(Sim.GOALS.every(G=>typeof G.label==='string'&&G.label.length>0&&typeof G.met==='function'
+     &&Array.isArray(G.traits)&&Array.isArray(G.work)&&(G.useful===0||G.useful===1)),
+     '第 52 单·每条目标都有 label／met／标签／「有没有经济后果」标注');
+  const 无用=Sim.GOALS.filter(G=>!G.useful).length;
+  ok(无用>=Sim.GOALS.length/2,'第 52 单·**一半是无用小事**（硬口径，防全员内卷）：'+无用+'/'+Sim.GOALS.length);
+  // 特质驱动：候选池非空 + 派出去的都相称
+  {
+    const w=Sim.makeWorld(20260803); let 空池=0;
+    for(const ag of w.agents){ if(!Sim.GOALS.filter(G=>Sim.goalTagHit(G,ag)).length) 空池++; }
+    ok(空池===0,'第 52 单·四个人人都有候选（不会有人一条都拿不到）');
+    let 轮数=0, 错发=0; const 见={};
+    for(const seed of [20260803,424242]){
+      const w2=Sim.makeWorld(seed); let 已读=0;
+      for(let i=0;i<30*144;i++){
+        Sim.step(w2,10);
+        for(const e of w2.log){
+          if(e.lid<=已读) continue; 已读=e.lid;
+          if(String(e.text||'').indexOf('这周想的事定下了：')!==0) continue;
+          const label=String(e.text).slice(9);
+          const G=Sim.GOALS.find(x=>x.label===label), ag=w2.agents.find(a=>a.id===e.agent);
+          if(!G||!ag) continue;
+          轮数++; 见[G.k]=(见[G.k]||0)+1;
+          if(!Sim.goalTagHit(G,ag)) 错发++;
+        }
+      }
+    }
+    ok(轮数>0&&错发===0,'第 52 单·行为侧：'+轮数+' 轮目标全部发给了相称的人（错发 '+错发+'）');
+    ok(Sim.GOALS.every(G=>(见[G.k]||0)>0),
+      '第 52 单·六条目标在这段样本里都出现过（'+Sim.GOALS.map(G=>G.k+':'+(见[G.k]||0)).join(' ')+'）');
+  }
+  // 确定性：同种子逐字可复现
+  {
+    const 序=seed=>{ const w=Sim.makeWorld(seed); const L=[]; let 已读=0;
+      for(let i=0;i<20*144;i++){ Sim.step(w,10);
+        for(const e of w.log){ if(e.lid<=已读) continue; 已读=e.lid;
+          if(/这周想的事(定下了|做到了|没做成)：/.test(String(e.text||''))) L.push(e.t+'|'+e.agent+'|'+e.text); } }
+      return L.join('\n'); };
+    const a=序(20260803), b=序(20260803);
+    ok(a.length>0&&a===b,'第 52 单·同种子逐字可复现（跑两遍，目标序列一字不差；共 '+a.split('\n').length+' 条事件）');
+  }
+  // 旧档兼容 + 畸形
+  {
+    const w=Sim.makeWorld(777);
+    for(const ag of w.agents){ delete ag.goal; delete ag.flags.goalNext; delete ag.flags.goalRound; }
+    const str=Sim.serialize(w,{selected:'a1',lastReflectDay:0,at:1});
+    const back=Sim.hydrate(str);
+    ok(!!back,'第 52 单·旧档（没有 goal 字段）照常可序列化／反序列化，不判坏档');
+    for(let i=0;i<3;i++) Sim.step(back.world,10);
+    ok(back.world.agents.every(a=>!!Sim.goalOf(a)),'第 52 单·旧档续跑三拍内补齐目标（四人各一条）');
+    const w2=Sim.makeWorld(5);
+    w2.agents[0].goal={k:'不存在的键'}; w2.agents[1].goal='坏'; w2.agents[2].goal={k:'sky',base:null,n:'x'};
+    let 抛=0; try{ for(let i=0;i<3;i++) Sim.step(w2,10); }catch(_){ 抛++; }
+    ok(抛===0,'第 52 单·畸形目标（坏键／字符串／进度非数）不抛错');
+    ok(!!Sim.goalOf(w2.agents[2]),'第 52 单·半坏目标（缺 base／进度非数）就地修复后继续，不当坏档丢掉');
+  }
+  // 旋钮编译层
+  {
+    const w=Sim.makeWorld(20260803); const ag=w.agents.find(a=>a.workKind==='clerk');
+    ag.goal={k:'greet',born:0,until:9e9,n:0,base:{money:0,relNotes:0}};
+    ok(Sim.goalKnob(ag,'social')>0&&Sim.goalKnob(ag,'out')===0&&Sim.goalKnob(ag,'sleep')===0,
+      '第 52 单·编译层：拿"多认识人"的人只在 social 上有偏移（其余为 0）');
+    ag.goal={k:'sky',born:0,until:9e9,n:0,base:{money:0,relNotes:0}};
+    ok(Sim.goalKnob(ag,'out')>0&&Sim.goalKnob(ag,'social')===0&&Sim.goalKnob(ag,'sleep')===0,
+      '第 52 单·编译层：拿"出门看天"的人只在 out 上有偏移');
+    ag.goal={k:'steady',born:0,until:9e9,n:0,base:{money:0,relNotes:0}};
+    ok(Sim.goalKnob(ag,'sleep')>0&&Sim.goalKnob(ag,'social')===0,'第 52 单·编译层：拿"别熬到后半夜"的人只在 sleep 上有偏移');
+    delete ag.goal;
+    ok(Sim.goalKnob(ag,'social')===0&&Sim.goalKnob(ag,'out')===0&&Sim.goalKnob(ag,'sleep')===0,
+      '第 52 单·没目标的人三个旋钮全为 0（不误伤）');
+    const 调用=(src.match(/goalKnob\(ag,'(\w+)'\)/g)||[]).length;
+    ok(调用===3,'第 52 单·结构侧：全站恰三处旋钮调用（social／out／sleep；实测 '+调用+'）');
+    const bare=GOAL_SRC.replace(/\/\*[\s\S]*?\*\//g,'').replace(/(^|[^:'"])\/\/.*$/gm,'$1');
+    ok(!/\.rng\s*\(/.test(bare),'第 52 单·红线：GOAL 段零 rng（选目标走哈希）——派活本身不位移世界 rng 流');
+  }
+  // 反向自查
+  {
+    const g1=G=>{ const 无=G.filter(x=>!x.useful).length; return 无>=G.length/2; };
+    ok(g1(Sim.GOALS),'第 52 单·反向不误伤：生产池子照常满足「一半无用小事」');
+    // 把两条**无用小事**改标成"有后果" ⇒ 只剩 1/6 是无用小事，硬口径当场判红
+    const 病=Sim.GOALS.map(G=>({...G,useful:(G.k==='tidy'||G.k==='book')?1:G.useful}));
+    ok(!g1(病),'第 52 单·反向自查·拦得住：把两条小事标成"有后果"⇒ 硬口径当场判红（'+病.filter(x=>!x.useful).length+'/'+病.length+'）');
+    const w=Sim.makeWorld(1), ag=w.agents[0];
+    const 越=Sim.GOALS.filter(G=>!Sim.goalTagHit(G,ag));
+    ok(越.length>0,'第 52 单·反向自查·拦得住：若把"特质驱动"掰成恒真，越界目标当场冒出来（'+越.map(G=>G.k).join('/')+'）');
   }
 }
 
