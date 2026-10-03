@@ -440,7 +440,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v84</span>
+<span class="num dim" id="set-build">v85</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -2176,6 +2176,35 @@ function relStep(w){
     }
   }
 }
+/* ---------- 第 91 单·交心（照星露谷的 heart events）----------
+   出处（**本单复核：2026-10-03 实测 HTTP 200**，整句逐字摘）：
+     「As friendships deepen, the villagers' dialogue lines become more friendly, cut-scenes called
+       **heart events** occur, villagers are more likely to send gifts in the mail, and marriage is possible
+       with one of the datable villagers.」
+     ——关系深到一定程度，会**专门发生一场**（而不是日常闲聊里多一句）；这也是第 88 单那个关系值的**第一处回报**。
+   本作落成（`HEART` 一处定义）：一对人**两边都到「老友」（≥`HEART.at`）**、同屋、双方都空闲时，
+   坐下来好好聊一回（`HEART.dur` 分钟、两条日志、剪辑层甲级一张）。**一对人只发生一次**
+   （旗子挂在既有的关系条目里：`ag.rel[对方].heart=1`，两边同时记 ⇒ **零新增世界状态**）。
+   **不掷骰子**：到了就发生（照第 64 单生日蛋糕那条"他的日子，必买"）。
+   不夺走：只占**空闲**那一档——上班／吃饭／睡觉一概不碰；§关系值本身也不因这一场而变（它是"关系深了"的后果，不是原因）。
+   ⚠ 两边都要过线：关系是**半张表**（A 觉得熟、B 未必），而"交心"这场戏要**两个人都认**才算数。 */
+const HEART={ at:35, dur:90 };
+// 谁跟我到了「老友」两边都认、又还没交过心？——没有就返回 null（坏数据一律跳过，绝不抛错）
+function heartMate(w, ag){
+  const R=(ag&&ag.rel); if(!R||typeof R!=='object'||Array.isArray(R)) return null;
+  for(const id in R){
+    const r=R[id];
+    if(!r||typeof r!=='object'||r.heart) continue;
+    if(relV(r.v)<HEART.at) continue;
+    const o=(w.agents||[]).find(x=>x.id===id);
+    if(!o||o===ag) continue;
+    if(relGet(o, ag.id)<HEART.at) continue;                      // 对方那半张也要过线
+    if(roomOf(o.anchor)!==roomOf(ag.anchor)) continue;            // 当面（与第 81 单同一条口径）
+    if(!(o.activity&&(o.activity.type==='idle'||o.activity.type==='stroll'))) continue;
+    return {mate:o, r:r};
+  }
+  return null;
+}
 function decide(w, ag){
   const mod=PURE.minuteOfDay(w.t);
   const R=rhyOf(ag);          // 第 22 单·逐人作息人格（由既有特质逐条相加，见 RHY 段）
@@ -2306,6 +2335,22 @@ function decide(w, ag){
     setActivity(w,ag,ag.bed,'nap','小憩',tempoDur(w,ag,40),pickV(w,NAP_THOUGHTS,ag,'ln'),'回卧室小憩');
     ag.energy=Math.min(100,ag.energy+18);
     return;
+  }
+  /* 第 91 单·交心：这一支排在平常闲聊**之前**——关系到了老友，那一次见面就不是闲聊了。
+     不掷骰子（照第 64 单"他的日子，必买"）：条件成立就发生；一对人只一次（旗子两边一起记）。 */
+  {
+    const 心=heartMate(w, ag);
+    if(心){
+      const o=心.mate;
+      心.r.heart=1; relRec(o, ag.id).heart=1;
+      ag.activity={type:'chat',label:'和'+o.name+'聊了很久'}; ag.busyUntil=w.t+HEART.dur;
+      o.activity={type:'chat',label:'和'+ag.name+'聊了很久'}; o.busyUntil=w.t+HEART.dur;
+      const 句='交心：和'+o.name+'坐下来好好聊了一回';
+      ag.lastHeart={ t:w.t, to:o.name, tx:句 };
+      logAct(w, ag, 句, '有些话平时说不出口，今天一口气说完了。');
+      logAct(w, o, '交心：和'+ag.name+'坐下来好好聊了一回', '原来他也是这么想的。');
+      return;
+    }
   }
   // 5. 社交：同屋且对方空闲（外向更主动）
   const mate=w.agents.find(o=>o!==ag && roomOf(o.anchor)===roomOf(ag.anchor)
@@ -2562,6 +2607,7 @@ const CLIP_W={
   gift:1.2,                                       // 第 81 单·给寿星带了点东西（乙级上档：它是"两个人之间的事"）
   rel_up:1.6,                                     // 第 88 单·关系升到新档（甲级：不是每天都有的事，值得当天的卡）
   rel_cold:0.8,                                   // 第 88 单·连着五天没说话（乙级弱信号：日子里的凉意，不是"事"）
+  heart:2.0,                                      // 第 91 单·交心（甲级：一对人一辈子就一场，够当天的卡）
   sit_bad:3.0, sit_first:1.5, sit_good:1.4, sit_flat:0.6, sit_none:1.0,
   money_broke:2.6, money_debt:0.8, money_swing:1.8, money_flatpay:2.4,
   social_mute:2.2, social_all:2.4, social_burst:1.2,
@@ -2593,8 +2639,9 @@ const CLIP_LOGCAT=[
   ['fest',  ['在江边放了一盏灯']],   // 第 62 单·江灯节放灯（世界级播报另在 BACK_SUM 里登记）
   ['bday',  ['给自己买了块蛋糕']],   // 第 64 单·生日蛋糕（个人日志，不需要新桶；覆盖率闸照查）
   ['rel',   ['关系：']],             // 第 88 单·关系涨档／冷线两句（前缀固定"关系："，一处管两句话）
+  ['heart', ['交心：']],             // 第 91 单·交心那两条日志（前缀固定"交心："，两人各一条都归这类）
 ];
-const CLIP_CATNAME={eat:'吃饭', work:'上班', nap:'小憩', stroll:'散步', sleep:'睡觉', chat:'闲聊', goal:'目标', fest:'放灯', bday:'生日', talk:'夜谈', miss:'惦记', rel:'关系'};
+const CLIP_CATNAME={eat:'吃饭', work:'上班', nap:'小憩', stroll:'散步', sleep:'睡觉', chat:'闲聊', goal:'目标', fest:'放灯', bday:'生日', talk:'夜谈', miss:'惦记', rel:'关系', heart:'交心'};
 // 丙级只数这几类。刻意不含 chat：闲聊次数已由甲级 social_burst 按同一个数出活，
 // 两级同时命中会在同一张卡上把同一句话印两遍（实测 D10 「闲聊 4 次，平常 2 次」印了两行）。
 // 也不含 idle：在家待着 logText 恒为 null、不上墙，本层「只数上了墙的事」故无从计数。
@@ -2605,7 +2652,8 @@ const CLIP_QCAT={sit:'work', money:'money', social:'chat', sleep:'sleep', wake:'
                  bday:'bday',  // 第 64 单：生日蛋糕那条日志归在 bday 类
                  talk_go:'talk',  // 第 73 单：夜谈那条日志单开一类 ⇒ 摘原文就引它
                  gift:'gift',     // 第 81 单：礼物那两句单开一类 ⇒ 摘原文引"带了…"那句
-                 rel_up:'rel', rel_cold:'rel'};   // 第 88 单：关系两句同归一"关系"类 ⇒ 摘原文引那条日志
+                 rel_up:'rel', rel_cold:'rel',   // 第 88 单：关系两句同归一"关系"类 ⇒ 摘原文引那条日志
+                 heart:'heart'};                 // 第 91 单：`heart` 单开一类（与 `rel` 分开——摘原文要引的正是"交心："那两句）
 
 function clipDayOf(t){ return PURE.dayOf(t-CLIP_CUT); }     // 剪辑日：窗口＝[D 日 04:00, D+1 日 04:00)
 function clipT0(cd){ return (cd-1)*1440+CLIP_CUT; }
@@ -2756,6 +2804,12 @@ function clipSample(w,sh){
       r.relColdT=lc.t; r.relColdTo=(typeof lc.to==='string')?lc.to:'';
       r.relColdTx0=(typeof lc.tx==='string')?lc.tx:'';
     }
+    // 第 91 单·交心：同一套事件通道（`rel[对方].heart` 保证一对人只一次）
+    const lh=ag.lastHeart;
+    if(lh && typeof lh==='object' && isFinite(lh.t) && lh.t>=t0 && lh.t<t1 && r.heartT!==lh.t){
+      r.heartT=lh.t; r.heartTo=(typeof lh.to==='string')?lh.to:'';
+      r.heartTx0=(typeof lh.tx==='string')?lh.tx:'';
+    }
   }
 }
 
@@ -2784,6 +2838,7 @@ function clipMake(w,sh,ent,ag,sum,base){
   if(r.giftT) push('gift',{to:r.giftTo, tx:r.giftTx0},r.giftT);              // 第 81 单·生日礼物（每人每年至多一条；落笔抄录）
   if(r.relUpT)   push('rel_up',  {to:r.relUpTo, tier:r.relUpTier, v:r.relUpV, tx:r.relUpTx0}, r.relUpT);   // 第 88 单·关系升档
   if(r.relColdT) push('rel_cold',{to:r.relColdTo, tx:r.relColdTx0}, r.relColdT);                            // 第 88 单·关系冷线
+  if(r.heartT)   push('heart',   {to:r.heartTo, tx:r.heartTx0}, r.heartT);                                  // 第 91 单·交心（一对人只一次）
   // 甲/乙 · 处境（第 17 单 ag.sit 的预留去处：事件原文不喂 AI，本页是它唯一的现身处）
   if(r.sitK){
     const v={from:r.sitFrom||'那边', tx:r.sitTx};
@@ -2858,6 +2913,7 @@ function clipItemText(it){
     case 'gift':       return '生日 · 给'+(v.to||'人')+'带了点东西';
     case 'rel_up':     return '关系 · 升到「'+(v.tier||'新档')+'」：和'+(v.to||'人')+'（'+(v.v|0)+'）';
     case 'rel_cold':   return '关系 · 冷下来了：好几天没和'+(v.to||'人')+'说上话';
+    case 'heart':      return '交心 · 和'+(v.to||'人')+'坐下来好好聊了一回';
     case 'sit_bad':   return '处境 · 逆：'+v.from+'那边——「'+v.tx+'」';
     case 'sit_good':  return '处境 · 顺：'+v.from+'那边——「'+v.tx+'」';
     case 'sit_flat':  return '处境 · 平：'+v.from+'那边——「'+v.tx+'」';
@@ -3267,6 +3323,7 @@ const Sim={makeWorld, step, sendMessage, sendCustomMessage, decide, MSGS, ANCHOR
   BIRTHDAYS, BDAY, bdayInDays, thisYearBdayAt, bdayAt, inBirthday,   // 第 64 单·住户生日（门禁按真值读同一份日历）
   GIFT,   // 第 81 单·生日礼物（门禁按真值读：窗口与价钱一处定义）
   REL, REL_TIERS, relV, relTier, relTierName, relGet,   // 第 88 单·关系状态机 A 档（门禁按真值读：档位表一处定义）
+  HEART, heartMate,   // 第 91 单·交心（门禁按真值读：门槛与时长一处定义）
   CATCHUP_MIN_PER_MIN, CATCHUP_MAX_DAYS, REFLECT_MIN, SMS_NOREPLY,
   catchUpPlan, catchUp, reflectFallback, clipTopDay,
   DIARY_FB, DIARY_FB_RECENT, CHAT_FB_OPEN, CHAT_FB_REPLY, pickV, pickFresh, diaryFallback,   // 第 27 单·兜底文案扩池
