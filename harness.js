@@ -4422,8 +4422,11 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
 {
   const fs=require('fs'), path=require('path');
   const src=fs.readFileSync(path.resolve(__dirname,'city-life-framework.html'),'utf8');
-  ok(/const GIFT=\{ cost:8, open:15\*60, close:21\*60/.test(src),
-     '第 81 单·结构：`GIFT` 表在位（15:00–21:00／¥8）');
+  /* 第 87 单改：原来这条把表里的字面写法整串锁死（`const GIFT={ cost:8, open:15*60, close:21*60`），
+     第 87 单往表里加回礼三件（`back:6`）当场假红——旧写法又犯了一次。改成**按真值读**＋**唯一一处定义**。 */
+  ok((src.match(/const GIFT=\{/g)||[]).length===1
+     &&Sim.GIFT.cost===8&&Sim.GIFT.open===15*60&&Sim.GIFT.close===21*60,
+     '第 81 单·结构：`GIFT` 表**唯一一处定义**且真值在位（15:00–21:00／¥8）——按真值读，不锁表里的字面写法');
   ok(/roomOf\(o\.anchor\)===roomOf\(ag\.anchor\)/.test(src)&&/ag\.giftYear!==年/.test(src)
      &&/ag\.money-=GIFT\.cost/.test(src),
      '第 81 单·结构：三条口径齐——同屋当面／每人每年至多一次／花自己的钱');
@@ -4600,6 +4603,73 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
     const 门线=10*20;
     ok(垫 && 垫.y>门线, '第 85 单·反向自查·拦得住：把"按 side 选边"改成恒 true ⇒ 顶门的记号落到房间**底边**'
        +'（垫顶 '+垫.y+' > 门线 '+门线+'）⇒ 「地垫在门内侧」这条判据不是恒绿');
+  }
+}
+
+// ═══ 第 87 单·回礼（收了人家的东西，隔几天回一份）══════════════════════════════
+/* 被验的是生产源码与真值：
+     ① 结构：`GIFT` 表里有回礼三件（`back:6`／`backMin`／`backMax`）；收到礼时在**收礼人**身上记 `giftRecv`；
+        回礼分支排在**送新礼之前**（欠着的人情优先）；回完清 `giftRecv` 并把 `ag.lastGift` 换成回礼那句；
+        过期（≥ backMax）**作废**；回礼那句前缀'回了'归在既有 `gift` 类里（覆盖率闸照旧）；
+     ② 行为（构造）：隔满 `backMin`、同屋、对方空闲 ⇒ **恰两条日志**（送礼人'回了…'／收礼人'收下了…回的…'）、
+        花钱 **−6**、`giftRecv` 清空、`lastGift.spent===6`；差一天不回；不同屋不回（且 `giftRecv` 留着）；
+        隔过 `backMax` ⇒ 作废且不回；
+     ③ 反向自查：把 `backMin` 抬到不可能（1e9）⇒ 同一构造下不回 ⇒ 判据不是恒绿。 */
+{
+  const fs=require('fs'), path=require('path');
+  const src=fs.readFileSync(path.resolve(__dirname,'city-life-framework.html'),'utf8');
+  ok(/back:6/.test(src)&&/backMin:3\*1440/.test(src)&&/backMax:13\*1440/.test(src),
+     '第 87 单·结构：`GIFT` 表里有回礼三件（¥6／3 天起／13 天止）');
+  ok(/寿星\.giftRecv=\{\s*t:w\.t,\s*from:ag\.id,\s*fromName:ag\.name\s*\}/.test(src)
+     &&!/\bag\.giftRecv=\{/.test(src),
+     '第 87 单·结构：收到礼时把 `giftRecv` 记在**收礼人**（寿星）身上、不是送礼人身上（记的是送礼人与时间）');
+  ok(src.indexOf('第 87 单·先回礼')>0&&src.indexOf('第 87 单·先回礼')<src.indexOf('if(ag.giftYear!==年)'),
+     '第 87 单·结构：回礼分支排在**送新礼之前**（欠着的人情优先于送新礼）');
+  ok(/const 句='回了'\+GIFT\.thing\+'给'/.test(src),
+     '第 87 单·结构：回礼那句的日志前缀固定在「回了…」（`CLIP_LOGCAT` 按前缀归类，不靠整句）');
+  /* 台(记, mut)：`记` ＝ 这笔欠账是「多久之前」记下的（分钟；默认恰好 backMin ⇒ 该回）。
+     记的时间要用**改动前**的产量值算，否则「差一天」「过期」两个构造会被自己改写的那半截骗过去（本轮踩过）。 */
+  const 台=(记,mut)=>{
+    const w=Sim.makeWorld(20260803), a1=w.agents[0];
+    w.t=9*1440+20*60;                                  // 第 10 天 20:00（窗口内）
+    for(const a of w.agents){ a.anchor='home_table'; a.activity={type:'idle'}; a.busyUntil=0; }
+    const 原min=Sim.GIFT.backMin, 原max=Sim.GIFT.backMax;
+    if(mut) mut();
+    a1.giftRecv={ t:w.t-(记===undefined?原min:记), from:'a2', fromName:'沈小满' };
+    a1.money=500;
+    const 已=w.lidSeq;
+    Sim.decide(w,a1);
+    const 条=[]; for(const e of w.log){ if(e.lid<=已) continue; 条.push(e.name+'：'+e.text); }
+    Sim.GIFT.backMin=原min; Sim.GIFT.backMax=原max;
+    return {w,a1,条};
+  };
+  const 健=台();
+  ok(健.条.length===2&&健.条[0].indexOf('回了')>0&&健.条[1].indexOf('回的')>0
+     &&(500-健.a1.money)===6&&!健.a1.giftRecv&&健.a1.lastGift&&健.a1.lastGift.spent===6,
+     '第 87 单·行为：隔满 3 天、同屋 ⇒ 恰两条日志（'+健.条.join(' ／ ')+'）、花 ¥6、欠账清空、`lastGift` 换成回礼那句');
+  {
+    const 差一天=台(Sim.GIFT.backMin-1440);
+    ok(差一天.条.length===0&&差一天.a1.giftRecv,'第 87 单·行为：差一天不回（实测 '+差一天.条.length+' 条，欠账仍留着）');
+  }
+  {
+    const w2=Sim.makeWorld(20260803), a1=w2.agents[0], a2=w2.agents[1];
+    w2.t=9*1440+20*60;
+    for(const a of w2.agents){ a.anchor='home_table'; a.activity={type:'idle'}; a.busyUntil=0; }
+    a2.anchor='market';                                     // 对方在广场 ≠ 同屋
+    a1.giftRecv={ t:w2.t-Sim.GIFT.backMin, from:'a2', fromName:'沈小满' };   // 恰满 backMin（用产量真值算）
+    const 已=w2.lidSeq; Sim.decide(w2,a1);
+    let n=0; for(const e of w2.log){ if(e.lid<=已) continue; n++; }
+    ok(n===0&&a1.giftRecv,'第 87 单·行为：不同屋不回（实测 '+n+' 条，欠账仍留着）——"当面"这条口径管得住');
+  }
+  {
+    const 过期=台(Sim.GIFT.backMax);                            // 隔=backMax ⇒ 走到"作废"那一支
+    ok(过期.条.length===0&&!过期.a1.giftRecv,
+       '第 87 单·行为：到 `backMax` 就作废（实测 '+过期.条.length+' 条、欠账已删）——不无限期惦记');
+  }
+  {
+    const 病=台(undefined,()=>{ Sim.GIFT.backMin=1e9; });
+    ok(病.条.length===0,'第 87 单·反向自查·拦得住：把 `backMin` 抬到不可能 ⇒ 同一构造下不回（'+病.条.length
+       +' 条）⇒ 「隔几天回一份」不是恒绿');
   }
 }
 
@@ -5346,7 +5416,7 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   ok(恒绿===0,'第 66 单·闸二：`ok` 第一参数写死 true 的**读数型假断言**为 0 条（实测 '+恒绿+'；读数一律走 `读数()`）');
   // 闸三 · 反向自查登记（防整条被删）
   const 登记=['第 48 单','第 49 单','第 51 单','第 52 单','第 53 单','第 54 单','第 56 单','第 57 单',
-              '第 58 单','第 59 单','第 62 单','第 63 单','第 64 单','第 65 单','第 67 单','第 70 单','第 71 单','第 72 单','第 73 单','第 74 单','第 75 单','第 76 单','第 77 单','第 79 单','第 80 单','第 81 单','第 84 单','第 85 单',
+              '第 58 单','第 59 单','第 62 单','第 63 单','第 64 单','第 65 单','第 67 单','第 70 单','第 71 单','第 72 单','第 73 单','第 74 单','第 75 单','第 76 单','第 77 单','第 79 单','第 80 单','第 81 单','第 84 单','第 85 单','第 87 单',
               '闸四','闸五','闸十','闸十一','闸十二'];
   const 实有=[...new Set((自源.match(/(第 \d+ 单|闸[一二三四五六七八九十]+)·反向自查/g)||[])
                             .map(x=>x.replace('·反向自查','')))];

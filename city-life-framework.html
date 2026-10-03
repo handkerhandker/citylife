@@ -440,7 +440,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v81</span>
+<span class="num dim" id="set-build">v82</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -2058,7 +2058,10 @@ const BDAY={ cost:12, noticeDays:3, cake:'小块奶油蛋糕', open:15*60, close
      · **只在 15:00–21:00**、且**寿星与他正待在同一间屋**（同 `roomOf` 锚点）时才递出去（当面的东西才是东西）；
      · 每位送礼人**一年至多一次**（`ag.giftYear` 记年号，照 `bdayYear` 先例）；花自己的钱 **−¥8**；
      · 两条日志（送的人一条、收的人一条）＋ 剪辑层乙级一项（摘原文引送的那句）。 */
-const GIFT={ cost:8, open:15*60, close:21*60, thing:'一小盒点心' };
+/* 第 87 单·回礼：收了人家的东西，隔几天回一份（礼数，也是"关系是双向的"那半边）。
+   口径：收到之后**第 3–13 天**、同样在 15:00–21:00、**当面**（同屋）才回；回礼比原礼轻一点（−¥6）；
+   一次一份（收到时记 `ag.giftRecv`，回完即清）；**过了 13 天没回上就作废**（不无限期惦记）。 */
+const GIFT={ cost:8, back:6, open:15*60, close:21*60, thing:'一小盒点心', backMin:3*1440, backMax:13*1440 };
 /* 还有几天过生日——**按日号差算，不看时刻**（第 62 单那个"时刻开窗把当天切在外面"的坑）：
    0 ＝ 今天。这是本段唯一一处日期判据，晨报、行为、短信三处都调它。 */
 function bdayInDays(w, ag){
@@ -2310,6 +2313,24 @@ function decide(w, ag){
      放在夜市之前：一年一次 > 每周一次（与第 62／63／64 单同一条取舍）。只占空闲那一档。 */
   if(mod>=GIFT.open && mod<GIFT.close){
     const 年=PURE.dayOf(w.t)-((PURE.dayOf(w.t)-1)%FESTIVAL.yearDays);
+    /* 第 87 单·先回礼（欠着的人情优先于送新礼）：距收下 3–13 天、同屋、对方空闲 ⇒ 当面回一份 */
+    if(ag.giftRecv && typeof ag.giftRecv==='object' && isFinite(ag.giftRecv.t)){
+      const 隔=w.t-ag.giftRecv.t;
+      if(隔>=GIFT.backMax){ delete ag.giftRecv; }                       // 过了窗口作废，不无限期惦记
+      else if(隔>=GIFT.backMin){
+        const 收=w.agents.find(o=>o.id===ag.giftRecv.from);
+        if(收 && 收!==ag && roomOf(收.anchor)===roomOf(ag.anchor)
+           && (收.activity.type==='idle'||收.activity.type==='stroll')){
+          const 欠=ag.giftRecv; delete ag.giftRecv;
+          ag.money-=GIFT.back;
+          const 句='回了'+GIFT.thing+'给'+欠.fromName;
+          ag.lastGift={ t:w.t, to:欠.from, toName:欠.fromName, spent:GIFT.back, tx:句+'（¥'+GIFT.back+'）' };
+          logAct(w,ag,句,'上次人家带了东西来，总得还一份。');
+          logAct(w,收,'收下了'+ag.name+'回的'+GIFT.thing,'（这人客气。）');
+          return;
+        }
+      }
+    }
     if(ag.giftYear!==年){
       const 寿星=w.agents.find(o=>o!==ag && inBirthday(w,o)
         && roomOf(o.anchor)===roomOf(ag.anchor)
@@ -2324,6 +2345,8 @@ function decide(w, ag){
           tx:句+'（¥'+GIFT.cost+'）' };
         logAct(w,ag,句,'生日快乐，就不多说了。');
         logAct(w,寿星,'收下了'+ag.name+'带来的'+GIFT.thing,'（放在桌上，看着挺高兴。）');
+        /* 第 87 单：把"欠着的人情"记在收礼人身上（一天里收到多份只记最后一份——见交付件接受项） */
+        if(寿星) 寿星.giftRecv={ t:w.t, from:ag.id, fromName:ag.name };
         return;
       }
     }
@@ -2452,6 +2475,7 @@ const CLIP_LOGCAT=[
   ['talk',  ['在夜谈角坐下，听人说话']],
   ['miss',  ['翻到上次的短信']],   // 第 74 单·惦记（个人日志，不是世界级播报；列在这里只为归类覆盖率）
   ['gift',  ['带了', '收下了']],    // 第 81 单·生日礼物（两句都取**固定前缀**；列在这里既管覆盖率也管摘原文）
+  ['gift',  ['回了']],              // 第 87 单·回礼那句也归这一类（前缀固定；不改上面的表是怕动到既有断言）
   ['sleep', ['回卧室睡觉']],
   ['money', ['交了房租']],
   // 第 52／53 单：目标事件（定下／做到／没做成／**前提破裂**）与周记忆——只归类，不单独出卡。
