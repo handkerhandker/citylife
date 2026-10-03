@@ -428,7 +428,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v70</span>
+<span class="num dim" id="set-build">v71</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -878,7 +878,7 @@ const CHAT_FB_REPLY={
     /* 第 65 单：过生日的是他时，别人怎么接他的话（照第 48 单"按开口类别取组"那套，新开 `bday` 一类） */
     bday:['谢了。蛋糕晚上买，你那份我记着。', '收到。今天不想加班，就这一句。', '谢了。这一岁接着混。', '生日就生日。蛋糕留到晚上，白天照常。'],
     /* 第 72 单·夜谈话题的接话：**刻意写得接得住任何题面**（不点具体物件，照第 18 单话题粒度口径） */
-    talk:['没细想过。你这么一提，我倒有点想法。', '这事想起来挺绕。先说吃住，再说别的。', '行，那就聊这个。反正坐着也是坐着。'],
+    talk:['没细想过。你这么一提，我倒有点想法。', '这事想起来挺绕。先说吃住，再说别的。', '行，那就聊这个。反正坐着也是坐着。', '你起这个头，我就顺着说两句。'],
     self:['我也差不多。习惯改不了，先这样。', '我懂。人各有各的毛病，我也有。', '我这种人，一忙起来就不爱说话。',
           '我这人一到晚上反而精神，白天总差点意思。'],
   },
@@ -891,7 +891,7 @@ const CHAT_FB_REPLY={
     view:['你说得对，我听着也是这个理。', '这话我信。省一点是一点嘛。', '你这么一说，我心里也亮堂了点。',
           '有道理，我听你的。'],
     bday:['谢谢你！今天我早点收工，给自己买块蛋糕！', '谢谢！你这一句比红包还甜。', '谢谢你啦！晚上我请自己吃蛋糕，谁也别拦我。', '谢谢谢谢！我今天笑得有点多，你别介意。'],
-    talk:['这个我能说一晚上！', '我早就想说了——就是没人接话。', '这个我有例子，楼下那家我就见过。'],
+    talk:['这个我能说一晚上！', '我早就想说了——就是没人接话。', '这个我有例子，楼下那家我就见过。', '你别说，这事我昨儿还想着呢。'],
     self:['我也差不多，见着人就想多说两句。', '我懂我懂，我这毛病也不小。', '我也是这脾气，见不得冷场。'],
   },
   // 陆知秋（交易员）——精算、话少、直
@@ -904,7 +904,7 @@ const CHAT_FB_REPLY={
           '账怎么算都不轻松，先这么过着。'],
     view:['有道理。我这边也是按这个算的。', '认同。省下来的那部分最稳。', '对。我的账也是这么记的。'],
     bday:['收到。谢谢，我会记着。', '谢谢。今天按计划走，晚上加一项：蛋糕。', '谢了。年龄不改结论，只改日程。', '谢谢。今天这一页翻得比平时轻。'],
-    talk:['可以谈。但前提得先摆清楚。', '这个话题有意思。风险在哪儿，我说两句。', '我记着几条，一条一条说。'],
+    talk:['可以谈。但前提得先摆清楚。', '这个话题有意思。风险在哪儿，我说两句。', '我记着几条，一条一条说。', '这个我有账。等我说完你再看。'],
     self:['我也一样。话少归话少，心里有数。', '都这样。一天说多少话，自己心里有数。', '我这边也差不多。一天下来没几句话说。', '我也差不多。安静惯了，人也懒了。'],
   },
   // 白一鸣（自由撰稿）——文艺、自省、慢性子
@@ -918,7 +918,7 @@ const CHAT_FB_REPLY={
     view:['说得对。我也是这么想的，只是没说出来。', '这话有分量。我记下了。', '我认同。粗看是小事，细想挺要紧。',
           '你说得在理。我这边也差不多是这个看法。', '我想了想，还真是这么回事。'],
     bday:['谢谢你。这一句我要记下来，今天写得动。', '谢谢。蛋糕买了，就着黄昏吃正好。', '多谢。被人记着生日，是件稀罕事。', '谢谢。这种日子适合写点柔软的句子。'],
-    talk:['写下来的话，这事能写成一整篇。', '这题目好。我只怕说起来比写起来长。', '有意思。我先听听你们怎么说。'],
+    talk:['写下来的话，这事能写成一整篇。', '这题目好。我只怕说起来比写起来长。', '有意思。我先听听你们怎么说。', '你这一句，够我回去想两天。'],
     self:['我也差不多。人一闷久了，话都变少了。', '我懂。我这边也是一天不说几句话。', '我这人也是，常常一个人坐一下午。', '我懂。安静的毛病，一时半会儿改不了。'],
   },
 };
@@ -1795,10 +1795,10 @@ function talkTopicOnDay(day){
    句子里带 `{题}` 占位符，用当场换出来的题面填（同一晚、同一句模板 ⇒ 大家聊的就是同一件事）。
    接话照第 48 单那套走新开的 `talk` 组——那几句刻意写得**接得住任何题面**（"没细想过""我有例子"）。 */
 const TALK_OPEN={
-  work: ['{题}。这事你们怎么看？', '说说{题}吧，我先听。'],
-  clerk:['哎，{题}——这个我有话说！', '坐着也是坐着，聊聊{题}呗？'],
-  trade:['{题}。按我的看法，得先摆清楚两件事。', '{题}这事，我有个算法。'],
-  write:['{题}。这题目我喜欢。', '不如说说{题}——比干坐着强。'],
+  work: ['{题}。这事你们怎么看？', '说说{题}吧，我先听。', '{题}——我先说一句，说完你们接。'],
+  clerk:['哎，{题}——这个我有话说！', '坐着也是坐着，聊聊{题}呗？', '{题}！这事我可太有得说了。'],
+  trade:['{题}。按我的看法，得先摆清楚两件事。', '{题}这事，我有个算法。', '{题}——先摆事实，再说看法。'],
+  write:['{题}。这题目我喜欢。', '不如说说{题}——比干坐着强。', '{题}这句话，写下来能成一整段。'],
 };
 // 把模板里的 `{题}` 换成当场题面（唯一一处替换口径）
 function talkOpenLine(workKind, i, 题面){
@@ -2221,8 +2221,12 @@ function decide(w, ag){
        （"今晚坐了 N 个人"是人数；江灯节那边数的是"几盏灯"，本来就是人次，两处口径不同是有意的）。 */
     if(!w.talkWho || typeof w.talkWho!=='object') w.talkWho={};
     if(!w.talkWho[ag.id]){ w.talkWho[ag.id]=1; w.talkCount=(w.talkCount|0)+1; }
+    const 题面=talkTopicOf(w), 周号=Math.floor(w.t/(7*1440));
+    /* 第 73 单：把"去了一趟夜谈"落一个**事件锚**（每人每周至多一条），剪辑层据此上卡——
+       照第 57 单夜市 `mktWeek`／第 62 单江灯节 `festYear` 那一套（落点带原文，摘原文不必回头捞日志墙）。 */
+    if(ag.talkWeek!==周号){ ag.talkWeek=周号; ag.lastTalk={ t:w.t, topic:题面, tx:'在夜谈角坐下，听人说话（今晚聊：'+题面+'）' }; }
     setActivity(w,ag,'plaza_talk','stroll','夜谈',tempoDur(w,ag,60),pickV(w,STROLL_THOUGHTS,ag,'lq'),
-      '在夜谈角坐下，听人说话（今晚聊：'+talkTopicOf(w)+'）');
+      '在夜谈角坐下，听人说话（今晚聊：'+题面+'）');
     return;
   }
   const eveClear=(周末?WEEKEND_OUT.eveStroll:0.3)+goalKnob(ag,'out');   // 晴天那一档（原值 0.3／0.45 原样保留）
@@ -2297,6 +2301,7 @@ const CLIP_W={
   mkt_go:1.0,                                     // 第 57 单·去了一趟夜市（乙级弱信号：好玩，但不是"不像平常的自己"）
   fest_lamp:2.6,                                  // 第 62 单·江灯节放灯（甲级：一年一次，值得当天的卡）
   bday_cake:2.6,                                  // 第 64 单·生日蛋糕（甲级：一年一次的个人日，与江灯节同档——"值得当天的卡"）
+  talk_go:1.0,                                    // 第 73 单·去了一趟夜谈角（乙级弱信号，与夜市 `mkt_go` 同档）
   sit_bad:3.0, sit_first:1.5, sit_good:1.4, sit_flat:0.6, sit_none:1.0,
   money_broke:2.6, money_debt:0.8, money_swing:1.8, money_flatpay:2.4,
   social_mute:2.2, social_all:2.4, social_burst:1.2,
@@ -2304,14 +2309,18 @@ const CLIP_W={
   hunger_nomeal:2.6, hunger_peak:2.0, hunger_high:1.5, worn_out:2.2, worn_low:1.6,
   freq:0.2,
 };
-const CLIP_TIER={sit_flat:'b', sit_none:'b', money_debt:'b', freq:'c', mkt_go:'b'};   // 未列者一律甲级
+const CLIP_TIER={sit_flat:'b', sit_none:'b', money_debt:'b', freq:'c', mkt_go:'b', talk_go:'b'};   // 未列者一律甲级
 // 日志正文 → 类目。取的是 decide() 实际写出的字串（harness 有覆盖率断言：30 天里
 // 每条 act 条目都必须归到某一类，谁改了 logText 那条断言即红）。
 const CLIP_LOGCAT=[
   ['eat',   ['做了顿简餐','解决了一餐','买了份小吃']],
   ['work',  ['到岗开始工作','回到工位','工作中']],
   ['nap',   ['回卧室小憩']],
-  ['stroll',['出门散步','街市逛逛','周末出门逛逛','在夜谈角坐下，听人说话']],   // 第 46 单后半新增的一句（第 21 单那条覆盖率断言当场抓到了它）；第 70 单·夜谈
+  ['stroll',['出门散步','街市逛逛','周末出门逛逛']],   // 第 46 单后半新增的一句（第 21 单那条覆盖率断言当场抓到了它）
+  /* 第 73 单：夜谈那句从 `stroll` 挪出来单开一类——剪辑层要为它上卡（乙级 `talk_go`），
+     摘原文也就近取这一类（照第 57 单 `mkt`／第 62 单 `fest` 同一套）。**一条只归一类**，
+     故从 stroll 那张表里删掉（覆盖率闸只认第一个命中的类目）。 */
+  ['talk',  ['在夜谈角坐下，听人说话']],
   ['sleep', ['回卧室睡觉']],
   ['money', ['交了房租']],
   // 第 52／53 单：目标事件（定下／做到／没做成／**前提破裂**）与周记忆——只归类，不单独出卡。
@@ -2320,7 +2329,7 @@ const CLIP_LOGCAT=[
   ['fest',  ['在江边放了一盏灯']],   // 第 62 单·江灯节放灯（世界级播报另在 BACK_SUM 里登记）
   ['bday',  ['给自己买了块蛋糕']],   // 第 64 单·生日蛋糕（个人日志，不需要新桶；覆盖率闸照查）
 ];
-const CLIP_CATNAME={eat:'吃饭', work:'上班', nap:'小憩', stroll:'散步', sleep:'睡觉', chat:'闲聊', goal:'目标', fest:'放灯', bday:'生日'};
+const CLIP_CATNAME={eat:'吃饭', work:'上班', nap:'小憩', stroll:'散步', sleep:'睡觉', chat:'闲聊', goal:'目标', fest:'放灯', bday:'生日', talk:'夜谈'};
 // 丙级只数这几类。刻意不含 chat：闲聊次数已由甲级 social_burst 按同一个数出活，
 // 两级同时命中会在同一张卡上把同一句话印两遍（实测 D10 「闲聊 4 次，平常 2 次」印了两行）。
 // 也不含 idle：在家待着 logText 恒为 null、不上墙，本层「只数上了墙的事」故无从计数。
@@ -2328,7 +2337,8 @@ const CLIP_FREQ_CATS=['eat','work','nap','stroll'];
 const CLIP_QCAT={sit:'work', money:'money', social:'chat', sleep:'sleep', wake:'sleep', hunger:'eat', worn:'nap', freq:'', goal:'goal',
                  mkt:'eat',    // 第 57 单：夜市那条日志（「在夜市买了份小吃」）归在 eat 类 ⇒ 摘原文就引它
                  fest:'fest',  // 第 62 单：放灯那条日志归在 fest 类
-                 bday:'bday'}; // 第 64 单：生日蛋糕那条日志归在 bday 类
+                 bday:'bday',  // 第 64 单：生日蛋糕那条日志归在 bday 类
+                 talk_go:'talk'}; // 第 73 单：夜谈那条日志单开一类 ⇒ 摘原文就引它
 
 function clipDayOf(t){ return PURE.dayOf(t-CLIP_CUT); }     // 剪辑日：窗口＝[D 日 04:00, D+1 日 04:00)
 function clipT0(cd){ return (cd-1)*1440+CLIP_CUT; }
@@ -2452,6 +2462,12 @@ function clipSample(w,sh){
       r.bdayT=lb.t; r.bdaySpent=lb.spent|0;
       r.bdayTx0=(typeof lb.tx==='string')?lb.tx:'';
     }
+    // 第 73 单·夜谈：同上（`talkWeek` 已保证每人每周至多一条）
+    const lt=ag.lastTalk;
+    if(lt && typeof lt==='object' && isFinite(lt.t) && lt.t>=t0 && lt.t<t1 && r.talkT!==lt.t){
+      r.talkT=lt.t; r.talkTopic=(typeof lt.topic==='string')?lt.topic:'';
+      r.talkTx0=(typeof lt.tx==='string')?lt.tx:'';
+    }
   }
 }
 
@@ -2476,6 +2492,7 @@ function clipMake(w,sh,ent,ag,sum,base){
   if(r.mktT) push('mkt_go',{spent:r.mktSpent, tx:r.mktTx0},r.mktT);     // 第 57 单·去夜市（每人每周至多一条）
   if(r.festT) push('fest_lamp',{spent:r.festSpent, tx:r.festTx0},r.festT);   // 第 62 单·放灯（每人每年至多一条；落笔抄录）
   if(r.bdayT) push('bday_cake',{spent:r.bdaySpent, tx:r.bdayTx0},r.bdayT);   // 第 64 单·生日蛋糕（每人每年至多一条；落笔抄录）
+  if(r.talkT) push('talk_go',{topic:r.talkTopic, tx:r.talkTx0},r.talkT);     // 第 73 单·夜谈（每人每周至多一条；落笔抄录）
   // 甲/乙 · 处境（第 17 单 ag.sit 的预留去处：事件原文不喂 AI，本页是它唯一的现身处）
   if(r.sitK){
     const v={from:r.sitFrom||'那边', tx:r.sitTx};
@@ -2546,6 +2563,7 @@ function clipItemText(it){
     case 'mkt_go':     return '夜市 · 去了一趟：买了份小吃，花了 ¥'+(v.spent||0);
     case 'fest_lamp':  return '江灯节 · 放了一盏灯：花了 ¥'+(v.spent||0)+'（一年一次）';
     case 'bday_cake':  return '生日 · 给自己买了块蛋糕：花了 ¥'+(v.spent||0)+'（一年一次）';
+    case 'talk_go':    return '夜谈 · 去坐了一晚：聊「'+(v.topic||'')+'」';
     case 'sit_bad':   return '处境 · 逆：'+v.from+'那边——「'+v.tx+'」';
     case 'sit_good':  return '处境 · 顺：'+v.from+'那边——「'+v.tx+'」';
     case 'sit_flat':  return '处境 · 平：'+v.from+'那边——「'+v.tx+'」';

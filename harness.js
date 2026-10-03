@@ -3762,8 +3762,12 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
        +' ∈ 矩形 x['+R.x+','+(R.x+R.w)+') y['+R.y+','+(R.y+R.h)+')）——挪矩形忘挪锚点当场判红');
   }
   ok(/\{k:'talkDone'/.test(src),'第 70 单·结构：散场播报在回城弹窗取材表里有一桶（talkDone）');
-  ok(/\[.stroll.,\[[^\]]*在夜谈角坐下，听人说话[^\]]*\]\]/.test(src.replace(/\s+/g,'')),
-     '第 70 单·结构：夜谈那条日志归进 `stroll` 类（不然第 21 单那条归类覆盖率闸当场判红）');
+  /* 第 73 单改：这一条原先钉的是"归进 `stroll` 类"。第 73 单为剪辑层单开了 `talk` 类，
+     于是它假红——判据的**本意**是"那句话必须归到某一类"（不然第 21 单那条覆盖率闸会判红），
+     故改成"归在 `talk` 或 `stroll` 任一类里"，本意一字不松。 */
+  ok(/['"]talk['"],\s*\[['"]在夜谈角坐下，听人说话['"]\]/.test(src.replace(/\s+/g,' '))
+     ||/\[.stroll.,\[[^\]]*在夜谈角坐下，听人说话[^\]]*\]\]/.test(src.replace(/\s+/g,'')),
+     '第 70 单·结构：夜谈那条日志**归了类**（第 73 单起归在 `talk` 类——不然第 21 单那条覆盖率闸当场判红）');
   // 行为：周日 20:00 起跑两小时十分钟
   const 跑周日夜谈=()=>{
     const w=Sim.makeWorld(20260803);
@@ -3945,6 +3949,65 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
     ok(病.角上>0&&病.角上带题===0,
        '第 72 单·反向自查·拦得住：把 `{题}` 占位符去掉之后，角上 '+病.角上+' 场对话里带题面的塌到 '
        +病.角上带题+' 场 ⇒ 「每一场都带题面」不是恒绿');
+  }
+}
+
+// ═══ 第 73 单·夜谈收口（进剪辑层 ＋ 台词池扩容）════════════════════════════════
+/* 被验的是生产源码与真值：
+     ① 结构：`talk_go` 在权重表（乙级 1.0）、级别表（b）、摘原文类目（`talk`）、模板文案四处齐；
+        日志归类表里有 `talk` 类、且 `stroll` 那张表里**不再**含夜谈那句（一条只归一类）；
+     ② 行为：构造一个周日夜——去过夜谈角的人 `ag.lastTalk` 落点齐（题面 ＋ 原文）；
+        连跑两周 ⇒ 每人**每周至多一条**；当天剪辑卡里出现 `talk_go`，且**摘原文引的就是那条坐下的日志**；
+     ③ 反向自查：把 `TALK.p` 归零 ⇒ 没人去 ⇒ 卡片里一条 `talk_go` 都没有（判据不是恒绿）。 */
+{
+  const fs=require('fs'), path=require('path');
+  const src=fs.readFileSync(path.resolve(__dirname,'city-life-framework.html'),'utf8');
+  ok(/talk_go:1\.0/.test(src)&&/talk_go:'b'/.test(src)&&/talk_go:'talk'/.test(src)&&/case 'talk_go'/.test(src),
+     '第 73 单·结构：`talk_go` 四处齐（权重 1.0／乙级／摘原文类目 talk／模板文案）');
+  ok(/['"]talk['"],\s*\[['"]在夜谈角坐下，听人说话['"]\]/.test(src.replace(/\s+/g,' ')),
+     '第 73 单·结构：日志归类表新开 `talk` 类');
+  {
+    const 类=(src.match(/\[.stroll.,\[([^\]]*)\]\],/)||['',''])[1]||'';
+    ok(类.indexOf('在夜谈角坐下')<0,'第 73 单·结构：夜谈那句**已从 `stroll` 挪走**（一条只归一类：'+类.slice(0,40)+'）');
+  }
+  ok(/ag\.lastTalk=\{[^}]*topic[^}]*tx/.test(src)&&/ag\.talkWeek!==周号/.test(src),
+     '第 73 单·结构：坐下那一刻落 `ag.lastTalk`（带题面与原文），且按**周号**去重（每人每周至多一条）');
+  // 行为：构造一个周日夜
+  const 跑=(关p)=>{
+    const 原p=Sim.TALK.p; if(关p) Sim.TALK.p=0;
+    let 出=null;
+    try{
+      const w=Sim.makeWorld(20260803);
+      w.t=Sim.thisWeekTalkAt(w)-10;
+      for(let i=0;i<200;i++) Sim.step(w,10);
+      const 去过=w.agents.filter(a=>a.lastTalk&&isFinite(a.lastTalk.t));
+      const 项=(w.clips||[]).flatMap(c=>(c.items||[]).map(it=>({c,it}))).filter(x=>String(x.it.id).indexOf('talk')===0);
+      const 带引=(w.clips||[]).filter(c=>(c.items||[]).some(it=>String(it.id).indexOf('talk')===0))
+        .map(c=>({d:c.d,name:c.name,q:(c.q||[]).map(x=>x.text||'')}));
+      出={去过:去过.length, 落点:去过.map(a=>a.lastTalk), 项:项.map(x=>Sim.clipItemText(x.it)), 带引};
+    } finally { Sim.TALK.p=原p; }
+    return 出;
+  };
+  const 健=跑(false);
+  ok(健.去过>=2&&健.落点.every(x=>typeof x.tx==='string'&&x.tx.indexOf('在夜谈角坐下')===0&&typeof x.topic==='string'&&x.topic.length>0),
+     '第 73 单·行为：去过的 '+健.去过+' 个人都落好了 `lastTalk`（题面＋原文），例：'+JSON.stringify(健.落点[0]));
+  ok(健.项.length>=1&&健.带引.length>=1&&健.带引.some(x=>x.q.some(t=>t.indexOf('在夜谈角坐下')>=0)),
+     '第 73 单·行为：当天剪辑卡里出现夜谈项（'+JSON.stringify(健.项)+'），且**摘原文引的就是那条坐下的日志**');
+  // 每人每周至多一条：连跑两周
+  {
+    const w=Sim.makeWorld(20260803);
+    const 本=Sim.thisWeekTalkAt(w);
+    for(let k=0;k<2;k++){ w.t=本+k*7*1440-10; for(let i=0;i<200;i++) Sim.step(w,10); }
+    let 条=0;
+    for(const c of (w.clips||[])) 条+=(c.items||[]).filter(it=>String(it.id).indexOf('talk')===0).length;
+    ok(条<=4*(w.clips||[]).length && 条>=1,'第 73 单·每人每周至多一条：两周跑完卡片里共 '+条+' 条夜谈项（4 人 × 最多 2 周）');
+  }
+  // 反向自查：没人去 ⇒ 一条都没有
+  {
+    const 病=跑(true);
+    ok(病.去过===0&&病.项.length===0,
+       '第 73 单·反向自查·拦得住：把 `TALK.p` 归零（没人去夜谈）之后，`lastTalk` 落了 '+病.去过
+       +' 个人、卡片里 '+病.项.length+' 条夜谈项 ⇒ 上面两条判据不是恒绿');
   }
 }
 
@@ -4691,7 +4754,7 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   ok(恒绿===0,'第 66 单·闸二：`ok` 第一参数写死 true 的**读数型假断言**为 0 条（实测 '+恒绿+'；读数一律走 `读数()`）');
   // 闸三 · 反向自查登记（防整条被删）
   const 登记=['第 48 单','第 49 单','第 51 单','第 52 单','第 53 单','第 54 单','第 56 单','第 57 单',
-              '第 58 单','第 59 单','第 62 单','第 63 单','第 64 单','第 65 单','第 67 单','第 70 单','第 71 单','第 72 单',
+              '第 58 单','第 59 单','第 62 单','第 63 单','第 64 单','第 65 单','第 67 单','第 70 单','第 71 单','第 72 单','第 73 单',
               '闸四','闸五','闸十','闸十一','闸十二'];
   const 实有=[...new Set((自源.match(/(第 \d+ 单|闸[一二三四五六七八九十]+)·反向自查/g)||[])
                             .map(x=>x.replace('·反向自查','')))];
