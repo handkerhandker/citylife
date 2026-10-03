@@ -428,7 +428,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v65</span>
+<span class="num dim" id="set-build">v66</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -849,7 +849,9 @@ const CHAT_FB_OPEN={
 //   self   ＝在说自己（作息／话密／摸鱼）
 // 为什么把问句拆成 eat 与 busy 两类：这两类问句问的是**不同的事**，一句"我也差不多"接不住任何一类；
 // 而"地点类"合并成一类是因为它们的回应形状相同（去／不去／那地方怎么样）。
-const CHAT_KINDS=['eat','busy','invite','vent','view','self'];
+// 第 65 单追加第七类 `bday`（生日问候的接话组）；它的开口句另在 `CHAT_FB_OPEN_BDAY` 里，
+// 不占 `CHAT_OPEN_KIND` 那张"按人挂"的表——因为生日问候是**按日子**选的，不是按人挂的。
+const CHAT_KINDS=['eat','busy','invite','vent','view','self','bday'];
 const CHAT_OPEN_KIND={
   work: ['self','vent','view', 'eat','view','invite', 'vent','self','self','view'],
   clerk:['invite','busy','eat', 'invite','vent','self', 'self','vent','vent','invite'],
@@ -867,6 +869,8 @@ const CHAT_FB_REPLY={
     vent:['都不容易。钱这东西，越算越少。', '说出来也还是那样。先过着吧。', '抱怨归抱怨，明天照旧。'],
     view:['有道理。我这边也是这么想的。', '你这话我认。省下来的才是自己的。', '听着是这么个理。我就照这个来。',
           '我这边就是这样，慢一点也没什么。'],
+    /* 第 65 单：过生日的是他时，别人怎么接他的话（照第 48 单"按开口类别取组"那套，新开 `bday` 一类） */
+    bday:['谢了。蛋糕晚上买，你那份我记着。', '收到。今天不想加班，就这一句。', '谢了。这一岁接着混。'],
     self:['我也差不多。习惯改不了，先这样。', '我懂。人各有各的毛病，我也有。', '我这种人，一忙起来就不爱说话。',
           '我这人一到晚上反而精神，白天总差点意思。'],
   },
@@ -878,6 +882,7 @@ const CHAT_FB_REPLY={
     vent:['可不是嘛，我算来算去也是这个数。', '都一样。日子就是这么紧巴巴过来的。'],
     view:['你说得对，我听着也是这个理。', '这话我信。省一点是一点嘛。', '你这么一说，我心里也亮堂了点。',
           '有道理，我听你的。'],
+    bday:['谢谢你！今天我早点收工，给自己买块蛋糕！', '谢谢！你这一句比红包还甜。', '谢谢你啦！晚上我请自己吃蛋糕，谁也别拦我。'],
     self:['我也差不多，见着人就想多说两句。', '我懂我懂，我这毛病也不小。', '我也是这脾气，见不得冷场。'],
   },
   // 陆知秋（交易员）——精算、话少、直
@@ -889,6 +894,7 @@ const CHAT_FB_REPLY={
     vent:['是这么回事。这笔账谁算都一样。', '我这边也差不多。累是真累，账还得算。', '谁也不轻松。熬过去就是了。',
           '账怎么算都不轻松，先这么过着。'],
     view:['有道理。我这边也是按这个算的。', '认同。省下来的那部分最稳。', '对。我的账也是这么记的。'],
+    bday:['收到。谢谢，我会记着。', '谢谢。今天按计划走，晚上加一项：蛋糕。', '谢了。年龄不改结论，只改日程。'],
     self:['我也一样。话少归话少，心里有数。', '都这样。一天说多少话，自己心里有数。', '我这边也差不多。一天下来没几句话说。', '我也差不多。安静惯了，人也懒了。'],
   },
   // 白一鸣（自由撰稿）——文艺、自省、慢性子
@@ -901,15 +907,43 @@ const CHAT_FB_REPLY={
     vent:['是这么回事。稿债这东西，追着人跑。', '我懂。钱也好，心里那点事也好，都不经用。', '是这样。人一累，笔就沉。'],
     view:['说得对。我也是这么想的，只是没说出来。', '这话有分量。我记下了。', '我认同。粗看是小事，细想挺要紧。',
           '你说得在理。我这边也差不多是这个看法。', '我想了想，还真是这么回事。'],
+    bday:['谢谢你。这一句我要记下来，今天写得动。', '谢谢。蛋糕买了，就着黄昏吃正好。', '多谢。被人记着生日，是件稀罕事。'],
     self:['我也差不多。人一闷久了，话都变少了。', '我懂。我这边也是一天不说几句话。', '我这人也是，常常一个人坐一下午。', '我懂。安静的毛病，一时半会儿改不了。'],
   },
 };
+/*BDAYCHAT-START*/
+/* ---------- 第 65 单·住户互相祝贺生日（把"生日"接进闲聊那条线）----------
+   第 64 单给了每个人一个生日，但那天只有**他自己**与**玩家**两方知道——楼里的人一声不吭。
+   同类作品里恰恰相反：动森是"村民张罗"，星露谷是"生日当天全村的友情分量都不一样"
+   （出处见第 64 单交付件第二节：Nookipedia·Birthday「villagers celebrating」／
+   stardewvalleywiki·Friendship「friendship points are multiplied on their birthday (×8)」）。
+   本单让**同屋的人**在那天开口说一句——走的是既有闲聊那套：开口一句 ＋ 接话一句，各抽一次。
+
+   为什么单开一张**开口池**、而不是把这几句塞进 `CHAT_FB_OPEN`：
+   开口池是按 `workKind` 挂的、**每天都可能抽到**；生日问候只在**对方过生日那天**才该出现，
+   所以它必须按"日子"而不是按"人"来选。接话那一侧则照旧分组：新增类别 `bday`，
+   落在 `CHAT_FB_REPLY[workKind].bday`，由 `chatKindOf` 认出来 ⇒ 第 48 单那套「同类命中／零串门」照旧管得住。
+   每组 3 条：生日那天一个人最多与三位邻居各聊一场，3 条才能保证「同人同日同组零重复」（第 48 单那条闸）。 */
+const CHAT_FB_OPEN_BDAY={
+  // 顾云帆（程序员）：短句、冷幽默
+  work:['生日快乐。蛋糕分我一块就行。', '今天你最大。别的我不多说了。', '又长一岁。晚上别熬太狠。'],
+  // 沈小满（店员）：话密热络
+  clerk:['生日快乐！我今天特意给你留了个好的！', '生日快乐啦——你可得请我吃口蛋糕哈哈。', '生日快乐！我早上就想说了，一直没逮着你。'],
+  // 陆知秋（交易员）：克制精准近公文
+  trade:['生日快乐。日程我就不占了，晚上见。', '生日。祝顺利，其余照常。', '今天这句该说：生日快乐。'],
+  // 白一鸣（撰稿）：书面完整句、偶带文气
+  write:['生日快乐。日子过得比稿子快，这话今天格外真。', '生日快乐。愿你今天写的每一行都不用改。', '又到这一天了。生日快乐，蜡烛我替你记着。'],
+};
+/*BDAYCHAT-END*/
 // 开口句 → 类别（查表；查不到一律回落到 `view`——最泛用的一类，绝不抛错）。
 // 这张表与 `CHAT_FB_OPEN` **一一对应**，两边长度不等、或表里冒出 `CHAT_KINDS` 之外的值，门禁当场判红。
 function chatKindOf(workKind,said){
   const pool=CHAT_FB_OPEN[workKind], tab=CHAT_OPEN_KIND[workKind];
   const i=(pool&&tab)?pool.indexOf(said):-1;
   const k=i>=0?tab[i]:undefined;
+  /* 第 65 单：生日问候的开口句在**另一张池**里，认出来一律归 `bday` 类
+     （照旧：查不到一律回落到 `view`，绝不抛错）。 */
+  if(!(CHAT_KINDS.indexOf(k)>=0) && (CHAT_FB_OPEN_BDAY[workKind]||[]).indexOf(said)>=0) return 'bday';
   return CHAT_KINDS.indexOf(k)>=0?k:'view';
 }
 // 接话组（第 48 单）：按「开口类别」取该人对应的那一组；缺组回落 `view`；
@@ -919,6 +953,13 @@ function chatReplyGroup(workKind,kind){
   const 有=k=>Array.isArray(g[k])&&g[k].length>0;
   const k=有(kind)?kind:(有('view')?'view':(CHAT_KINDS.find(有)||null));
   return k?{key:'cr:'+workKind+':'+k, arr:g[k]}:{key:'cr:'+workKind+':open', arr:CHAT_FB_OPEN[workKind]||[]};
+}
+// 生日问候的接话组（第 65 单）：key 单开一个号段，其余与 `chatReplyGroup` 同形——
+// 抽样照样走 pickV（当日去重／池尽重置），故"同人同日同组零重复"那条判据一并管得住它。
+function 生日接话组(workKind){
+  const g=(CHAT_FB_REPLY[workKind]||{}).bday;
+  return (Array.isArray(g)&&g.length>0) ? {key:'cb2:'+workKind, arr:g}
+                                       : chatReplyGroup(workKind,'bday');
 }
 // —— 第 18 单·病症三：闲聊话题由代码派定（不再交给模型自选）——
 // 缘由（决策者实证，v28 线上）：七段闲聊全部围着冰箱转——酸奶／蛋炒饭／冰箱贴／速冻饺子／
@@ -1979,7 +2020,9 @@ function decide(w, ag){
     && (o.activity.type==='idle'||o.activity.type==='stroll')
     && (w.t-(ag.flags['cw_'+o.id]||-1e9))>90);
   // 第 52 单：目标旋钮（social）——只有"这周多认识几个人"那条目标会把它抬起来
-  if(mate && (ag.traits.includes('外向') || w.rng()<(0.35+goalKnob(ag,'social')))){
+  /* 第 65 单：**对方今天过生日**时这一闸放开——那句问候一定要说出口（不必再掷那 35%）。
+     一年只有四天会走到这一支，且只在"同屋且对方空闲"已经成立时才有这一步，不夺走任何别的东西。 */
+  if(mate && (inBirthday(w, mate) || ag.traits.includes('外向') || w.rng()<(0.35+goalKnob(ag,'social')))){
     // 第 27 单：开口的那句按开口人抽、接话的那句按接话人抽，两句各自带各自的语言指纹。
     // 抽法由 pick 换成 pickV（当日去重，全城一本账）——全站其余抽词点本来就都走 pickV，
     // 这一处是遗漏。key 照 `lw:'+ag.workKind` 先例并入 workKind；开口与接话是两个不同数组，
@@ -1988,8 +2031,13 @@ function decide(w, ag){
     // 第 48 单：接话**按开口句的类别取组**，不再要求"万能承接"——答得上由构造保证。
     // 每场的抽签次数与改前**一模一样**（仍是一次开口 + 一次接话，各消耗 1 次 rng），
     // 故 rng 流不动、世界行为不变，变的只是后一句从哪一组里抽、以及抽签的号段（键带类别后缀）。
-    const said=pickV(w,CHAT_FB_OPEN[ag.workKind],ag,'co:'+ag.workKind);
-    const grp=chatReplyGroup(mate.workKind,chatKindOf(ag.workKind,said));
+    /* 第 65 单：对方今天过生日 ⇒ 开口那一段换成**生日问候**（另一张池、另一个 key 号段），
+       接话照旧按类别取组——`chatKindOf` 会把问候认成 `bday` 类。抽签次数与改前**一模一样**
+       （仍是一次开口 ＋ 一次接话，各消耗 1 次 rng），变的是"从哪张池里抽"。 */
+    const 寿星=inBirthday(w, mate);   // 上面那个条件已经放行过它一次，这里只取同一个判据
+    const said = 寿星 ? pickV(w,CHAT_FB_OPEN_BDAY[ag.workKind],ag,'cb:'+ag.workKind)
+                      : pickV(w,CHAT_FB_OPEN[ag.workKind],ag,'co:'+ag.workKind);
+    const grp=寿星 ? 生日接话组(mate.workKind) : chatReplyGroup(mate.workKind,chatKindOf(ag.workKind,said));
     const back=pickV(w,grp.arr,mate,grp.key);
     ag.flags['cw_'+mate.id]=w.t; mate.flags['cw_'+ag.id]=w.t;
     ag.activity={type:'chat',label:'和'+mate.name+'聊天'}; ag.busyUntil=w.t+20;
@@ -2787,6 +2835,7 @@ const Sim={makeWorld, step, sendMessage, sendCustomMessage, decide, MSGS, ANCHOR
   catchUpPlan, catchUp, reflectFallback, clipTopDay,
   DIARY_FB, DIARY_FB_RECENT, CHAT_FB_OPEN, CHAT_FB_REPLY, pickV, pickFresh, diaryFallback,   // 第 27 单·兜底文案扩池
   CHAT_KINDS, CHAT_OPEN_KIND,   // 第 48 单·接话池分组（门禁按真值断言，不在闸里抄一份类别表）
+  CHAT_FB_OPEN_BDAY,   // 第 65 单·生日问候的开口池（门禁按真值断言，不另抄一份）
   CLIP_CUT, CLIP_KEEP, CLIP_QUOTE_MAX, CLIP_BASE_MIN, CLIP_COMMON_N, CLIP_COMMON_MUL, CLIP_FREQ_CAP,
   CLIP_BROKE, CLIP_STARVE, CLIP_DRAINED, CLIP_W, CLIP_TIER, CLIP_LOGCAT, CLIP_CATNAME, CLIP_FREQ_CATS,
   clipDayOf, clipT0, clipCat, clipTier, clipWeight, clipItemText};

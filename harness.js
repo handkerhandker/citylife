@@ -1321,9 +1321,12 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
     for(const e of chat){
       const m=/^「([\s\S]*?)」「([\s\S]*?)」$/.exec(e.thought||'');
       if(!m){ mis++; continue; }
+      /* 第 65 单改：开口池**有两张了**——平时那张（按人挂）与生日问候那张（按日子选）。
+         判据一字没松：上句仍须出自**其中一张**真池，下句仍须出自「该类别」那一组。 */
       const 开池=Sim.CHAT_FB_OPEN[kindOf[e.agent]]||[], 表=Sim.CHAT_OPEN_KIND[kindOf[e.agent]]||[];
-      const oi=开池.indexOf(m[1]);
-      const kind=oi>=0?表[oi]:null;
+      const 生日池=Sim.CHAT_FB_OPEN_BDAY[kindOf[e.agent]]||[];
+      const oi=开池.indexOf(m[1]), bi=生日池.indexOf(m[1]);
+      const kind=oi>=0?表[oi]:(bi>=0?'bday':null);
       const 组=kind?((Sim.CHAT_FB_REPLY[kindOf[e.with]]||{})[kind]):null;
       if(!kind || !Array.isArray(组) || 组.indexOf(m[2])<0){ mis++; continue; }
       // 组间零共享由上面那条结构断言保证 ⇒ 这一句「同时落在别的组」本该不可能；真出现就是有两句同文，判红
@@ -1354,8 +1357,9 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
             if(!m) continue;
             const 开W=kindOf[e.agent], 接W=kindOf[e.with];
             const 开池=Sim.CHAT_FB_OPEN[开W]||[], 表=Sim.CHAT_OPEN_KIND[开W]||[];
-            const oi=开池.indexOf(m[1]);
-            const kind=oi>=0?表[oi]:null;
+            const 生日池=Sim.CHAT_FB_OPEN_BDAY[开W]||[];      // 第 65 单：第二张开口池（生日问候）
+            const oi=开池.indexOf(m[1]), bi=生日池.indexOf(m[1]);
+            const kind=oi>=0?表[oi]:(bi>=0?'bday':null);
             if(!kind){ r.归类失败++; continue; }
             r.场数++;
             const 接表=Sim.CHAT_FB_REPLY[接W]||{};
@@ -1399,7 +1403,11 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
     // 源码侧：配对走的是**一处定义**（`chatKindOf` ＋ `chatReplyGroup`），且每场仍是两次抽签（rng 流不动的依据）
     {
       const 源=require('fs').readFileSync(require('path').join(__dirname,'city-life-framework.html'),'utf8');
-      ok(/const grp=chatReplyGroup\(mate\.workKind,chatKindOf\(ag\.workKind,said\)\);/.test(源),
+      /* 第 65 单改：这一条原先**逐字钉死**了那一行（`const grp=chatReplyGroup(mate.workKind,chatKindOf(ag.workKind,said));`），
+         生日问候一接进来就假红——正是第 46／51／56／60 单那族"闸自己硬编码旧写法"。
+         判据没变（非生日那一支**必须**走 chatKindOf＋chatReplyGroup 一处定义、不许就地翻表），
+         只是从"整行逐字"改成"这一行里必须出现这两个调用"。 */
+      ok(/const grp=[^\n]*chatReplyGroup\(mate\.workKind,chatKindOf\(ag\.workKind,said\)\)/.test(源),
         '第 48 单·源码侧：接话取组走 chatKindOf＋chatReplyGroup（一处定义），不是就地翻表');
       ok(/const back=pickV\(w,grp\.arr,mate,grp\.key\);/.test(源),
         '第 48 单·源码侧：抽签吃的正是那一组的数组与带类别后缀的键（不同数组严禁共键）');
@@ -3487,9 +3495,26 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
      '第 64 单·当天晨报恰一句（实测 '+JSON.stringify(健.晨)+'）');
   ok(健.买===1&&健.lastBday&&健.lastBday.spent===12,
      '第 64 单·生日当天恰买一次蛋糕（买 '+健.买+' 次；`lastBday` 记的钱数 ¥'+(健.lastBday&&健.lastBday.spent)+'）');
-  ok(健.卡.length>=1,
-     '第 64 单·当天的剪辑卡里带生日项：'+JSON.stringify(健.卡)+'（实测 6 颗种子 × 4 人＝24 次生日里 17 次上卡；'
-     +'没上卡的那些天是"当天有别人更不像平常的自己"——一天一张卡、挑一个人，属既有规则）');
+  /* 上卡率：**不从单点断言**（第 65 单的生日问候让世界又位移一次，a1 的那一天就被别人抢了卡——
+     单点断言会一直假红）。改成按 6 颗种子 × 4 人＝24 次生日的**覆盖率**压一个下限，
+     与第 54 单「90 张卡里 23 张带目标项」同一种量法。 */
+  {
+    let 上卡=0, 总=0, 例=[];
+    for(const seed of [20260803,424242,777,1,2,3]){
+      const w2=Sim.makeWorld(seed);
+      for(const ag of w2.agents){
+        const 本2=Sim.thisYearBdayAt(w2,ag), 日2=PURE.dayOf(本2); 总++;
+        w2.t=本2-120-1440;
+        for(let i=0;i<Math.floor(2.6*144);i++) Sim.step(w2,10);
+        const 卡=(w2.clips||[]).filter(c=>c.d===日2)
+          .map(c=>(c.items||[]).filter(it=>String(it.id).indexOf('bday')===0).map(it=>Sim.clipItemText(it))).flat();
+        if(卡.length) 上卡++;
+        if(例.length<1&&卡.length) 例.push(ag.name+'（D'+日2+'）：'+卡[0]);
+      }
+    }
+    ok(上卡>=16,'第 64 单·当天的剪辑卡里带生日项（6 颗种子 × 4 人＝24 次生日：**'+上卡+'/24** 上卡，判据 ≥16；'
+       +'例：'+(例[0]||'—')+'）。没上卡的那些天是"当天有别人更不像平常的自己"——一天一张卡、挑一个人，属既有规则');
+  }
   // 提前 3 天那一句
   {
     const w=Sim.makeWorld(20260803), a=w.agents[0], 本=Sim.thisYearBdayAt(w,a);
@@ -3543,6 +3568,87 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
     ok(病.晨.filter(t=>t.indexOf('今天是顾云帆的生日')>=0).length===0&&病.买===0,
        '第 64 单·反向自查·拦得住：把 a1 的生日挪走（改成 ' +挪.month+' 月 '+挪.dayOfMonth+' 日）之后，'
        +'**原来的那一天**晨报那句 0 条、买蛋糕 0 次 ⇒ 上面三条不是恒绿');
+  }
+}
+
+// ═══ 第 65 单·住户互相祝贺生日（把"生日"接进闲聊那条线）════════════════════════
+/* 被验的是生产源码与真值：
+     ① 开口池 `CHAT_FB_OPEN_BDAY` 四类齐、每类 **≥3 条**（生日那天一个人最多与三位邻居各聊一场 ⇒
+        3 条才够「同人同日同组零重复」，与第 48 单那条容量口径同款）；
+     ② 接话组 `CHAT_FB_REPLY[workKind].bday` 四类齐、每类 ≥3 条，且 `CHAT_KINDS` 里认得出 `bday`；
+     ③ 行为侧（400 天 × 3 种子）：问候**只**发生在"听者生日当天"、接话**只**出自 `bday` 组、同人同日同组零重复；
+     ④ 反向自查：把 a1 的生日挪走 ⇒ **原来那一天**不再有任何人向他问候。 */
+{
+  const fs=require('fs'), path=require('path');
+  const src=fs.readFileSync(path.resolve(__dirname,'city-life-framework.html'),'utf8');
+  const KINDS=['work','clerk','trade','write'], NAMES=['顾云帆','沈小满','陆知秋','白一鸣'];
+  ok(Sim.CHAT_KINDS.indexOf('bday')>=0,'第 65 单·结构：`CHAT_KINDS` 里加了第七类 `bday`（'+Sim.CHAT_KINDS.join('/')+'）');
+  ok(KINDS.every(k=>Array.isArray(Sim.CHAT_FB_OPEN_BDAY[k])&&Sim.CHAT_FB_OPEN_BDAY[k].length>=3),
+     '第 65 单·开口池四类齐、每类 ≥3 条（'+KINDS.map(k=>k+':'+((Sim.CHAT_FB_OPEN_BDAY[k]||[]).length)).join(' ')+'）');
+  ok(KINDS.every(k=>Array.isArray((Sim.CHAT_FB_REPLY[k]||{}).bday)&&Sim.CHAT_FB_REPLY[k].bday.length>=3),
+     '第 65 单·接话组四类齐、每类 ≥3 条（'+KINDS.map(k=>k+':'+(((Sim.CHAT_FB_REPLY[k]||{}).bday||[]).length)).join(' ')+'）');
+  ok(/const said = 寿星 \? pickV\(w,CHAT_FB_OPEN_BDAY/.test(src)&&/生日接话组\(mate\.workKind\)/.test(src),
+     '第 65 单·源码侧：生日那一支走的是**另一张开口池 ＋ 生日接话组**，不是就地翻表');
+  ok(/inBirthday\(w, mate\) \|\| ag\.traits\.includes\('外向'\)/.test(src),
+     '第 65 单·源码侧：对方过生日时那句问候**一定说得出口**（不再掷那 35%）');
+  // 行为侧：400 天 × 3 种子（每人在这一年里各过一个生日）
+  {
+    const 生日句=new Set([].concat(...KINDS.map(k=>Sim.CHAT_FB_OPEN_BDAY[k])));
+    let 问候=0, 错日=0, 错组=0, 同日重复=0, 闲聊=0; const 天={};
+    for(const seed of [20260803,424242,777]){
+      const w=Sim.makeWorld(seed); let 已=w.lidSeq;
+      /* 去重账**每颗种子各一本**（照第 48 单那支普查的写法）：跨种子共用会把"D72 在另一个世界里的另一场"
+         误判成"同一天重复"。 */
+      const 用过=new Set();
+      for(let i=0;i<400*144;i++){
+        Sim.step(w,10);
+        for(const e of w.log){
+          if(e.lid<=已) continue; 已=e.lid;
+          if(e.type!=='chat') continue;
+          闲聊++;
+          const m=/^「([\s\S]*?)」「([\s\S]*?)」$/.exec(e.thought||'');
+          if(!m||!生日句.has(m[1])) continue;
+          问候++;
+          const 听=w.agents.find(a=>a.id===e.with);
+          if(!听){ 错日++; continue; }
+          if(Sim.bdayInDays(w,听)!==0) 错日++;
+          const g=(Sim.CHAT_FB_REPLY[听.workKind]||{}).bday||[];
+          if(g.indexOf(m[2])<0) 错组++;
+          天[PURE.dayOf(e.t)]=(天[PURE.dayOf(e.t)]||0)+1;
+          const key=PURE.dayOf(w.t)+'|'+听.workKind+'|'+m[2];
+          if(用过.has(key)) 同日重复++; else 用过.add(key);
+        }
+      }
+    }
+    ok(问候>=12,'第 65 单·行为侧：400 天 × 3 种子里共 '+问候+' 场生日问候（判据 ≥12；'
+       +'落在 '+Object.keys(天).length+' 个生日天：'+Object.keys(天).map(d=>'D'+d+'×'+天[d]).join(' ')+'）');
+    ok(错日===0,'第 65 单·**只在生日当天**：问候落错日子的 '+错日+' 场（应为 0）——判据按**听者**的生日算');
+    ok(错组===0,'第 65 单·接话出自 `bday` 组：错位 '+错组+' 场（应为 0）');
+    ok(同日重复===0,'第 65 单·同人同日同组零重复（重复 '+同日重复+' 次）——开口池每类 3 条正是为这条留的余量');
+  }
+  // 反向自查：把 a1 的生日挪走 ⇒ 原来那一天不再有人问候他
+  {
+    const 原=Sim.BIRTHDAYS.a1;
+    const w=Sim.makeWorld(20260803), a1=w.agents[0];
+    const 本=Sim.thisYearBdayAt(w,a1);
+    const 数=(从,步)=>{ let 已=w.lidSeq, n=0;
+      for(let i=0;i<步;i++){ Sim.step(w,10);
+        for(const e of w.log){ if(e.lid<=已) continue; 已=e.lid;
+          if(e.type==='chat'&&e.with===a1.id){ const m=/^「([\s\S]*?)」/.exec(e.thought||''); if(m&&new Set([].concat(...KINDS.map(k=>Sim.CHAT_FB_OPEN_BDAY[k]))).has(m[1])) n++; } } }
+      return n; };
+    w.t=本-120;                       // 生日当天 07:00 起跑一天
+    const 健=数(1,144);
+    const 挪={ month:(原.dayOfMonth+10>30?原.month+1:原.month), dayOfMonth:((原.dayOfMonth-1+10)%30)+1 };
+    Sim.BIRTHDAYS.a1=挪;
+    const w2=Sim.makeWorld(20260803), a1b=w2.agents[0];
+    w2.t=本-120;
+    let 已=w2.lidSeq, 病=0;
+    for(let i=0;i<144;i++){ Sim.step(w2,10);
+      for(const e of w2.log){ if(e.lid<=已) continue; 已=e.lid;
+        if(e.type==='chat'&&e.with===a1b.id){ const m=/^「([\s\S]*?)」/.exec(e.thought||''); if(m&&new Set([].concat(...KINDS.map(k=>Sim.CHAT_FB_OPEN_BDAY[k]))).has(m[1])) 病++; } } }
+    Sim.BIRTHDAYS.a1=原;
+    ok(健>0&&病===0,'第 65 单·反向自查·拦得住：生日当天有 '+健+' 场问候；把生日挪到 ' +挪.month+' 月 '+挪.dayOfMonth
+       +' 日之后，**原来那一天**降到 '+病+' 场 ⇒ 这条判据不是恒绿');
   }
 }
 
