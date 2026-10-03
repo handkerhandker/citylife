@@ -98,6 +98,42 @@ const ok = (好, 话) => { console.log((好 ? ' ok : ' : ' FAIL: ') + 话); if (
   console.log('⑧ 同一条「记得吃饭」：生疏 → '+生+'；熟 → '+熟);
   ok(生===Sim.REACT.eat&&熟===Sim.REACT_NEAR.eat,'玩家篇收尾·兜底回应按档位：生疏走原表、熟走近版');
 }
+// ⑨ 第 121 单·玩家篇③期：生日回信也按档位（没有中转站时玩家看到的那张表）
+{
+  const 读=(v,当天,拆)=>{
+    const w=Sim.makeWorld(20260803), a=w.agents[0];
+    if(v>0) a.relYou={v,day:1};
+    if(当天) w.t=Sim.thisYearBdayAt(w,a)+60;
+    const 保=Sim.REACT_BDAY_NEAR.birthdayToday; if(拆) delete Sim.REACT_BDAY_NEAR.birthdayToday;
+    try{ w.credits=99; Sim.sendMessage(w,'a1','birthday');
+      for(let i=0;i<24;i++) Sim.step(w,10);
+      const e=[...w.log].reverse().find(x=>x.type==='player'&&x.sms==='read'&&x.agent==='a1');
+      return e?String(e.thought||''):''; }
+    finally{ if(拆) Sim.REACT_BDAY_NEAR.birthdayToday=保; }
+  };
+  const 生=读(0,true), 熟=读(20,true), 拆=读(20,true,true);
+  console.log('⑨ 生日当天「生日快乐」：生疏 → '+生+'；熟 → '+熟);
+  ok(生===Sim.REACT.birthdayToday&&熟===Sim.REACT_BDAY_NEAR.birthdayToday&&拆===Sim.REACT.birthdayToday,
+    '③期·生日回信按档位：生疏走原表、熟走近版、拆键回落原表');
+}
+// ⑩ 第 121 单·玩家篇③期：生日留言也按档位（21:00 那一句）
+{
+  const 留言=v=>{
+    const w=Sim.makeWorld(20260803), a=w.agents[0];
+    if(v>0) a.relYou={v,day:1};
+    w.t=Sim.thisYearBdayAt(w,a)+12*60-10;      // 生日当天 20:50
+    let 已=w.lidSeq, 出='';
+    for(let i=0;i<3;i++){ Sim.step(w,10);
+      for(const e of w.log){ if(e.lid<=已) continue; 已=e.lid;
+        if(e.type==='player'&&e.sms==='note'&&e.agent==='a1') 出=String(e.text); } }
+    return 出;
+  };
+  const 生=留言(0), 熟=留言(20);
+  const 在池=(文,池)=>池.some(s=>文.indexOf(s)>=0);
+  console.log('⑩ 生日留言：生疏 → '+生+'；熟 → '+熟);
+  ok(在池(生,Sim.NOTE_LINES.bday)&&在池(熟,Sim.NOTE_LINES_NEAR.bday)&&生!==熟,
+    '③期·生日留言按档位换池：生疏走原池、熟走近版');
+}
 console.log(红 ? ('✘ ' + 红 + ' 条判据不过')
-  : '✔ 玩家篇：①期（涨／落／下限／一天一次／默认不长表）＋②期（窗口按档位／那句一处定义）＋收尾（兜底回应按档位）——全绿');
+  : '✔ 玩家篇：①期（涨／落／下限／一天一次／默认不长表）＋②期（窗口按档位／那句一处定义）＋收尾（兜底回应按档位）＋③期（生日回信／生日留言按档位）——全绿');
 process.exit(红 ? 1 : 0);

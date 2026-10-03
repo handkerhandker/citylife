@@ -442,7 +442,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v107</span>
+<span class="num dim" id="set-build">v108</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -602,7 +602,7 @@ const REACT={
    缘由：第 117 单把"和这个号码的来往"写进了**角色卡**（AI 据此换语气）——可本机大多数时候没有中转站，
    玩家看到的其实是**这张写死的兜底表**。本单给它补上"熟"的那一版：
      · 门槛＝`REL_TIERS[2].lo`（「熟」，同一张档位表）；**缺键回落到原表**（构造上绝不落空）；
-     · 生日那两条专属暖话**与档位无关**，优先级照旧最高（第 64 单口径）；
+     · 生日那两条专属暖话当时**与档位无关**（第 64 单口径）——由**第 121 单**接管（`REACT_BDAY_NEAR`）；
      · 文案纪律与原表同一把尺（非空／两表之间零撞句／零语气词起手／无 ✨ 与英文——见第 119 单闸）。 */
 const REACT_NEAR={
   eat:  '（这个号码又来管饭了）行，我这就去。',
@@ -612,6 +612,28 @@ const REACT_NEAR={
   market:'（催我去逛夜市）行，今晚去转一圈。',
   custom:'（这个号码的话，我都听着）先记下了。',
 };
+/* ---------- 第 121 单·玩家篇③期：节日／生日也按档位（一年里最重的那两句，熟人回得更近）----------
+   缘由：第 119 单让**日常**回应按档位分了两版，但**生日那两条专属暖话**与**生日／灯节夜给你留的那句**
+   仍与关系无关——把一个人处熟之后，一年里最重的那两句反而和陌生人一样。本单补上"熟"的那一版：
+     · 生日回信 `REACT_BDAY_NEAR`（birthday／birthdayToday）——缺键回落 `REACT`（构造上绝不落空）；
+     · 留言 `NOTE_LINES_NEAR`（bday／fest 各两条）——`noteStep` 取句时按同一道门槛换池，
+       **取句序号照旧**（不新增抽签、不换日号口径）；
+     · 门槛＝`熟线()`：玩家篇「熟」档的**唯一一处定义**（第 119 单起用，本单提取出来，三处调用）。
+   出处（**本单复核 2026-10-03 HTTP 200**，逐字摘见交付件）：
+     · 星露谷 wiki·Friendship：「As friendships deepen, the villagers' dialogue lines become more friendly…」
+       ＋「The friendship points are multiplied on their birthday (×8)…」；
+     · Nookipedia·Friendship（动森）：「having a high friendship level with a villager changes the way
+       they interact with the player」。 */
+function 熟线(){ return (REL_TIERS[2]&&REL_TIERS[2].lo)||20; }
+const REACT_BDAY_NEAR={
+  birthday:      '（这条祝福先收着）行——到那天你再补一句。',
+  birthdayToday: '（盯着"生日快乐"看了两秒）……今天还真是。谢了，不用加"朋友"两个字也行。',
+};
+// 生日回信：熟以上走近版、缺键回落原表（构造上绝不落空；当天／非当天两条各走各的）
+function 生日回信(ag,当天){
+  const N=(relYouGet(ag)>=熟线()) ? REACT_BDAY_NEAR : null;
+  return (N&&(当天?N.birthdayToday:N.birthday)) || (当天?REACT.birthdayToday:REACT.birthday);
+}
 // —— 第 13 单挑剔：共用池扩写（配合 pickV 全城一本账）。容量口径：上墙池容量须 ≥ 全城单日抽取峰值（实测见该单 PR）；
 // IDLE 例外——其调用点 logText 恒为 null、独白不上墙，故允许池尽重置（真到峰值也无人看见）。
 const IDLE_THOUGHTS=['刷了会儿手机，什么也没刷进去。','给绿萝浇了点水。','盯着天花板想明天的事。','翻了两页没读完的书。','把桌面收拾了一下，心情好一点。','把手机倒扣在桌上，坚持了十分钟。','阳台上的衣服干了，收下来有太阳味。','翻到三年前的照片，愣了一会儿。','把椅子转了半圈，又转回来。','窗台积了点灰，用手指画了道线又擦掉。','水烧开了，忘了要泡什么。','袜子配对，永远多出一只。','楼上小孩在练琴，听出来是哪首了。','快递盒拆完叠好，莫名成就感。','充电线绕成一团，解了半天。','日历撕到今天，纸比想象的厚。'];
@@ -2001,6 +2023,15 @@ const MISS_NOTE={
   trade:['这周开支我记着，没超。','行情一般，我这边稳得住。'],
   write:['稿子交了。想跟你说一声。','写了一段自己满意的，留着给你看。'],
 };
+/* 第 121 单·玩家篇③期：留言也按档位（生日／灯节那两句）——`贴己池` 一处选定池；
+   取句序号照旧（池长都是 2，`序号%池.length` 不因换池而变）；门槛＝`熟线()`（同一张档位表）。 */
+const NOTE_LINES_NEAR={
+  bday:['今天生日。想了一圈，还是先给你留一句。','今天生日。别的照旧，就是想说给你听。'],
+  fest:['今晚去江边放了盏灯。灯亮起来的时候，想起你。','灯放出去了。今晚这句，就算写在灯上了。'],
+};
+function 贴己池(ag,k){
+  return (relYouGet(ag)>=熟线() && NOTE_LINES_NEAR[k]) ? NOTE_LINES_NEAR : NOTE_LINES;
+}
 function missNoteOf(ag, 周号){
   const arr=MISS_NOTE[ag&&ag.workKind]||[];
   if(!arr.length) return '';
@@ -2043,9 +2074,11 @@ function noteStep(w){
     /* 取句时把**人名**拌进去：同一天四个人不该说一字不差的一句（第一版只用日号，四个人全一样） */
     const 序号=d+((ag.id&&ag.id.charCodeAt(1))||0);
     if(inBirthday(w,ag)){
-      话=NOTE_LINES.bday[序号%NOTE_LINES.bday.length];
+      const 池=贴己池(ag,'bday');
+      话=池.bday[序号%池.bday.length];
     } else if(ag.lastFest && isFinite(ag.lastFest.t) && PURE.dayOf(ag.lastFest.t)===d){
-      话=NOTE_LINES.fest[序号%NOTE_LINES.fest.length];
+      const 池=贴己池(ag,'fest');
+      话=池.fest[序号%池.fest.length];
     } else if(ag.lastGoalOut && isFinite(ag.lastGoalOut.t) && PURE.dayOf(ag.lastGoalOut.t)===d
               && ag.lastGoalOut.k==='done' && typeof ag.lastGoalOut.label==='string'){
       话='这周想做的事做到了：'+ag.lastGoalOut.label+'。';
@@ -2539,9 +2572,9 @@ function decide(w, ag){
       /* 第 64 单：同一份心意，**生日当天的分量不一样**（星露谷"生日 ×8"那条口径的本作映射）——
          平时发「生日快乐」是一句普通回应，生日当天发就是专属暖话。 */
       /* 第 119 单：兜底那句也按档位——关系到「熟」以上（同一张档位表）走 `REACT_NEAR`，缺键回落原表；
-         生日那两条专属暖话与档位无关，优先级照旧最高。 */
-      thought:(m.id==='birthday' ? (inBirthday(w,ag)?REACT.birthdayToday:REACT.birthday)
-        : ((relYouGet(ag)>=((REL_TIERS[2]&&REL_TIERS[2].lo)||20)&&REACT_NEAR[m.id])?REACT_NEAR[m.id]
+         生日那两条由**第 121 单**接管（`REACT_BDAY_NEAR`，同样缺键回落），优先级照旧最高。 */
+      thought:(m.id==='birthday' ? 生日回信(ag,inBirthday(w,ag))
+        : ((relYouGet(ag)>=熟线()&&REACT_NEAR[m.id])?REACT_NEAR[m.id]
            :(REACT[m.id]||REACT.custom)))
         +(等他?'（等了两天，总算等到了。）':'')});
     if(m.id==='late') ag.flags.earlyWork=true;
@@ -3728,7 +3761,8 @@ function hydrate(str){
   return {world:w, meta:d.meta||null};
 }
 const Sim={makeWorld, step, sendMessage, sendCustomMessage, decide, MSGS, ANCHORS, ROOMS, TILE, MAPW, MAPH, STREET_Y, serialize, hydrate, SAVE_V, PEER_ROLE, PEER_EVENTS, SIT_TTL, currentSit, TOPIC_POOL, TOPIC_RECENT, pickTopic,
-  REACT, REACT_NEAR,   // 第 119 单·短信兜底回应两张表（门禁按真值读：按档位取、缺键回落）
+  REACT, REACT_NEAR, REACT_BDAY_NEAR,   // 第 119／121 单·短信兜底回应三张表（门禁按真值读：按档位取、缺键回落）
+  熟线, 生日回信,   // 第 121 单·玩家篇③期（门禁按真值读：门槛一处定义、生日回信一处定义）
   RHY_BASE, RHY_TRAIT, RHY_BED_MIN, RHY_BED_MAX, RHY_WAKE_MIN, RHY_WAKE_MAX, RHY_DUR_MIN, RHY_DUR_MAX,
   RHY_HUNGER_FLOOR, RHY_ENERGY_FLOOR, RHY_LUNCH_AFTER, rhyOf, rhyRest, rhyEatAt, rhyNapAt, rhyWakeAt,
   rhyBedClock, rhyDur, rhyPressed,
@@ -3744,7 +3778,7 @@ const Sim={makeWorld, step, sendMessage, sendCustomMessage, decide, MSGS, ANCHOR
   TALK_OPEN, talkOpenLine, talkTopicOnDay,   // 第 72 单·题面带着台词走（门禁按真值读：占位符一处替换）
   MISS, missStep,   // 第 74 单·惦记（门禁按真值读：周日 18:00、一周零来信才留一条）
   MISS_NOTE, missNoteOf,   // 第 76 单·居民的留言池（门禁按真值读：按周号取句、不摇 rng）
-  NOTE, NOTE_LINES, noteStep,   // 第 77 单·别的时候也开口（门禁按真值读：每天 21:00、一天一句）
+  NOTE, NOTE_LINES, NOTE_LINES_NEAR, 贴己池, noteStep,   // 第 77／121 单·别的时候也开口（门禁按真值读：每天 21:00、一天一句；③期按档位换池）
   BIRTHDAYS, BDAY, bdayInDays, thisYearBdayAt, bdayAt, inBirthday,   // 第 64 单·住户生日（门禁按真值读同一份日历）
   GIFT,   // 第 81 单·生日礼物（门禁按真值读：窗口与价钱一处定义）
   REL, REL_TIERS, relV, relTier, relTierName, relGet,   // 第 88 单·关系状态机 A 档（门禁按真值读：档位表一处定义）

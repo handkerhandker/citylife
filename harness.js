@@ -6564,15 +6564,17 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
      ② 文案纪律（第 27 单那条"兜底文案也得守规矩"的同一把尺，本单第一次把这两张表也管起来）：
         两表共 12 条——非空／零撞句／零语气词起手／无 ✨ 与英文；
      ③ 行为：同一条「记得吃饭」——生疏（0）说原表那句、熟（20）说近版那句；把近版某个键抹掉 ⇒ 回落原表；
-        生日当天的专属暖话与档位无关；
+        生日当天那句**生疏一路**仍是原表专属暖话（「熟」那一档由第 121 单的 `REACT_BDAY_NEAR` 接管）；
      ④ 反向自查：把门槛抬到不可能（`REL_TIERS[2].lo` 临时改 999）⇒ 熟的人也走原表 ⇒「熟人走近版」当场判红（跑完复原）。 */
 {
   const fs=require('fs'), path=require('path');
   const src=fs.readFileSync(path.resolve(__dirname,'city-life-framework.html'),'utf8');
   const N=Sim.REACT_NEAR, R=Sim.REACT;
   ok(/const REACT_NEAR=\{/.test(src)&&(src.match(/REACT_NEAR\[m\.id\]/g)||[]).length===2
-     &&/relYouGet\(ag\)>=\(\(REL_TIERS\[2\]&&REL_TIERS\[2\]\.lo\)\|\|20\)/.test(src),
-     '第 119 单·结构：`REACT_NEAR` 一处定义；读信那一支两处取它（条件＋取值）、门槛读同一张档位表的「熟」档');
+     &&/function 熟线\(\)\{[^}]*REL_TIERS\[2\][^}]*\.lo[^}]*\}/.test(src)
+     &&/relYouGet\(ag\)>=熟线\(\)/.test(src),
+     '第 119 单·结构：`REACT_NEAR` 一处定义；读信那一支两处取它（条件＋取值）、门槛读同一张档位表的「熟」档'
+     +'（`熟线()` 一处定义——第 121 单提取，语义未变）');
   ok(Object.keys(N).every(k=>Object.prototype.hasOwnProperty.call(R,k)&&k!=='birthday'&&k!=='birthdayToday')
      &&Object.keys(N).length>=6,
      '第 119 单·结构：近版键 ⊂ 原表键（生日那两条除外：由专属暖话接管），共 '+Object.keys(N).length+' 键');
@@ -6600,11 +6602,12 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
       return e?String(e.thought||''):'';
     } finally { if(拆键) N[msgId]=保; }
   };
-  const 生疏=读(0,'eat'), 熟=读(20,'eat'), 拆了=读(20,'eat',false,true), 生日句=读(20,'birthday',true);
+  const 生疏=读(0,'eat'), 熟=读(20,'eat'), 拆了=读(20,'eat',false,true), 生日生=读(0,'birthday',true);
   ok(生疏===R.eat&&熟===N.eat,
      '第 119 单·行为：同一条「记得吃饭」——生疏时说「'+生疏+'」；熟时说「'+熟+'」');
   ok(拆了===R.eat,'第 119 单·行为：把近版某个键抹掉 ⇒ 回落到原表那句（构造上绝不落空，实测「'+拆了+'」）');
-  ok(生日句===R.birthdayToday,'第 119 单·行为：生日当天那句专属暖话**与档位无关**（实测「'+生日句+'」）');
+  ok(生日生===R.birthdayToday,'第 119 单·行为：生疏的人，生日当天那句仍是原表专属暖话（实测「'+生日生
+     +'」）——「熟」那一档由第 121 单接管（照当时登记的口径，语义已交接）');
   {
     const 原=Sim.REL_TIERS[2].lo; let 病='';
     try{ Sim.REL_TIERS[2].lo=999; 病=读(20,'eat'); } finally { Sim.REL_TIERS[2].lo=原; }
@@ -6663,6 +6666,7 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
     ['STORE_PLAIN',平120],['SLACK_THOUGHTS',平120],['WORK_THOUGHTS',平120],
     ['RAIN_STROLL_THOUGHTS',平120],['RAIN_IDLE_THOUGHTS',平120],
     ['PEER_EVENTS', v=>Object.values(v).flat().map(e=>e&&e.text)],
+    ['REACT_BDAY_NEAR',平120],['NOTE_LINES_NEAR',平120],
     ['NOTE_LINES',平120],['MISS_NOTE',平120],['TALK_TOPICS',平120],['TOPIC_POOL',平120],['TALK_OPEN',平120],
     ['GOALS', v=>v.flatMap(g=>[g.label,g.why,g.done,g.miss].filter(x=>typeof x==='string'))],
     ['BDAY_CO', v=>Object.values(v.think||{})],
@@ -6704,6 +6708,89 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
     ok(坏3.撞.length===1,'第 120 单·反向自查·拦得住：把一条独白写成另一条的复读 ⇒ 撞句判红 '+坏3.撞.length+' 条');
     const 坏4=查池120(src120.replace('吹吹江风，把今天散掉一半。','   '),'STROLL_THOUGHTS',取者120('STROLL_THOUGHTS'));
     ok(坏4.空.length===1,'第 120 单·反向自查·拦得住：把一条独白掏成空白 ⇒ 空串判红 '+坏4.空.length+' 条');
+  }
+}
+
+// ═══ 第 121 单·节日／生日也按档位（玩家篇③期）═════════════════════════════════════
+/* 被验的是生产源码与真值：
+     ① 结构：`熟线()` 一处定义（读同一张 `REL_TIERS` 的「熟」档，三处调用）；读信那一支走
+        `生日回信(ag,当天)`（熟走近版、缺键回落 `REACT`）；`noteStep` 两处取句走同一个 `贴己池(ag,k)`；
+     ② 文案：两张新表与旧表零撞句（非空／语气／英文那几条由第 120 单池表管——新表已登记进去）；
+     ③ 行为：生日短信（当天／非当天）各测生疏与熟、拆键回落；生日当晚与灯节当晚的留言各按档位换池；
+     ④ 反向自查：把 `REL_TIERS[2].lo` 抬到 999 ⇒ 熟的人也走原表／原池 ⇒ 行为判据当场判红（跑完复原）。 */
+{
+  const fs121=require('fs'), path121=require('path');
+  const src121=fs121.readFileSync(path121.resolve(__dirname,'city-life-framework.html'),'utf8');
+  ok(/const REACT_BDAY_NEAR=\{/.test(src121)&&/const NOTE_LINES_NEAR=\{/.test(src121)
+     &&/function 熟线\(\)\{[^}]*REL_TIERS\[2\][^}]*\.lo[^}]*\}/.test(src121)
+     &&(src121.match(/relYouGet\(ag\)>=熟线\(\)/g)||[]).length>=3,
+     '第 121 单·结构：`熟线()` 一处定义（读 `REL_TIERS[2].lo`）；读信支＋两处取句都走它（实测 '
+     +(src121.match(/relYouGet\(ag\)>=熟线\(\)/g)||[]).length+' 处调用）');
+  ok((src121.match(/生日回信\(ag,inBirthday\(w,ag\)\)/g)||[]).length===1
+     &&/function 生日回信\(ag,当天\)\{[\s\S]*?REACT_BDAY_NEAR[\s\S]*?REACT\.birthdayToday[\s\S]*?\n\}/.test(src121),
+     '第 121 单·结构：`生日回信` 一处定义、读信那一支一处调用（熟走近版、缺键回落原表）');
+  ok((src121.match(/贴己池\(ag,'bday'\)/g)||[]).length===1&&(src121.match(/贴己池\(ag,'fest'\)/g)||[]).length===1
+     &&/function 贴己池\(ag,k\)\{[\s\S]*?NOTE_LINES_NEAR\[k\][\s\S]*?\n\}/.test(src121),
+     '第 121 单·结构：`贴己池` 一处定义、noteStep 两处调用（生日／灯节各一处）');
+  ok(['birthday','birthdayToday'].every(k=>typeof Sim.REACT_BDAY_NEAR[k]==='string'&&typeof Sim.REACT[k]==='string')
+     &&['bday','fest'].every(k=>Array.isArray(Sim.NOTE_LINES_NEAR[k])&&Sim.NOTE_LINES_NEAR[k].length===Sim.NOTE_LINES[k].length),
+     '第 121 单·结构：两张新表齐备且与旧表同形（生日 2 条；留言 bday／fest 各 '+Sim.NOTE_LINES_NEAR.bday.length+' 条）');
+  ok(Object.values(Sim.REACT_BDAY_NEAR).every(s=>Object.values(Sim.REACT).indexOf(s)<0)
+     &&['bday','fest'].every(k=>Sim.NOTE_LINES_NEAR[k].every(s=>Sim.NOTE_LINES[k].indexOf(s)<0)),
+     '第 121 单·文案：两表与旧表零撞句（照第 119 单先例）');
+  const 读信121=(v,当天,拆)=>{
+    const w=Sim.makeWorld(20260803), a=w.agents[0];
+    if(v>0) a.relYou={v,day:1};
+    if(当天) w.t=Sim.thisYearBdayAt(w,a)+60;
+    const 保=Sim.REACT_BDAY_NEAR.birthdayToday; if(拆) delete Sim.REACT_BDAY_NEAR.birthdayToday;
+    try{
+      w.credits=99; Sim.sendMessage(w,'a1','birthday');
+      for(let i=0;i<24;i++) Sim.step(w,10);
+      const e=[...w.log].reverse().find(x=>x.type==='player'&&x.sms==='read'&&x.agent==='a1');
+      return e?String(e.thought||''):'';
+    } finally { if(拆) Sim.REACT_BDAY_NEAR.birthdayToday=保; }
+  };
+  const 生T=读信121(0,true), 熟T=读信121(20,true), 拆T=读信121(20,true,true);
+  const 生B=读信121(0,false), 熟B=读信121(20,false);
+  ok(生T===Sim.REACT.birthdayToday&&熟T===Sim.REACT_BDAY_NEAR.birthdayToday&&拆T===Sim.REACT.birthdayToday,
+     '第 121 单·行为：生日当天「生日快乐」——生疏「'+生T+'」／熟「'+熟T+'」；拆键回落「'+拆T+'」');
+  ok(生B===Sim.REACT.birthday&&熟B===Sim.REACT_BDAY_NEAR.birthday,
+     '第 121 单·行为：非生日那天——生疏走原表、熟走近版（两条各走各的）');
+  const 采生日留言=(v)=>{
+    const w=Sim.makeWorld(20260803), a=w.agents[0];
+    if(v>0) a.relYou={v,day:1};
+    w.t=Sim.thisYearBdayAt(w,a)+12*60-10;            // 生日当天 20:50
+    let 已=w.lidSeq, 出=[];
+    for(let i=0;i<3;i++){ Sim.step(w,10);
+      for(const e of w.log){ if(e.lid<=已) continue; 已=e.lid;
+        if(e.type==='player'&&e.sms==='note'&&e.agent==='a1') 出.push(String(e.text)); } }
+    return 出[0]||'';
+  };
+  const 采灯节留言=(v)=>{
+    const w=Sim.makeWorld(20260803), a=w.agents[0];
+    if(v>0) a.relYou={v,day:1};
+    const 节=Sim.thisYearFestAt(w);                  // 当天 19:00
+    a.lastFest={t:节+60, spent:5, tx:'在江边放了一盏灯（¥5）'};
+    w.t=节+110;                                      // 当天 20:50
+    let 已=w.lidSeq, 出=[];
+    for(let i=0;i<3;i++){ Sim.step(w,10);
+      for(const e of w.log){ if(e.lid<=已) continue; 已=e.lid;
+        if(e.type==='player'&&e.sms==='note'&&e.agent==='a1') 出.push(String(e.text)); } }
+    return 出[0]||'';
+  };
+  const 在池=(文,池)=>池.some(s=>文.indexOf(s)>=0);
+  const 生留=采生日留言(0), 熟留=采生日留言(20), 节生=采灯节留言(0), 节熟=采灯节留言(20);
+  ok(在池(生留,Sim.NOTE_LINES.bday)&&在池(熟留,Sim.NOTE_LINES_NEAR.bday)&&生留!==熟留,
+     '第 121 单·行为：生日当晚的留言按档位换池（生疏「'+生留+'」／熟「'+熟留+'」）');
+  ok(在池(节生,Sim.NOTE_LINES.fest)&&在池(节熟,Sim.NOTE_LINES_NEAR.fest)&&节生!==节熟,
+     '第 121 单·行为：灯节当晚的留言按档位换池（生疏「'+节生+'」／熟「'+节熟+'」）');
+  {
+    const 原=Sim.REL_TIERS[2].lo; let 病信='', 病留='';
+    try{ Sim.REL_TIERS[2].lo=999; 病信=读信121(20,true); 病留=采生日留言(20); }
+    finally{ Sim.REL_TIERS[2].lo=原; }
+    ok(病信===Sim.REACT.birthdayToday&&在池(病留,Sim.NOTE_LINES.bday),
+       '第 121 单·反向自查·拦得住：把 熟线 抬到 999 ⇒ 熟的人也走原表／原池（实测信「'+病信
+       +'」、留言「'+病留+'」）⇒ 两条判据不是恒绿（已复原）');
   }
 }
 
@@ -7320,7 +7407,7 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   ok(恒绿===0,'第 66 单·闸二：`ok` 第一参数写死 true 的**读数型假断言**为 0 条（实测 '+恒绿+'；读数一律走 `读数()`）');
   // 闸三 · 反向自查登记（防整条被删）
   const 登记=['第 48 单','第 49 单','第 51 单','第 52 单','第 53 单','第 54 单','第 56 单','第 57 单',
-              '第 58 单','第 59 单','第 62 单','第 63 单','第 64 单','第 65 单','第 67 单','第 70 单','第 71 单','第 72 单','第 73 单','第 74 单','第 75 单','第 76 单','第 77 单','第 79 单','第 80 单','第 81 单','第 84 单','第 85 单','第 87 单','第 88 单','第 90 单','第 91 单','第 92 单','第 93 单','第 94 单','第 95 单','第 96 单','第 97 单','第 98 单','第 99 单','第 100 单','第 102 单','第 103 单','第 106 单','第 107 单','第 109 单','第 110 单','第 111 单','第 112 单','第 113 单','第 115 单','第 116 单','第 117 单','第 118 单','第 119 单','第 120 单',
+              '第 58 单','第 59 单','第 62 单','第 63 单','第 64 单','第 65 单','第 67 单','第 70 单','第 71 单','第 72 单','第 73 单','第 74 单','第 75 单','第 76 单','第 77 单','第 79 单','第 80 单','第 81 单','第 84 单','第 85 单','第 87 单','第 88 单','第 90 单','第 91 单','第 92 单','第 93 单','第 94 单','第 95 单','第 96 单','第 97 单','第 98 单','第 99 单','第 100 单','第 102 单','第 103 单','第 106 单','第 107 单','第 109 单','第 110 单','第 111 单','第 112 单','第 113 单','第 115 单','第 116 单','第 117 单','第 118 单','第 119 单','第 120 单','第 121 单',
               '闸四','闸五','闸十','闸十一','闸十二'];
   const 实有=[...new Set((自源.match(/(第 \d+ 单|闸[一二三四五六七八九十]+)·反向自查/g)||[])
                             .map(x=>x.replace('·反向自查','')))];
