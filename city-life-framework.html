@@ -428,7 +428,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v72</span>
+<span class="num dim" id="set-build">v73</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -3600,8 +3600,28 @@ function buildPhone(){
     +'<span class="dotc" style="background:'+ag.color+'"></span>'+esc(ag.name)+'</button>').join('');
   $('#ph-msgs').innerHTML=Sim.MSGS.map(m=>
     '<button class="btn" data-fx data-msg="'+m.id+'">'+esc(m.label)+'</button>').join('');
-  $('#ph-history').innerHTML='<li class="faint ph-empty">还没有往来。发一条试试——TA 看到后会在这里回你（同时写进日志）。TA 在忙或在睡时，要等有空才看手机。</li>';
+  $('#ph-history').innerHTML=phoneHistoryHTML(state.world, state.selected);
   Focus.refresh();
+}
+/* ---------- 第 75 单·把「往来记录」接上（它此前是个**死面板**）----------
+   病根：`#ph-history` 只在 `buildPhone()` 里塞了一句静态占位文案（"还没有往来。发一条试试——…"），
+   `renderPhone()` **从来没更新过它**——玩家发多少短信，那栏永远写着"还没有往来"。
+   面板上明写着"TA 的回音也在这里"，可它一次都没显示过回音（"画了却没人去"那族病的 UI 版）。
+   治法：把"这个人的往来"抽成一处取词（按人分栏、时间倒序、有上限），`renderPhone` 每帧照它刷。 */
+function phoneHistory(w, id, 上限){
+  const 条=[];
+  const n=isFinite(上限)?上限:8;
+  for(let i=w.log.length-1;i>=0 && 条.length<n;i--){
+    const e=w.log[i];
+    if(e && e.type==='player' && e.agent===id) 条.push(e);
+  }
+  return 条;
+}
+function phoneHistoryHTML(w, id){
+  const 条=phoneHistory(w, id, 8);
+  if(!条.length) return '<li class="faint ph-empty">还没有往来。发一条试试——TA 看到后会在这里回你（同时写进日志）。TA 在忙或在睡时，要等有空才看手机。</li>';
+  return 条.map(e=>'<li><span class="lt num">'+PURE.fmtStamp(e.t)+'</span>'+esc(e.text)
+    +(e.thought?' <span class="lth">— '+esc(e.thought)+'</span>':'')+'</li>').join('');
 }
 function renderPhone(){
   if(!$('#ph-agents').children.length) buildPhone();
@@ -3611,6 +3631,7 @@ function renderPhone(){
   $$('#ph-msgs [data-msg]').forEach(b=>{ b.disabled = w.credits<=0; });
   $('#ph-input').disabled = w.credits<=0;
   $('#ph-send').disabled = w.credits<=0;
+  $('#ph-history').innerHTML=phoneHistoryHTML(w, state.selected);   // 第 75 单：每帧照"这个人"的往来刷
   syncLLMStat();
 }
 function sendCustom(){

@@ -4065,6 +4065,49 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   }
 }
 
+// ═══ 第 75 单·把「往来记录」接上（它此前是个死面板）════════════════════════════
+/* 病根（本单开工时实测）：`#ph-history` 只在 `buildPhone()` 里塞了一句静态占位文案，
+   `renderPhone()` 从来没更新过它 ⇒ 玩家发多少短信，那栏永远写着"还没有往来"。
+   面板上明写着"TA 的回音也在这里"，可它一次都没显示过回音（"画了却没人去"那族病的 UI 版）。
+   被验的是：① 取词一处定义、两处接线；② 按人分栏（a1 的往来不会出现在 a2 名下）；
+   ③ 时间倒序、有上限；④ 反向自查：把"按人过滤"拿掉 ⇒ 分栏判据当场哑。 */
+{
+  const fs=require('fs'), path=require('path');
+  const src=fs.readFileSync(path.resolve(__dirname,'city-life-framework.html'),'utf8');
+  ok((src.match(/function phoneHistory\(/g)||[]).length===1
+     &&(src.match(/function phoneHistoryHTML\(/g)||[]).length===1,
+     '第 75 单·结构：`phoneHistory`／`phoneHistoryHTML` 各一处定义');
+  ok(/buildPhone\(\)[\s\S]{0,400}phoneHistoryHTML\(state\.world, state\.selected\)/.test(src)
+     &&/renderPhone\(\)\{[\s\S]{0,600}phoneHistoryHTML\(w, state\.selected\)/.test(src),
+     '第 75 单·结构：建页面与每次刷新**两处**都调同一处取词（不再有写死的占位文案）');
+  // 抽生产原文里的两个函数，在一个小台子上跑
+  const A=(src.match(/function phoneHistory\(w, id, 上限\)\{[\s\S]*?\n\}/)||[''])[0];
+  const B=(src.match(/function phoneHistoryHTML\(w, id\)\{[\s\S]*?\n\}/)||[''])[0];
+  ok(A.length>0&&B.length>0,'第 75 单·构造成立：两个函数都抽得到（'+A.length+' / '+B.length+' 字符）');
+  const 台=(a,b)=>new Function('PURE','esc','return (function(){'+a+'\n'+b+'\nreturn {phoneHistory,phoneHistoryHTML};})()')(PURE, s=>String(s));
+  const 健=台(A,B);
+  // 行为：给 a1 发一条，跑 12 拍
+  const w=Sim.makeWorld(20260803);
+  Sim.sendMessage(w,'a1','cheer');
+  for(let i=0;i<12;i++) Sim.step(w,10);
+  const 历=健.phoneHistory(w,'a1',8), 空=健.phoneHistory(w,'a2',8);
+  ok(历.length>=1&&历.some(e=>String(e.text||'').indexOf('读到了你的短信')>=0),
+     '第 75 单·行为：a1 名下有了往来（'+历.length+' 条：'+String(历[0]&&历[0].text)+'…）');
+  ok(空.length===0&&健.phoneHistoryHTML(w,'a2').indexOf('还没有往来')>=0,
+     '第 75 单·按人分栏：a2 名下是空的（'+空.length+' 条）⇒ 面板显示空态文案');
+  ok(健.phoneHistory(w,'a1',3).length<=3&&健.phoneHistoryHTML(w,'a1').indexOf('D1 ')>0,
+     '第 75 单·时间戳与上限：每条都带时间戳，且条数受上限约束（取 3 条 ⇒ 实测 '+健.phoneHistory(w,'a1',3).length+' 条）');
+  // 反向自查：把"按人过滤"拿掉（病态版）⇒ 分栏判据当场哑
+  {
+    const 病A=A.replace("e.type==='player' && e.agent===id","e.type==='player'");
+    ok(病A!==A,'第 75 单·反向自查构造成立：病态改写命中了生产原文（拿掉了按人过滤）');
+    const 病=台(病A,B);
+    ok(病.phoneHistory(w,'a2',8).length>0,
+       '第 75 单·反向自查·拦得住：拿掉按人过滤之后，a2 名下也会冒出 '+病.phoneHistory(w,'a2',8).length
+       +' 条（本该 0 条）⇒ 「按人分栏」这条判据不是恒绿');
+  }
+}
+
 // ═══ 第 33 单·天色昼夜（把「现在几点」画到画面上）═════════════════════════════
 /* 被验的是生产源码原文：SKYTINT-START…SKYTINT-END 整块抠出来，在一个只记账不作画的假 ctx 上跑
    （照第 31 单 iconLab、第 32 单 chipLab 先例）。四条闸：
@@ -4808,7 +4851,7 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   ok(恒绿===0,'第 66 单·闸二：`ok` 第一参数写死 true 的**读数型假断言**为 0 条（实测 '+恒绿+'；读数一律走 `读数()`）');
   // 闸三 · 反向自查登记（防整条被删）
   const 登记=['第 48 单','第 49 单','第 51 单','第 52 单','第 53 单','第 54 单','第 56 单','第 57 单',
-              '第 58 单','第 59 单','第 62 单','第 63 单','第 64 单','第 65 单','第 67 单','第 70 单','第 71 单','第 72 单','第 73 单','第 74 单',
+              '第 58 单','第 59 单','第 62 单','第 63 单','第 64 单','第 65 单','第 67 单','第 70 单','第 71 单','第 72 单','第 73 单','第 74 单','第 75 单',
               '闸四','闸五','闸十','闸十一','闸十二'];
   const 实有=[...new Set((自源.match(/(第 \d+ 单|闸[一二三四五六七八九十]+)·反向自查/g)||[])
                             .map(x=>x.replace('·反向自查','')))];
