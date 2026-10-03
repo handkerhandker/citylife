@@ -428,7 +428,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v56</span>
+<span class="num dim" id="set-build">v57</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -567,12 +567,14 @@ const MSGS=[
   {id:'late', label:'别迟到！'},
   {id:'cheer',label:'加油！'},
   {id:'sleep',label:'早点睡'},
+  {id:'market',label:'今晚去夜市'},   // 第 57 单：夜市那晚发这条 ⇒ 他当晚必去（一次用完即清）
 ];
 const REACT={
   eat:  '（看了眼短信）好好好，这就去解决一顿。',
   late: '收到！今天绝不迟到……闹钟先拨早半小时。',
   cheer:'嘿，被隔空打气了。行，再撑一会儿。',
   sleep:'（打了个哈欠）也是，今晚早点睡。',
+  market:'行，那我今晚去广场转一圈。',
   custom:'（看了看这条陌生短信，一时没说话。）',
 };
 // —— 第 13 单挑剔：共用池扩写（配合 pickV 全城一本账）。容量口径：上墙池容量须 ≥ 全城单日抽取峰值（实测见该单 PR）；
@@ -1551,7 +1553,10 @@ function goalKnob(ag,kind){
      · 当天 19:00：一条城市日志「夜市开张了，广场上支起了小吃摊。」
      · 时段内：空闲的人按 `p` 去逛，去了会**花钱买份小吃**（−¥8、垫肚子）——这条是它跟"傍晚散步"的区别：有经济后果。
      口径：只占用**空闲时间**那一档（社交之后、傍晚散步之前），上班／吃饭的钱／睡觉一概不碰。 */
-const NIGHT_MKT={ day:4, open:19*60, close:23*60, p:0.55, cost:8, noticeMin:2*1440 };
+/* 第 57 单·二期三个数：①雨天打对折（`pRain`——摊子有棚，但雨里逛的人本来就少）
+   ②玩家发「今晚去夜市」⇒ 那个人当晚**必去**（`flags.wantMkt`，一次用完即清）
+   ③每人每周至多一条"去夜市"的剪辑项（`mktWeek` 记周号，防周五那天四张卡全是夜市）。 */
+const NIGHT_MKT={ day:4, open:19*60, close:23*60, p:0.55, pRain:0.30, cost:8, noticeMin:2*1440 };
 // 本周五 19:00 的世界时间戳（本周五的这一刻已经过了 ⇒ 顺延到下周）
 function nightMktStartAt(w){
   const wd=PURE.weekday(w.t), mod=PURE.minuteOfDay(w.t);
@@ -1563,15 +1568,29 @@ function inNightMkt(w){
   const mod=PURE.minuteOfDay(w.t);
   return PURE.weekday(w.t)===NIGHT_MKT.day && mod>=NIGHT_MKT.open && mod<NIGHT_MKT.close;
 }
+/* 第 57 单：**本周**五 19:00（哪怕这一刻已经过了）——收摊播报要用它当锚。
+   不能用 `nightMktStartAt`：那一个在周五 19:00 之后会跳到**下周**，于是"23:00 到了"永远判不成立
+   （第一版就是栽在这：收摊播报 0 条，被本单自己的行为闸当场抓出来）。 */
+function thisWeekMktAt(w){
+  const mod=PURE.minuteOfDay(w.t);
+  return (w.t-mod+19*60)+((NIGHT_MKT.day-PURE.weekday(w.t)+7)%7)*1440;
+}
 // 城市级：预告与开张各一条（换周自动重置，旧档缺字段＝当作没预告过，绝不判坏档）
 function nightMktStep(w){
   const 开=nightMktStartAt(w);
-  if(w.nmNext!==开){ w.nmNext=开; w.nmNotice=0; }
+  if(w.nmNext!==开){ w.nmNext=开; w.nmNotice=0; w.nmCount=0; }   // 新的一周：预告与当晚到客数一起归零
   if(!w.nmNotice && 开>w.t && 开-w.t<=NIGHT_MKT.noticeMin){
     w.nmNotice=开;
     logSys(w,'这周五晚上 19:00 广场有夜市，摊子已经在搭了。（'+PURE.fmtStamp(开)+'）');   // 预告：什么时候、在哪
   }
-  if(inNightMkt(w) && w.nmOpen!==开){ w.nmOpen=开; logSys(w,'夜市开张了，广场上支起了小吃摊。'); }
+  if(inNightMkt(w) && w.nmOpen!==开){ w.nmOpen=开; w.nmCount=0; logSys(w,'夜市开张了，广场上支起了小吃摊。'); }
+  /* 第 57 单·收摊播报（23:00 整，一次）：把当晚到客数报出来——活动有"散了"这一下，才像过了一晚。
+     它和前面两条一样是世界级播报，故回城弹窗的 `BACK_SUM` 里必须有对应桶（那条闸会盯）。 */
+  const 本开=thisWeekMktAt(w), 闭=本开+NIGHT_MKT.close-NIGHT_MKT.open;
+  if(w.t>=闭 && w.nmClosed!==开){
+    w.nmClosed=开;
+    logSys(w,'夜市收了，今晚一共去了 '+(w.nmCount|0)+' 个人。');
+  }
 }
 /*NIGHTMKT-END*/
 function decide(w, ag){
@@ -1587,6 +1606,7 @@ function decide(w, ag){
     if(m.id==='late') ag.flags.earlyWork=true;
     if(m.id==='sleep') ag.flags.sleepEarly=true;
     if(m.id==='eat' && ag.hunger>40) ag.flags.wantEat=true;
+    if(m.id==='market') ag.flags.wantMkt=true;      // 第 57 单：夜市那晚发这条 ⇒ 他当晚必去（消费点那一支负责清）
     // 第 53 单：短信进"周记账"（周记忆压缩与目标生成的正式输入，影子机制）
     if(ag.week&&typeof ag.week==='object'){ ag.week.信=(ag.week.信|0)+1; ag.week.smsId=m.id; ag.week.smsLabel=m.label||''; }
     ag.busyUntil=w.t+10;
@@ -1751,9 +1771,16 @@ function decide(w, ag){
   // 第 52 单：目标旋钮（out）加在**晴天那一档**之上（雨天该压还是压；上班与吃饭一概不动）
   /* 第 56 单·周五夜市：夜市时段里，空闲的人多半去广场逛一趟——买份小吃（花钱、垫肚子），
      这是它跟"傍晚散步"的区别：有经济后果。上班／吃饭的钱／睡觉一概不碰；雨天照去（摊子有棚）。 */
-  if(inNightMkt(w) && w.rng()<NIGHT_MKT.p){
+  const 夜市率=w.weather.rain?NIGHT_MKT.pRain:NIGHT_MKT.p;          // 第 57 单：雨天打对折
+  if(inNightMkt(w) && (ag.flags.wantMkt || w.rng()<夜市率)){
+    delete ag.flags.wantMkt;                                        // 第 57 单：玩家发了「今晚去夜市」⇒ 这一趟必去
+    w.nmCount=(w.nmCount|0)+1;                                      // 第 57 单：当晚到客数（收摊时播报）
     ag.money-=NIGHT_MKT.cost;
     if(ag.hunger>12) ag.hunger=Math.max(10,ag.hunger-18);
+    /* 第 57 单：每人每周至多一条"去夜市"的剪辑项（否则周五那天四张卡全是夜市）；
+       落点照第 54 单那套事件通道记在 `ag.lastMkt` 上，剪辑层只在窗口内采一次。 */
+    const 周号=Math.floor(w.t/(7*1440));
+    if(ag.mktWeek!==周号){ ag.mktWeek=周号; ag.lastMkt={ t:w.t, spent:NIGHT_MKT.cost }; }
     setActivity(w,ag,'market','stroll','逛夜市',tempoDur(w,ag,40),pickV(w,MARKET_THOUGHTS,ag,'lm'),
       '在夜市买了份小吃（¥'+NIGHT_MKT.cost+'）');
     return;
@@ -1827,6 +1854,7 @@ const CLIP_NOISE={
 //   money_debt 归乙级：它是 money_broke 的附加项（「已经是负数了」），不单独成立。
 const CLIP_W={
   goal_done:2.6, goal_miss:2.8, goal_broke:2.4,   // 第 54 单·目标（一周一件的惦记事出了结果，甲级区间内）
+  mkt_go:1.0,                                     // 第 57 单·去了一趟夜市（乙级弱信号：好玩，但不是"不像平常的自己"）
   sit_bad:3.0, sit_first:1.5, sit_good:1.4, sit_flat:0.6, sit_none:1.0,
   money_broke:2.6, money_debt:0.8, money_swing:1.8, money_flatpay:2.4,
   social_mute:2.2, social_all:2.4, social_burst:1.2,
@@ -1834,7 +1862,7 @@ const CLIP_W={
   hunger_nomeal:2.6, hunger_peak:2.0, hunger_high:1.5, worn_out:2.2, worn_low:1.6,
   freq:0.2,
 };
-const CLIP_TIER={sit_flat:'b', sit_none:'b', money_debt:'b', freq:'c'};   // 未列者一律甲级
+const CLIP_TIER={sit_flat:'b', sit_none:'b', money_debt:'b', freq:'c', mkt_go:'b'};   // 未列者一律甲级
 // 日志正文 → 类目。取的是 decide() 实际写出的字串（harness 有覆盖率断言：30 天里
 // 每条 act 条目都必须归到某一类，谁改了 logText 那条断言即红）。
 const CLIP_LOGCAT=[
@@ -1853,7 +1881,8 @@ const CLIP_CATNAME={eat:'吃饭', work:'上班', nap:'小憩', stroll:'散步', 
 // 两级同时命中会在同一张卡上把同一句话印两遍（实测 D10 「闲聊 4 次，平常 2 次」印了两行）。
 // 也不含 idle：在家待着 logText 恒为 null、不上墙，本层「只数上了墙的事」故无从计数。
 const CLIP_FREQ_CATS=['eat','work','nap','stroll'];
-const CLIP_QCAT={sit:'work', money:'money', social:'chat', sleep:'sleep', wake:'sleep', hunger:'eat', worn:'nap', freq:'', goal:'goal'};
+const CLIP_QCAT={sit:'work', money:'money', social:'chat', sleep:'sleep', wake:'sleep', hunger:'eat', worn:'nap', freq:'', goal:'goal',
+                 mkt:'eat'};   // 第 57 单：夜市那条日志（「在夜市买了份小吃」）归在 eat 类 ⇒ 摘原文就引它
 
 function clipDayOf(t){ return PURE.dayOf(t-CLIP_CUT); }     // 剪辑日：窗口＝[D 日 04:00, D+1 日 04:00)
 function clipT0(cd){ return (cd-1)*1440+CLIP_CUT; }
@@ -1958,6 +1987,11 @@ function clipSample(w,sh){
       r.goalTx=(typeof lg.label==='string')?lg.label:'';
       r.goalT=lg.t;
     }
+    // 第 57 单·夜市：与目标同一套事件通道（`mktWeek` 已经保证每人每周至多一条）
+    const lm=ag.lastMkt;
+    if(lm && typeof lm==='object' && isFinite(lm.t) && lm.t>=t0 && lm.t<t1 && r.mktT!==lm.t){
+      r.mktT=lm.t; r.mktSpent=lm.spent|0;
+    }
   }
 }
 
@@ -1978,6 +2012,7 @@ function clipMake(w,sh,ent,ag,sum,base){
   // 甲 · 目标（第 54 单）：一周一件的惦记事出结果了——"做到了"是好事，"没做成／中途换了"是戏。
   // 走的是与处境同一套"事件型"通道：锚点＝结论落下的那一刻，摘原文那步会去引那三条日志本身。
   if(r.goalK) push('goal_'+r.goalK,{label:r.goalTx},r.goalT);
+  if(r.mktT) push('mkt_go',{spent:r.mktSpent},r.mktT);     // 第 57 单·去夜市（每人每周至多一条）
   // 甲/乙 · 处境（第 17 单 ag.sit 的预留去处：事件原文不喂 AI，本页是它唯一的现身处）
   if(r.sitK){
     const v={from:r.sitFrom||'那边', tx:r.sitTx};
@@ -2045,6 +2080,7 @@ function clipItemText(it){
     case 'goal_done':  return '目标 · 做到了：「'+v.label+'」';
     case 'goal_miss':  return '目标 · 没做成：「'+v.label+'」';
     case 'goal_broke': return '目标 · 中途换了：「'+v.label+'」眼下做不成';
+    case 'mkt_go':     return '夜市 · 去了一趟：买了份小吃，花了 ¥'+(v.spent||0);
     case 'sit_bad':   return '处境 · 逆：'+v.from+'那边——「'+v.tx+'」';
     case 'sit_good':  return '处境 · 顺：'+v.from+'那边——「'+v.tx+'」';
     case 'sit_flat':  return '处境 · 平：'+v.from+'那边——「'+v.tx+'」';
@@ -2416,7 +2452,7 @@ const Sim={makeWorld, step, sendMessage, sendCustomMessage, decide, MSGS, ANCHOR
   RAIN_RULES,   // 第 49 单·雨回流进行为（门禁按真值断言，不另抄一份概率）
   GOALS, GOAL_MAP, GOAL_TARGETS, GOAL_DAYS, goalOf, goalKnob, goalTagHit, goalAssign,   // 第 52 单·目标系统（门禁与诊断工具按真值读）
   GOAL_BREAK_TICKS, nextGoalAt, weekMemory, weekTick,   // 第 53 单·周打包／周记忆／前提破裂（门禁按真值读，不另抄一套日历）
-  NIGHT_MKT, nightMktStartAt, inNightMkt, nightMktStep,   // 第 56 单·周五夜市（门禁按真值读）
+  NIGHT_MKT, nightMktStartAt, thisWeekMktAt, inNightMkt, nightMktStep,   // 第 56／57 单·周五夜市（门禁按真值读）
   CATCHUP_MIN_PER_MIN, CATCHUP_MAX_DAYS, REFLECT_MIN, SMS_NOREPLY,
   catchUpPlan, catchUp, reflectFallback, clipTopDay,
   DIARY_FB, DIARY_FB_RECENT, CHAT_FB_OPEN, CHAT_FB_REPLY, pickV, pickFresh, diaryFallback,   // 第 27 单·兜底文案扩池
@@ -4771,6 +4807,7 @@ const BACK_SUM=[
   // 「未单列的一律带 agent」的闸当场判红（它正是为"加了第八种 logSys 忘了补桶"立的）。
   {k:'nmPlan', hit:(e,tx)=>e.type==='sys' && tx.indexOf('广场有夜市')>=0, line:n=>'城里预告过 '+n+' 回夜市。'},
   {k:'nmOpen', hit:(e,tx)=>e.type==='sys' && tx.indexOf('夜市开张了')>=0, line:n=>'夜市开了 '+n+' 回。'},
+  {k:'nmDone', hit:(e,tx)=>e.type==='sys' && tx.indexOf('夜市收了')>=0, line:n=>'夜市收过 '+n+' 回摊。'},
   {k:'market', hit:(e,tx)=>e.type==='act' && tx.indexOf('街市')>=0,     line:n=>'有 '+n+' 回去了周日街市。'},
   {k:'chat',   hit:(e,tx)=>e.type==='chat',                             line:n=>'住户之间搭话 '+n+' 次。'},
   {k:'diary',  hit:(e,tx)=>e.type==='diary',                            line:n=>'住户写下 '+n+' 篇睡前日记。'},

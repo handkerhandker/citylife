@@ -2855,8 +2855,12 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
      '第 56 单·表：周五（day=4）19:00–23:00、概率 >0（实测 day='+Sim.NIGHT_MKT.day+'／'
      +Math.floor(Sim.NIGHT_MKT.open/60)+':00–'+Math.floor(Sim.NIGHT_MKT.close/60)+':00／p='+Sim.NIGHT_MKT.p+'）');
   ok((NM_SRC.match(/function inNightMkt\(/g)||[]).length===1,'第 56 单·结构：`inNightMkt` 只有一处定义');
-  ok((NM_SRC.match(/logSys\(/g)||[]).length===2,'第 56 单·结构：预告与开张各一条城市日志（实测 '+(NM_SRC.match(/logSys\(/g)||[]).length+' 条）');
-  ok(/if\(inNightMkt\(w\) && w\.rng\(\)<NIGHT_MKT\.p\)/.test(src),'第 56 单·结构：只占用"空闲时间"那一档（一行判据，落在傍晚散步之前）');
+  // 第 57 单改：那条播报从 2 条变 3 条（收摊也报一次），故这里连着改口径——
+  // 「闸自己写死旧写法」这已经是第三次（第 46／51 单各一次），故判据只钉**条数与用途**，不钉字面。
+  ok((NM_SRC.match(/logSys\(/g)||[]).length>=2&&/广场有夜市/.test(NM_SRC)&&/夜市开张了/.test(NM_SRC),
+     '第 56 单·结构：预告与开张各一条城市日志（实测 '+(NM_SRC.match(/logSys\(/g)||[]).length+' 条，含第 57 单补的收摊播报）');
+  ok(/if\(inNightMkt\(w\) && \(ag\.flags\.wantMkt \|\| w\.rng\(\)<夜市率\)\)/.test(src),
+     '第 56／57 单·结构：只占用"空闲时间"那一档（判据仍落在 `inNightMkt` 那一行，落在傍晚散步之前）');
   // 行为侧：56 天 × 3 种子
   {
     const 种=[20260803,424242,777];
@@ -2893,6 +2897,95 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   {
     const bare=NM_SRC.replace(/\/\*[\s\S]*?\*\//g,'').replace(/(^|[^:'"])\/\/.*$/gm,'$1');
     ok(!/\.rng\s*\(|\bfetch\s*\(/.test(bare),'第 56 单·红线：夜市的城市级流程零 rng／零出网（掷骰只在 decide 里那一行）');
+  }
+}
+
+// ═══ 第 57 单·夜市二期（雨天打对折／玩家短信叫他去／收摊播报／夜市剪辑项）══════
+/* 被验的是生产源码与真值：三条播报各恰一条、雨天 A/B 真把人数压下去、短信真把人叫来、
+   夜市剪辑项每人每周至多一条；外加两条反向自查。 */
+{
+  const fs=require('fs'), path=require('path');
+  const src=fs.readFileSync(path.resolve(__dirname,'city-life-framework.html'),'utf8');
+  const NM_SRC=(src.match(/\/\*NIGHTMKT-START\*\/[\s\S]*?\/\*NIGHTMKT-END\*\//)||[''])[0];
+  ok(Sim.NIGHT_MKT.pRain>0 && Sim.NIGHT_MKT.pRain<Sim.NIGHT_MKT.p,
+     '第 57 单·雨天打折：pRain='+Sim.NIGHT_MKT.pRain+' < p='+Sim.NIGHT_MKT.p+'（判据：细雨天人本来就少）');
+  ok((NM_SRC.match(/function thisWeekMktAt\(/g)||[]).length===1,
+     '第 57 单·结构：`thisWeekMktAt`（本周五 19:00，含"已过"）只有一处定义——收摊播报靠它，不能用会跳到下周的那个');
+  ok((NM_SRC.match(/logSys\(/g)||[]).length===3,'第 57 单·结构：预告／开张／收摊三条世界级播报（实测 '+(NM_SRC.match(/logSys\(/g)||[]).length+' 条）');
+  ok(/id:'market',label:'今晚去夜市'/.test(src),'第 57 单·结构：短信表多了一条「今晚去夜市」');
+  ok(/m\.id==='market'\) ag\.flags\.wantMkt=true/.test(src)&&/ag\.flags\.wantMkt \|\| w\.rng\(\)<夜市率\)/.test(src),
+     '第 57 单·结构：短信写标（`wantMkt`）与夜市那一支消费它，各一处');
+  ok(Sim.clipWeight('mkt_go')>=0.6&&Sim.clipWeight('mkt_go')<=1.0&&Sim.clipTier('mkt_go')==='b',
+     '第 57 单·剪辑：夜市项是**乙级弱信号**（权重 '+Sim.clipWeight('mkt_go')+'／tier '+Sim.clipTier('mkt_go')+'）——好玩，但不是"不像平常的自己"');
+  ok(/nmDone/.test(src),'第 57 单·结构：收摊播报在回城弹窗取材表里有桶（`nmDone`）');
+  // 行为 · 56 天 × 3 种子
+  {
+    const 种=[20260803,424242,777];
+    let 预告=0,开张=0,收摊=0,逛=0,空场=0;
+    const 夜市周=new Set();
+    for(const seed of 种){
+      const w=Sim.makeWorld(seed); let 已读=0;
+      for(let i=0;i<56*144;i++){
+        Sim.step(w,10);
+        for(const e of w.log){
+          if(e.lid<=已读) continue; 已读=e.lid;
+          const t=String(e.text||'');
+          if(t.indexOf('广场有夜市')>0) 预告++;
+          else if(t.indexOf('夜市开张了')===0) 开张++;
+          else if(t.indexOf('夜市收了')===0){ 收摊++; if(/去了 0 个人/.test(t)) 空场++; }
+          else if(t.indexOf('在夜市买了份小吃')===0) 逛++;
+        }
+      }
+      for(const c of (w.clips||[])){
+        const it=(c.items||[]).find(x=>String(x.id)==='mkt_go');
+        if(it&&c.name) 夜市周.add(c.name+'|'+Math.floor((c.d*1440)/10080));
+      }
+    }
+    const 夜=8*3;
+    ok(预告===夜&&开张===夜&&收摊===夜,
+       '第 57 单·三条播报各恰一条（预告 '+预告+'／开张 '+开张+'／收摊 '+收摊+'，各应 '+夜+'）');
+    ok(逛>=60&&空场===0,'第 57 单·夜市不空场：56 天里 '+逛+' 次到访，收摊播报里没有一次"去了 0 个人"');
+    ok(夜市周.size>=8,'第 57 单·夜市剪辑项：30 天窗口里出过 '+夜市周.size+' 张（按「人×周」去重 ⇒ 每人每周至多一条由构造保证）');
+  }
+  // 行为 · 雨天 A/B（构造：把整场夜市置于雨中，与同一批种子不淋雨那场比）
+  {
+    const 至周五=(w)=>{ let g=0; while(!(PURE.weekday(w.t)===Sim.NIGHT_MKT.day&&PURE.minuteOfDay(w.t)===Sim.NIGHT_MKT.open)&&g++<3000) Sim.step(w,10); return g<3000; };
+    const 一场=(seed,雨)=>{ const w=Sim.makeWorld(seed);
+      if(!至周五(w)) return -1;
+      if(雨){ w.weather.rain=true; w.weather.until=w.t+600; }
+      让路: for(let i=0;i<24;i++) Sim.step(w,10);            // 19:00–23:00 共 24 拍
+      return w.nmCount|0; };
+    let 雨人=0, 晴人=0;
+    for(const seed of [20260803,424242,777,7777,31337,99]){
+      const a=一场(seed,true), b=一场(seed,false);
+      if(a>=0&&b>=0){ 雨人+=a; 晴人+=b; }
+    }
+    ok(雨人<晴人*0.75,
+       '第 57 单·雨天 A/B：同一批种子下一场夜市，雨里到访 '+雨人+' 人 vs 不淋雨 '+晴人+' 人（判据 <0.75 倍，实测 '
+       +(晴人?((雨人/晴人).toFixed(2)):'—')+' 倍）——自然雨很少落在 19–23 点，故这条必须**构造**出来量');
+  }
+  // 行为 · 玩家短信：发「今晚去夜市」⇒ 那个人当晚必定到场
+  {
+    const w=Sim.makeWorld(20260803);
+    const ag=w.agents[1];
+    // 推到周五白天（夜市前），再把短信塞进他的收件箱
+    let g=0; while(!(PURE.weekday(w.t)===Sim.NIGHT_MKT.day&&PURE.minuteOfDay(w.t)===16*60)&&g++<3000) Sim.step(w,10);
+    ag.inbox.push({id:'market',label:'今晚去夜市'});
+    let 他去=0; let 已读=0;
+    for(let i=0;i<48;i++){ Sim.step(w,10);
+      for(const e of w.log){ if(e.lid<=已读) continue; 已读=e.lid;
+        if(e.agent===ag.id && String(e.text||'').indexOf('在夜市买了份小吃')===0) 他去++; } }
+    ok(他去>0,'第 57 单·**短信真把人叫来了**：发一条「今晚去夜市」⇒ 他当晚到场 '+他去+' 次');
+    ok(!ag.flags.wantMkt,'第 57 单·标是一次性的：到场后 `wantMkt` 已经清掉（不会整晚反复消费）');
+  }
+  // 反向自查（源码级）：把雨天打折与短信写标各自删掉 ⇒ 判据当场判红
+  {
+    const s1=src.replace(/const 夜市率=w\.weather\.rain\?NIGHT_MKT\.pRain:NIGHT_MKT\.p;/,'const 夜市率=NIGHT_MKT.p;');
+    ok(s1!==src&&!/weather\.rain\?NIGHT_MKT\.pRain/.test(s1),
+       '第 57 单·反向自查·拦得住：把"雨天打折"删掉 ⇒ 「pRain<p」那条判据当场判红');
+    const s2=src.replace(/if\(m\.id==='market'\) ag\.flags\.wantMkt=true;/,'');
+    ok(s2!==src&&!/flags\.wantMkt=true/.test(s2),
+       '第 57 单·反向自查·拦得住：把短信写标删掉 ⇒ 「短信真把人叫来」那条判据当场判红');
   }
 }
 
