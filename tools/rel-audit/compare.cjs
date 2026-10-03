@@ -26,6 +26,9 @@ for (const a of process.argv.slice(2)) {
 const 天 = Math.max(1, parseInt(参数['天'] || '400', 10) || 400);
 const 种子表 = String(参数['种子'] || '20260803,424242,777').split(',').map(s => parseInt(s, 10)).filter(isFinite);
 const 上一版 = 参数['before'] || '34c9871';        // 第 87 单那一版（v82）：关系状态机落地**之前**的最后一版
+/* 第 104 单加：`--忽略=锚点` —— 把"锚点"这一项**从迹里摘掉**再比。
+   用途：像"店员去货架理货"这种**只换站位、不该换日子**的改动，正需要证明"除了站的地方，别的逐拍全同"。 */
+const 忽略 = String(参数['忽略'] || '').split(',').map(s => s.trim()).filter(Boolean);
 const 今天 = new Date().toISOString().slice(0, 10);
 const 临时根 = 参数['临时'] || (fs.existsSync('F:\\临时') ? path.join('F:\\临时', 今天) : os.tmpdir());
 const 临时 = path.join(临时根, 'rel-audit');
@@ -61,7 +64,8 @@ console.log('口径：' + 天 + ' 天 × ' + 种子表.length + ' 种子（' + �
 console.log('临时目录：' + 临时);
 
 function 一拍一行(a, w) {
-  return a.activity.type + '|' + a.anchor + '|' + a.money + '|' + a.hunger + '|' + a.energy + '|' + a.busyUntil;
+  const 六 = { 活动: a.activity.type, 锚点: a.anchor, 钱: a.money, 饥饿: a.hunger, 体力: a.energy, 忙到: a.busyUntil };
+  return Object.keys(六).filter(k => 忽略.indexOf(k) < 0).map(k => 六[k]).join('|');
 }
 let 红 = 0;
 const 汇总 = [];
