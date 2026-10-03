@@ -4798,30 +4798,64 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   ok(!/Math\.random|localStorage|state\.world\s*=/.test(净) && /ctx\.clip\(\)/.test(净),
      '第 143 单·结构：零 rng／零 localStorage／零世界写入，且逐笔 clip 在房间矩形内');
   const 表文本=(段.match(/const ROOM_FURN=\{[\s\S]*?\n\};/)||[''])[0];
-  ok(/store:\[/.test(表文本) && /office:\[/.test(表文本),
-     '第 143 单·结构：家具表覆盖 store 与 office 两间');
+  ok(/store:\[/.test(表文本) && /office:\[/.test(表文本) && /park:\[/.test(表文本),
+     '第 143／144 单·结构：家具表覆盖 store、office 与 park 三间');
   // 解析家具格（含 k:'...' 的行按 x/y/w/h 展格）
   const 家具格=[];
   {
     let 室=null;
     for (const ln of 表文本.split('\n')) {
-      const 室名=/^\s*(store|office):\[/.exec(ln); if (室名) { 室=室名[1]; continue; }
-      const m=/k:'(\w+)',\s*x:(-?\d+),y:(-?\d+),\s*w:(\d+),h:(\d+)/.exec(ln);
-      if (m && 室) for (let i=0;i<+m[4];i++) for (let j=0;j<+m[5];j++) 家具格.push({室, 格:(+m[2]+i)+','+(+m[3]+j)});
+      const 室名=/^\s*(store|office|park):\[/.exec(ln); if (室名) { 室=室名[1]; continue; }
+      const m=/k:'(\w+)',\s*x:(-?\d+),\s*y:(-?\d+),\s*w:(\d+),\s*h:(\d+)/.exec(ln);
+      if (m && 室) for (let i=0;i<+m[4];i++) for (let j=0;j<+m[5];j++) 家具格.push({室, k:m[1], 格:(+m[2]+i)+','+(+m[3]+j)});
     }
   }
   // 解析 PIX_SOLID 字面量
   const 实体=new Set((src143.match(/const PIX_SOLID=new Set\(\[([^\]]*)\]\);/)[1].match(/-?\d+,-?\d+/g)||[]));
-  ok(家具格.length>0 && 家具格.every(f=>实体.has(f.格)),
-     '第 143 单·两表对账：家具表 '+家具格.length+' 格**全部**登记在 PIX_SOLID 里（漏登记 0 格）');
+  const 参加占格=家具格.filter(f=>f.k!=='path'&&f.k!=='bench');   // 第 144 单：铺装/坐具豁免（另有第 144 单块专判）
+  ok(参加占格.length>0 && 参加占格.every(f=>实体.has(f.格)),
+     '第 143 单·两表对账：参加占格的 '+参加占格.length+' 格**全部**登记在 PIX_SOLID 里（漏登记 0 格）');
   const 房=Object.fromEntries(Sim.ROOMS.map(r=>[r.id,r]));
   ok(家具格.every(f=>{ const r=房[f.室]; if(!r) return false; const [x,y]=f.格.split(',').map(Number); return x>=r.x&&x<r.x+r.w&&y>=r.y&&y<r.y+r.h; }),
      '第 143 单·落位：每一格家具都在所属房间矩形内（出界 0 格）');
   {
-    const 病源= src143.replace("'45,9']);", "]);");   // 抠掉饮水机那一格
+    const 病源= src143.replace("'45,9',", "");   // 抠掉饮水机那一格（第 144 单起表尾还有公园格，改按"格＋逗号"抠）
     const 实体2=new Set((病源.match(/const PIX_SOLID=new Set\(\[([^\]]*)\]\);/)[1].match(/-?\d+,-?\d+/g)||[]));
-    ok(病源!==src143 && !家具格.every(f=>实体2.has(f.格)),
+    ok(病源!==src143 && !参加占格.every(f=>实体2.has(f.格)),
        '第 143 单·反向自查·拦得住：把饮水机 '+"'45,9'"+' 从 PIX_SOLID 抠掉 ⇒ 两表对账当场判红');
+  }
+}
+
+// ═══ 第 144 单·滨江公园陈设（室外篇 lite；树/灌木占格，铺装/坐具豁免）══════════════════════
+/* 被验的是生产源码与占格口径（行为面同 143：走位三铁律＋live-walkgate；落位避开"门→长椅四席"走线）：
+     ① 公园陈设入表：树×3／灌木×2／碎石路／长椅；
+     ② 树与灌木的全部格子都在 PIX_SOLID；碎石路与长椅**全部不在**（铺装与坐具；
+        长椅四席的脚底格就落在长椅条那一行——进表会把钳制器点着）；
+     ③ 反向自查：抠掉一棵树 ⇒ ② 的"全在表"当场判红。 */
+{
+  const fs144=require('fs'), path144=require('path');
+  const src144=fs144.readFileSync(path144.resolve(__dirname,'city-life-framework.html'),'utf8');
+  const 段=(src144.match(/\/\*ROOMFURN-START\*\/([\s\S]*?)\/\*ROOMFURN-END\*\//)||['',''])[1];
+  const 表文本=(段.match(/const ROOM_FURN=\{[\s\S]*?\n\};/)||[''])[0];
+  const 园文本=(表文本.match(/park:\[[\s\S]*?\n\s*\],/)||[''])[0];
+  const 条目=[...园文本.matchAll(/k:'(\w+)',\s*x:(-?\d+),\s*y:(-?\d+),\s*w:(\d+),\s*h:(\d+)/g)]
+    .map(m=>({k:m[1],x:+m[2],y:+m[3],w:+m[4],h:+m[5]}));
+  const 展格=o=>{ const a=[]; for(let i=0;i<o.w;i++) for(let j=0;j<o.h;j++) a.push((o.x+i)+','+(o.y+j)); return a; };
+  const 实体=new Set((src144.match(/const PIX_SOLID=new Set\(\[([^\]]*)\]\);/)[1].match(/-?\d+,-?\d+/g)||[]));
+  ok(条目.filter(o=>o.k==='tree').length===3 && 条目.filter(o=>o.k==='bush').length===2
+     && 条目.some(o=>o.k==='path') && 条目.some(o=>o.k==='bench'),
+     '第 144 单·结构：公园陈设入表（树×3／灌木×2／碎石路／长椅）');
+  const 树格=条目.filter(o=>o.k==='tree'||o.k==='bush').flatMap(展格);
+  const 免格=条目.filter(o=>o.k==='path'||o.k==='bench').flatMap(展格);
+  ok(树格.length>0 && 树格.every(c=>实体.has(c)),
+     '第 144 单·占格：树与灌木 '+树格.length+' 格全部在 PIX_SOLID');
+  ok(免格.length>0 && 免格.every(c=>!实体.has(c)),
+     '第 144 单·豁免：碎石路与长椅 '+免格.length+' 格不进 PIX_SOLID（铺装/坐具；长椅四席脚底就在椅子上）');
+  {
+    const 病P=src144.replace("'3,18',","");
+    const 实体3=new Set((病P.match(/const PIX_SOLID=new Set\(\[([^\]]*)\]\);/)[1].match(/-?\d+,-?\d+/g)||[]));
+    ok(病P!==src144 && !树格.every(c=>实体3.has(c)),
+       '第 144 单·反向自查·拦得住：抠掉一棵树 '+"'3,18'"+' ⇒ 「树与灌木全部在表」当场判红');
   }
 }
 
@@ -7442,7 +7476,7 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
     const nAll=(净src.match(/roomTile/g)||[]).length;
     ok(nAll===2,'结构侧：`roomTile` 在**码**里只出现 2 次（定义 ＋ ROOMS 循环里那一处调用；第 143 单起同处还调 roomFurn）');
     const iCont=src.indexOf('if(pixOn && PIX_ROOMS[r.id]) continue;');
-    const iCall=src.indexOf('if(TILE_ROOMS.indexOf(r.id)>=0){ roomTile(r); roomFurn(r); }');   // 第 143 单改型：同一调用点接陈设
+    const iCall=src.indexOf('if(TILE_ROOMS.indexOf(r.id)>=0) roomTile(r);');   // 第 143／144 单：下一行接 roomFurn（表外自动跳过）
     ok(iCont>=0 && iCall>iCont && iCall-iCont<600,
        '结构侧：调用点落在**同一个房间循环**里、且在被拼合图接管的 `continue` 之后'
        +'（保证只对没接管的房间铺装，不会盖在 apartment.png 上）');
@@ -7822,7 +7856,7 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   ok(恒绿===0,'第 66 单·闸二：`ok` 第一参数写死 true 的**读数型假断言**为 0 条（实测 '+恒绿+'；读数一律走 `读数()`）');
   // 闸三 · 反向自查登记（防整条被删）
   const 登记=['第 48 单','第 49 单','第 51 单','第 52 单','第 53 单','第 54 单','第 56 单','第 57 单',
-              '第 58 单','第 59 单','第 62 单','第 63 单','第 64 单','第 65 单','第 67 单','第 70 单','第 71 单','第 72 单','第 73 单','第 74 单','第 75 单','第 76 单','第 77 单','第 79 单','第 80 单','第 81 单','第 84 单','第 85 单','第 87 单','第 88 单','第 90 单','第 91 单','第 92 单','第 93 单','第 94 单','第 95 单','第 96 单','第 97 单','第 98 单','第 99 单','第 100 单','第 102 单','第 103 单','第 106 单','第 107 单','第 109 单','第 110 单','第 111 单','第 112 单','第 113 单','第 115 单','第 116 单','第 117 单','第 118 单','第 119 单','第 120 单','第 121 单','第 123 单','第 124 单','第 125 单','第 126 单','第 129 单','第 131 单','第 135 单','第 136 单','第 139 单','第 142 单','第 143 单',
+              '第 58 单','第 59 单','第 62 单','第 63 单','第 64 单','第 65 单','第 67 单','第 70 单','第 71 单','第 72 单','第 73 单','第 74 单','第 75 单','第 76 单','第 77 单','第 79 单','第 80 单','第 81 单','第 84 单','第 85 单','第 87 单','第 88 单','第 90 单','第 91 单','第 92 单','第 93 单','第 94 单','第 95 单','第 96 单','第 97 单','第 98 单','第 99 单','第 100 单','第 102 单','第 103 单','第 106 单','第 107 单','第 109 单','第 110 单','第 111 单','第 112 单','第 113 单','第 115 单','第 116 单','第 117 单','第 118 单','第 119 单','第 120 单','第 121 单','第 123 单','第 124 单','第 125 单','第 126 单','第 129 单','第 131 单','第 135 单','第 136 单','第 139 单','第 142 单','第 143 单','第 144 单',
               '闸四','闸五','闸十','闸十一','闸十二'];
   const 实有=[...new Set((自源.match(/(第 \d+ 单|闸[一二三四五六七八九十]+)·反向自查/g)||[])
                             .map(x=>x.replace('·反向自查','')))];
