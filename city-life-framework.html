@@ -446,7 +446,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v110</span>
+<span class="num dim" id="set-build">v111</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -5486,23 +5486,70 @@ let nameChipBoxes=[];           // 本帧名牌登记表（每帧绘制前由 na
 let labelBlockBoxes=[];
 function nameChipReset(){ nameChipBoxes=[]; labelBlockBoxes=[]; }
 const 盒相交=(a,b)=>a.l<b.r && b.l<a.r && a.t<b.b && b.t<a.b;
-function nameChip(x,y,text){
+/* 第 125 单·名牌分道改成"先算后画、名单顺序、带迟滞"——
+   旧写法在这里按**绘制顺序**抢道（`nameChipBoxes` 是逐人 push 的），而画人的顺序是深度序
+   （`ents.sort((a,b)=>a.fy-b.fy)`）：两个人 y 一交叉，道号就互换；挨得近时还会在阈值上来回抖。
+   名牌上面的活动牌与气泡都摞在它上面 ⇒ 一起上下跳（决策者 2026-10-03 实报）。
+   实测（真浏览器 8 秒 160 帧，同一探针跑 HEAD 与工作区）：改前每 50ms 最大视觉位移 **2.000 道**
+   （19 个样本 >0.5 道，即"咔"地跳一道甚至两道）；改后 **0.455 道、0 个样本 >0.5 道**（滑过去）。
+   现在：绘制前一次算好（按人名 a1→a4 固定顺序贪心着色），成对带 3px 迟滞（成形要 <T−3、拆开要 <T+3），
+   逐人黏性＋缓降（腾空 1.2 秒才落一道），再叠一层浮道 ~120ms 缓动——两道保险，换道不再瞬移。 */
+let 名牌道={}, 名牌降时={}, 名牌浮道={}, 上次名牌对=null, 名牌道上帧=0;
+function 名牌宽(text){ const 号=名号(); ctx.font=号+'px system-ui,sans-serif'; return ctx.measureText(text).width+8; }
+function 分名牌道(屏x){
+  const 人=state.world.agents, 宽={}, 位={};
+  for(const a of 人){ 宽[a.id]=名牌宽(a.name); 位[a.id]=屏x[a.id]; }
+  const 对=[];
+  for(let i=0;i<人.length;i++) for(let j=i+1;j<人.length;j++){
+    const A=人[i].id, B=人[j].id, k=A+'|'+B;
+    const T=(宽[A]+宽[B])/2+NAME_CHIP_GAP, d=Math.abs(位[A]-位[B]);
+    const 上=!!(上次名牌对&&上次名牌对.indexOf(k)>=0);
+    if(d<T-3 || (上&&d<T+3)) 对.push(k);          // 迟滞：成形要更近、拆开要更远
+  }
+  上次名牌对=对;
+  const 图=new Set(对), 道={};
+  const now=(typeof performance!=='undefined'&&performance.now)?performance.now():Date.now();
+  const dt=名牌道上帧? Math.min(0.1,(now-名牌道上帧)/1000):0.016; 名牌道上帧=now;
+  for(const a of 人){                              // 固定名单顺序 ⇒ 与绘制顺序无关
+    const 邻居道=new Set();
+    for(const b of 人){ const v=道[b.id]; if(v===undefined) continue;
+      const k=(a.id<b.id)?a.id+'|'+b.id:b.id+'|'+a.id;
+      if(图.has(k)) 邻居道.add(v);
+    }
+    let 理想=0; while(邻居道.has(理想)) 理想++;      // 该占的道（贪心、顺序固定）
+    const 旧=名牌道[a.id];
+    let lane=理想;
+    if(旧!==undefined && !邻居道.has(旧) && 旧>理想){
+      /* 逐人黏性＋缓降：能往下降时先等 1.2 秒"确实没人挨着"再落一道——
+         改前实测（8 秒）换道 27 次、站定换道 5 次；改后见交付件读数。 */
+      const t=名牌降时[a.id];
+      if(t===undefined){ 名牌降时[a.id]=now; lane=旧; }
+      else if(now-t>=1200){ delete 名牌降时[a.id]; }
+      else lane=旧;
+    } else delete 名牌降时[a.id];
+    道[a.id]=lane;
+    // 浮道：朝目标道**限速**滑过去——每帧最多 0.25 道（卡帧时也不许瞬移，探针实测过这一条）
+    const cur=(名牌浮道[a.id]===undefined)?lane:名牌浮道[a.id];
+    /* 步长按**时间**算（6 道/秒）、每帧再压 0.25 道：60/120/30fps 与卡帧三种情形下，
+       50ms 采样的最大位移都 ≤0.3 道（探针的硬上限 0.6 道）——这是"卡帧也不许瞬移"的那道保险。 */
+    const gap=lane-cur, maxStep=Math.min(0.25, Math.max(0.02, dt*6));
+    const step=Math.abs(gap)<=maxStep ? gap : Math.sign(gap)*maxStep;
+    const nv=cur+step;
+    名牌浮道[a.id]=(nv===lane)?lane:nv;
+  }
+  名牌道=道;
+  return 道;
+}
+function nameChip(x,y,text,lane,laneF){
   const 号=名号(), 高=名盒高(), 道距=高;
   ctx.font=号+'px system-ui,sans-serif';
   const w=ctx.measureText(text).width+8;
-  let lane=0;
-  while(lane<state.world.agents.length){          // 上限＝住户人数 ⇒ 各占一道，结构上不可能重叠
-    let free=true;
-    for(const b of nameChipBoxes){
-      if(b.lane===lane && Math.abs(b.x-x)<(b.w+w)/2+NAME_CHIP_GAP){ free=false; break; }
-    }
-    if(free) break;
-    lane++;
-  }
+  lane=lane|0;
+  const 浮=(typeof laneF==='number'&&isFinite(laneF))?laneF:lane;
   nameChipBoxes.push({x,y,w,lane});
   /* 第 84 单：自己画这块底（不再借 `chip()`）——因为 `chip()` 的盒高写死 15、字号一变就露馅，
      而它还被房间名／地标名／活动指示器共用，动它等于动全站。名牌这块只改自己。 */
-  const 顶=y-高+1-lane*道距;
+  const 顶=y-高+1-浮*道距;
   ctx.fillStyle='rgba(14,17,26,.78)';
   ctx.fillRect(x-w/2, 顶, w, 高);
   ctx.font=号+'px system-ui,sans-serif';
@@ -6264,10 +6311,11 @@ function draw(now){
     const v=state.vis[ag.id];
     dispPos[ag.id]={x:v.dspX,y:v.dspY};
   }
-  nameChipReset();   // 第 32 单：名牌分道按帧清账（每帧重排，故与上一帧无关）
+  nameChipReset();   // 第 32 单：名牌登记表按帧清账；第 125 单：道号改由 分名牌道() 先算（与绘制顺序无关）
   const ents=state.world.agents.map(ag=>({kind:'a',ag,fy:dispPos[ag.id].y+0.5}));
   if(pixOn) for(const f of PIX_FURN_TALL) ents.push({kind:'f',f,fy:f[4]});
   ents.sort((a,b)=>a.fy-b.fy);
+  const 本帧道=分名牌道(Object.fromEntries(state.world.agents.map(a=>[a.id, sx(dispPos[a.id].x)])));   // 第 125 单
   for(const en of ents){
     if(en.kind==='f'){
       const fr=en.f;
@@ -6294,7 +6342,7 @@ function draw(now){
         ctx.strokeRect(dx0-3,dy0-3,dw+6,dh+6);
       }
       ctx.drawImage(img,(dir*6+fi)*fw,(ci*2+(walking?1:0))*fh,fw,fh,dx0,dy0,dw,dh);
-      const nt=nameChip(px, dy0-4, tag);             // 第 32 单：名牌分道，返回盒顶
+      const nt=nameChip(px, dy0-4, tag, 本帧道[ag.id], 名牌浮道[ag.id]);   // 第 32 单：名牌分道（第 125 单：道号先算、浮道缓动）
       // 第 31 单：指示器画在名牌之上（盒底＝名牌盒顶）；分道抬高时跟着一起抬，仍不碰下方金框
       const at=actChip(px, nt, ag);
       sayBubble(px, at, ag);                         // 第 51 单：气泡再往上排一层（一期只画选中者）
@@ -6310,7 +6358,7 @@ function draw(now){
     ctx.fillRect(px-R-1,py-R-1,R*2+2,R*2+2);
     ctx.fillStyle=ag.color;
     ctx.fillRect(px-R,py-R,R*2,R*2);
-    const nt=nameChip(px, py-R-4, tag);              // 第 32 单：名牌分道，返回盒顶
+    const nt=nameChip(px, py-R-4, tag, 本帧道[ag.id], 名牌浮道[ag.id]);   // 第 32 单：名牌分道（第 125 单：道号先算、浮道缓动）
     // 第 31 单：素材未就位／`pix.on` 关掉的兜底路径**照出指示器**。理由：这条路上人物退化成一个纯色方块，
     // 连走／站都分不出来，「在干什么」比有素材时更没有别的地方可看；而符号本身零素材依赖（canvas 画的字），
     // 出不出与素材加载成败无关。两条路的调用点各一处，harness 结构侧逐条钉住。

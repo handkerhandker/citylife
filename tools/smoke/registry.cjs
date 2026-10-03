@@ -24,6 +24,7 @@ const 清单 = [
   { 路径: 'tools/save-fuzz/probe.cjs',        档: 1, 参数: [],                          超时: 180000, 备注: '坏档容错（畸形档过闸后必须跑得动；三处现场点名）' },
   { 路径: 'tools/save-fuzz/dom-probe.mjs',    档: 2, 参数: ['{OUT}/save-fuzz-dom'],     超时: 300000, 备注: '坏档容错·渲染面（角色卡／循环零报错）' },
   { 路径: 'tools/audio-audit/probe.mjs',      档: 2, 参数: ['{OUT}/audio-audit'],        超时: 180000, 备注: '提示音（关着不响／开着要响；AudioContext 计数）' },
+  { 路径: 'tools/nameplate-audit/stability.mjs', 档: 2, 参数: ['{OUT}/nameplate-stability'], 超时: 180000, 备注: '名牌分道稳定性（同层零重叠／每 50ms 位移 ≤0.6 道）' },
   { 路径: 'tools/gift-audit/probe.cjs',       档: 1, 参数: [],                        超时: 90000, 备注: '欠人情排队（与上一版并排跑生日那两周）' },
   { 路径: 'tools/offline-catchup/probe.cjs',  档: 1, 参数: [],    超时: 90000, 备注: '离线补算取证' },
   { 路径: 'tools/offline-catchup/pushprobe.cjs', 档: 1, 参数: [], 超时: 90000, 备注: '回城推送判据取证' },

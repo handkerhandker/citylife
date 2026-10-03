@@ -2256,9 +2256,11 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
     if(mut) code=mut(code);
     /* 第 84 单：名牌字号改成随缩放走（`名号()`／`名盒高()`），故台子要把 `state.view.s` 也喂进去，
        并把这两个新函数一并交出来（旧常量 `NAME_CHIP_LANE_H` 已删——它写死的正是本单要治的那件事）。 */
+    /* 第 125 单：分道从 nameChip 里搬到了 分名牌道()，台子照新管线驱动——可传真实假人（id/name），
+       并多交出一个 分名牌道 与 名牌浮道（浮道缓动的账）。 */
     const M=new Function('ctx','state',
-      code+'\nreturn {chip,nameChip,nameChipReset,名号,名盒高,NAME_CHIP_GAP,boxes:()=>nameChipBoxes};')
-      (ctx,{view:{s:(nAgents&&nAgents.s)||13}, world:{agents:new Array((nAgents&&nAgents.n)||AG.length)}});
+      code+'\nreturn {chip,nameChip,nameChipReset,分名牌道,名牌浮道,名号,名盒高,NAME_CHIP_GAP,boxes:()=>nameChipBoxes};')
+      (ctx,{view:{s:(nAgents&&nAgents.s)||13}, world:{agents:(nAgents&&nAgents.agents)||new Array((nAgents&&nAgents.n)||AG.length)}});
     return {M, rec, ctx};
   }
   const AG=Sim.makeWorld(20260803).agents;
@@ -2354,8 +2356,8 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
     ok(g3fb(AGENTLOOP)===1,
        '闸三·结构侧：**素材未就位／pix 关掉的色块兜底路**上也恰有 1 个 actChip 调用点 ⇒ 那条路照出指示器'
        +'（人退化成纯色方块，走／站都分不出来，「在干什么」在那儿比有素材时更没别处可看）');
-    ok(/const nt=nameChip\(px, dy0-4, tag\)[\s\S]*?actChip\(px, nt, ag\)/.test(AGENTLOOP)
-       && /const nt=nameChip\(px, py-R-4, tag\)[\s\S]*?actChip\(px, nt, ag\)/.test(AGENTLOOP),
+    ok(/const nt=nameChip\(px, dy0-4, tag, 本帧道\[ag\.id\], 名牌浮道\[ag\.id\]\)[\s\S]*?actChip\(px, nt, ag\)/.test(AGENTLOOP)
+       && /const nt=nameChip\(px, py-R-4, tag, 本帧道\[ag\.id\], 名牌浮道\[ag\.id\]\)[\s\S]*?actChip\(px, nt, ag\)/.test(AGENTLOOP),
        '闸三·结构侧：两条路的指示器都取「名牌盒顶」为盒底（＝nameChip 的返回值），叠放口径同源；'
        +'第 32 单起名牌分道抬高时指示器跟着抬，故盒底只能取返回值、不许再自己算 y−gap');
     // 畸形输入：一律不抛错，且认不出就一笔都不画
@@ -2414,13 +2416,22 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
     const 相交=(a,b)=>a.l<b.r && b.l<a.r && a.t<b.b && b.t<a.b;
     const 数重叠=bs=>{ let n=0; for(let i=0;i<bs.length;i++) for(let j=i+1;j<bs.length;j++) if(相交(bs[i],bs[j])) n++; return n; };
     const 挤=[0,12,24,36];             // 真实病例：客厅餐桌四人，中心相距 12px
+    /* 第 125 单：分道改成"先算后画"，台子照新管线驱动——先 分名牌道() 拿道号，再 nameChip() 画 */
+    const 假人=AG.slice(0,4).map(a=>({id:a.id,name:a.name}));
+    const 画一排=(L,位)=>{
+      const 屏x={}; 假人.forEach((a,i)=>屏x[a.id]=100+位[i]);
+      const 道=L.M.分名牌道(屏x);
+      L.M.nameChipReset();
+      for(const a of 假人) L.M.nameChip(屏x[a.id], 200, a.name, 道[a.id], L.M.名牌浮道[a.id]);
+      return 道;
+    };
     {
-      const L=chipLab(); L.M.nameChipReset();
-      for(const x of 挤) L.M.nameChip(100+x, 200, '顾云帆');
+      const L=chipLab(null,{agents:假人});
+      const 道=画一排(L,挤);
       const bs=L.rec.rect.map(boxOf);
       ok(数重叠(bs)===0,'闸五·零重叠（由构造保证）：四个人名牌中心只隔 12px（照手机竖屏客厅餐桌那一档）时，'
          +bs.length+' 个盒子两两不相交（实测 '+数重叠(bs)+' 对相交）—— 道数上限＝住户人数，故各占一道');
-      const lanes=L.M.boxes().map(b=>b.lane).sort((a,b)=>a-b);
+      const lanes=Object.values(道).sort((a,b)=>a-b);
       ok(JSON.stringify(lanes)==='[0,1,2,3]','闸五·构造成立：最挤那一档各自占 0/1/2/3 道（实测 ['+lanes.join(',')+']）'
          +'—— 不是「刚好没撞上」，是排出来的');
       /* 第 84 单：盒顶的式子随"字号推盒高"改了——现在是 `顶 = y − 盒高 + 1 − 道×道距`，
@@ -2431,29 +2442,26 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
          '闸五·构造成立：四条名牌盒顶恰为四道的高度（实测 '+JSON.stringify(tops)+'，道距 '+laneH+'px）');
     }
     {
-      const L=chipLab(); L.M.nameChipReset();
-      for(const x of [0,400,800,1200]) L.M.nameChip(x, 200, '顾云帆');
-      const lanes=L.M.boxes().map(b=>b.lane);
+      const L=chipLab(null,{agents:假人});
+      const lanes=Object.values(画一排(L,[0,400,800,1200]));
       ok(lanes.every(v=>v===0),'闸五·不误伤：四个名牌横向隔开 400px 时全部留在第 0 道（实测 ['+lanes.join(',')+']）'
          +'—— 不挤就不抬，画面不无故长高');
       ok(new Set(L.rec.rect.map(r=>r.y)).size===1,'闸五·不误伤：不挤时四个盒子顶边同高（实测 '
          +JSON.stringify([...new Set(L.rec.rect.map(r=>r.y))])+'）');
     }
     {
-      // 反向自查一：道数上限压到 1 ＝ 退回改前那种「所有人挤同一行」
-      const L=chipLab(s=>s.replace('lane<state.world.agents.length','lane<1'));
-      L.M.nameChipReset();
-      for(const x of 挤) L.M.nameChip(100+x, 200, '顾云帆');
+      // 反向自查一（第 125 单改型）：把分名牌道写坏成"所有人第 0 道" ＝ 退回"所有人挤同一行"
+      const L=chipLab(s=>s.replace(/function 分名牌道\(屏x\)\{[\s\S]*?\n\}/,
+        'function 分名牌道(屏x){ const 道={}; for(const a of state.world.agents) 道[a.id]=0; return 道; }'),{agents:假人});
+      画一排(L,挤);
       const n=数重叠(L.rec.rect.map(boxOf));
-      ok(n>0,'闸五·反向自查一：把道数上限压到 1（＝退回改前「所有人挤同一行」）后，同样四个人实测 '+n
+      ok(n>0,'闸五·反向自查一：把分道函数写坏（所有人第 0 道）后，同样四个人实测 '+n
          +' 对重叠 ⇒ 上面那条「零重叠」不是恒绿的闸');
     }
     {
-      // 反向自查二：把横向间距判据摘掉（＝只管抬不抬、不管让不让）
-      const L=chipLab(s=>s.replace('Math.abs(b.x-x)<(b.w+w)/2+NAME_CHIP_GAP','false'));
-      L.M.nameChipReset();
-      for(const x of 挤) L.M.nameChip(100+x, 200, '顾云帆');
-      const lanes=L.M.boxes().map(b=>b.lane);
+      // 反向自查二（第 125 单改型）：把横向重叠判据摘掉（＝只管画不管让）
+      const L=chipLab(s=>s.replace('d<T-3 || (上&&d<T+3)','false'),{agents:假人});
+      const lanes=Object.values(画一排(L,挤));
       ok(lanes.every(v=>v===0),'闸五·反向自查二：把「横向间距判据」摘掉后四个人全落第 0 道（实测 ['
          +lanes.join(',')+']）⇒ 那条判据真的在管事，不是摆设');
     }
@@ -2467,8 +2475,10 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
       const nBare=(AGENTLOOP.match(/(?<![a-zA-Z])chip\(/g)||[]).length;
       ok(nBare===0,'闸五·结构侧：人物段零裸 chip() 调用（实测 '+nBare+' 处）—— 名牌必须走 nameChip，'
          +'否则分道被绕开、几个人又叠回一行');
-      ok(/while\(lane<state\.world\.agents\.length\)/.test(NAMECHIP_SRC),
-         '闸五·构造成立：道数上限直接取住户人数（不是写死的数字）—— 住户加到几个就分几道');
+      ok(/function 分名牌道\(屏x\)/.test(NAMECHIP_SRC)&&/const 本帧道=分名牌道\(/.test(DRAWSEC)
+         &&!/while\(lane<state\.world\.agents\.length\)/.test(NAMECHIP_SRC),
+         '闸五·结构侧（第 125 单）：分道在绘制前先算（draw 里 本帧道=分名牌道(...)），'
+         +'旧的"按绘制顺序抢道"循环已不存在');
       /* 第 84 单一并改：原断言钉的是写死的 `NAME_CHIP_LANE_H=15`——那正是本单要治的东西
          （字号不随缩放走）。改后道距**从字号推**（盒高＝1.5×字号），故断言改成
          "字号与盒高都出自同一处 `名号()`"，口径不松：仍然可抽取、仍然一处定义。 */
@@ -4663,19 +4673,21 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   // 行为：借第 32 单那个假 ctx 台子（它已随本单改成从字号推盒高）
   const CHIP_SRC=(src.match(/function chip\(x,y,text,color,size\)\{[\s\S]*?\n\}/)||[''])[0];
   const 台=s=>new Function('ctx','state',
-    CHIP_SRC+'\n'+NAMECHIP+'\nreturn {nameChip,nameChipReset,名号,名盒高,boxes:()=>nameChipBoxes};')(
+    CHIP_SRC+'\n'+NAMECHIP+'\nreturn {nameChip,nameChipReset,分名牌道,名牌浮道,名号,名盒高,boxes:()=>nameChipBoxes};')(
     { set font(v){this._f=String(v);}, get font(){return this._f||'';}, fillStyle:'', textAlign:'', textBaseline:'',
       measureText(t){ return {width:[...String(t)].length*13}; }, fillRect(){}, fillText(){} },
-    {view:{s}, world:{agents:new Array(4)}});
+    {view:{s}, world:{agents:[{id:'a1',name:'顾云帆'},{id:'a2',name:'陆知秋'},{id:'a3',name:'白一鸣'},{id:'a4',name:'沈小满'}]}});
   const 小=台(13), 大=台(27);
   ok(小.名号()<大.名号()&&小.名盒高()<大.名盒高(),
      '第 84 单·行为：字号随缩放变（s=13 ⇒ '+小.名号().toFixed(1)+'px／盒高 '+小.名盒高()
      +'；s=27 ⇒ '+大.名号().toFixed(1)+'px／盒高 '+大.名盒高()+'）');
   {
-    const L=台(13); L.nameChipReset();
-    for(const x of [100,112,124,136]) L.nameChip(x, 200, '顾云帆');   // 中心只隔 12px（手机竖屏那档）
-    const bs=L.boxes().map(b=>({l:b.x-b.w/2, r:b.x+b.w/2, t:(()=>0)()}));
-    const 道=[...new Set(L.boxes().map(b=>b.lane))].sort((a,b)=>a-b);
+    const L=台(13);
+    const 屏x={a1:100,a2:112,a3:124,a4:136};                 // 中心只隔 12px（手机竖屏那档）
+    const 道表=L.分名牌道(屏x);                               // 第 125 单：先算后画
+    L.nameChipReset();
+    for(const id of Object.keys(屏x)) L.nameChip(屏x[id], 200, '顾云帆', 道表[id], L.名牌浮道[id]);
+    const 道=Object.values(道表).sort((a,b)=>a-b);
     ok(道.length===4&&JSON.stringify(道)==='[0,1,2,3]',
        '第 84 单·行为：缩到 s=13 时四个人仍各占一道（实测 ['+道.join(',')+']）——分道与缩放无关这条没被破坏');
   }
@@ -6880,6 +6892,30 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   }
 }
 
+// ═══ 第 125 单·名牌分道的稳定性（DOM 层：先算后画＋迟滞＋缓降＋浮道缓动）═══════════════
+/* 决策者实报："头上的名字和想的事情说的话老是上下跳"。根因＝分道按**绘制顺序**（深度序）抢道，
+   两个人 y 一交叉道号就互换；名牌上的活动牌与气泡跟着一起跳。行为面由真浏览器探针
+   `tools/nameplate-audit/stability.mjs` 验（同层重叠 0／每 50ms 视觉位移 ≤0.6 道／零 pageerror）：
+   改前实测一帧最大跳 **2.0 道**（19 个样本 >0.5 道），改后 **0.455 道、0 个 >0.5**。 */
+{
+  const fs125=require('fs'), path125=require('path');
+  const src125=fs125.readFileSync(path125.resolve(__dirname,'city-life-framework.html'),'utf8');
+  ok(/function 分名牌道\(屏x\)/.test(src125)&&!/while\(lane<state\.world\.agents\.length\)/.test(src125),
+     '第 125 单·结构：分道"先算后画"一处定义；旧的按绘制顺序抢道循环已不存在');
+  ok(/固定名单顺序 ⇒ 与绘制顺序无关/.test(src125)&&/d<T-3 \|\| \(上&&d<T\+3\)/.test(src125),
+     '第 125 单·结构：固定名单顺序贪心＋成对 3px 迟滞');
+  ok(/旧>理想/.test(src125)&&/now-t>=1200/.test(src125)&&/Math\.min\(0\.25, Math\.max\(0\.02, dt\*6\)\)/.test(src125),
+     '第 125 单·结构：逐人黏性＋缓降（1.2 秒）＋浮道限速步进（6 道/秒、每帧 ≤0.25 道）');
+  ok(/nameChip\(px, dy0-4, tag, 本帧道\[ag\.id\], 名牌浮道\[ag\.id\]\)/.test(src125)
+     &&/nameChip\(px, py-R-4, tag, 本帧道\[ag\.id\], 名牌浮道\[ag\.id\]\)/.test(src125),
+     '第 125 单·结构：两条绘制路都传入"目标道＋浮道"');
+  {
+    const 病源125=src125.replace('nameChip(px, dy0-4, tag, 本帧道[ag.id], 名牌浮道[ag.id])','nameChip(px, dy0-4, tag)');
+    ok(病源125!==src125 && !/nameChip\(px, dy0-4, tag, 本帧道\[ag\.id\], 名牌浮道\[ag\.id\]\)/.test(病源125),
+       '第 125 单·反向自查·拦得住：把浮道参数从 pix 路径的调用点抠掉 ⇒ 上面那条结构判据当场判红（行为面另有真浏览器探针）');
+  }
+}
+
 // ═══ 第 35 单·入夜点灯（屋里亮起来）═════════════════════════════════════════
 /* 被验的是生产源码原文：SKYTINT ＋ NIGHTLAMP 两段一起抠出来求值（灯要调 skyTint，两段必须同源），
    在一个只记账的假 ctx 上跑。四条闸：
@@ -7493,7 +7529,7 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   ok(恒绿===0,'第 66 单·闸二：`ok` 第一参数写死 true 的**读数型假断言**为 0 条（实测 '+恒绿+'；读数一律走 `读数()`）');
   // 闸三 · 反向自查登记（防整条被删）
   const 登记=['第 48 单','第 49 单','第 51 单','第 52 单','第 53 单','第 54 单','第 56 单','第 57 单',
-              '第 58 单','第 59 单','第 62 单','第 63 单','第 64 单','第 65 单','第 67 单','第 70 单','第 71 单','第 72 单','第 73 单','第 74 单','第 75 单','第 76 单','第 77 单','第 79 单','第 80 单','第 81 单','第 84 单','第 85 单','第 87 单','第 88 单','第 90 单','第 91 单','第 92 单','第 93 单','第 94 单','第 95 单','第 96 单','第 97 单','第 98 单','第 99 单','第 100 单','第 102 单','第 103 单','第 106 单','第 107 单','第 109 单','第 110 单','第 111 单','第 112 单','第 113 单','第 115 单','第 116 单','第 117 单','第 118 单','第 119 单','第 120 单','第 121 单','第 123 单','第 124 单',
+              '第 58 单','第 59 单','第 62 单','第 63 单','第 64 单','第 65 单','第 67 单','第 70 单','第 71 单','第 72 单','第 73 单','第 74 单','第 75 单','第 76 单','第 77 单','第 79 单','第 80 单','第 81 单','第 84 单','第 85 单','第 87 单','第 88 单','第 90 单','第 91 单','第 92 单','第 93 单','第 94 单','第 95 单','第 96 单','第 97 单','第 98 单','第 99 单','第 100 单','第 102 单','第 103 单','第 106 单','第 107 单','第 109 单','第 110 单','第 111 单','第 112 单','第 113 单','第 115 单','第 116 单','第 117 单','第 118 单','第 119 单','第 120 单','第 121 单','第 123 单','第 124 单','第 125 单',
               '闸四','闸五','闸十','闸十一','闸十二'];
   const 实有=[...new Set((自源.match(/(第 \d+ 单|闸[一二三四五六七八九十]+)·反向自查/g)||[])
                             .map(x=>x.replace('·反向自查','')))];
