@@ -147,13 +147,24 @@ for (const [vpName, vp] of [['桌面', { width: 1400, height: 900 }], ['手机',
   await page.screenshot({ path: path.join(OUT, `短信页-${vpName}.png`) });
 
   读数.视口.push({ 视口: vpName, 报错数: 本页报错.length });
-  if (本页报错.length) { 失败 += 本页报错.length; 读数.报错.push(...本页报错.map(e => vpName + ' ' + e)); }
+  /* 第 86 单修：**退出码别把网络噪声算成失败**。
+     病：本工具把"任何一条 page 报错"都记进 `失败`，于是永远 exit 1——
+     可那 21 条与历次同源（首屏 `ERR_ABORTED`、`favicon.ico` 与本地没起的 `/relay` 404），
+     历次交付件里都写着"真 JS 异常 0、按钮失败 0"。工具自己的读数里其实分了类，只是没用在退出码上。
+     治法：**真异常**（`pageerror`／TypeError／ReferenceError…）与**按钮失败**才算红；
+     网络类照旧进读数、只印不算。 */
+  const 真异常 = 本页报错.filter(e => /pageerror|TypeError|ReferenceError|SyntaxError/.test(String(e)));
+  读数.真异常 = (读数.真异常 || []).concat(真异常.map(e => vpName + ' ' + e));
+  失败 += 真异常.length;
+  if (本页报错.length) 读数.报错.push(...本页报错.map(e => vpName + ' ' + e));
   await ctx.close();
 }
 
 读数.服务端404 = 服务端404;
 fs.writeFileSync(path.join(OUT, '读数.json'), JSON.stringify(读数, null, 2), 'utf8');
 await browser.close(); srv.close();
-console.log('按钮清单 ' + 读数.按钮清单.length + ' 条；点击 ' + 读数.点击.length + ' 次；JS 报错 ' + 读数.报错.length + ' 条；异常 ' + 失败 + ' 处');
+console.log('按钮清单 ' + 读数.按钮清单.length + ' 条；点击 ' + 读数.点击.length + ' 次；'
+  + '网络类报错 ' + 读数.报错.length + ' 条（只印不算）；真 JS 异常 ' + (读数.真异常 || []).length
+  + ' 条；按钮失败 ' + 失败 + ' 处');
 console.log('完成：', OUT);
-process.exit(读数.报错.length ? 1 : 0);
+process.exit((读数.真异常 || []).length || 失败 ? 1 : 0);
