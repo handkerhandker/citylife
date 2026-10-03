@@ -285,8 +285,8 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   // 处境状态字段：至多 1 条、到点消失、坏输入不抛错
   ok(w.agents.every(a=>a.sit===undefined||a.sit===null||typeof a.sit==='object'),'每人至多挂 1 条（单字段，新的顶掉旧的）');
   const ag=w.agents[0];
-  ag.sit={k:'bad', from:'组长', text:'CR 被组长打回，评语写了三行', i:0, until:w.t+60};
-  ok((Sim.currentSit(w,ag)||{}).text==='CR 被组长打回，评语写了三行','处境状态时效内有效');
+  ag.sit={k:'bad', from:'组长', text:'代码评审被组长打回，评语写了三行', i:0, until:w.t+60};
+  ok((Sim.currentSit(w,ag)||{}).text==='代码评审被组长打回，评语写了三行','处境状态时效内有效');
   ag.sit={k:'bad', from:'组长', text:'x', i:0, until:w.t};
   ok(Sim.currentSit(w,ag)===null,'处境状态到点自然消失');
   ok(Sim.currentSit(w,{})===null,'旧档缺 sit 字段返回 null，不判坏档');
@@ -410,7 +410,7 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
     ok(leak===0,'角色卡零事件原文泄漏（'+cards+' 张卡 × 28 条正则，泄漏 '+leak+' 处）');
     ok(moodMiss===0,'角色卡照挂档位标签（缺失 '+moodMiss+' 张）');
     const ag=w.agents[0];
-    ag.sit={k:'bad', from:'X', text:'CR 被组长打回，评语写了三行', i:0, until:w.t};   // 已过期
+    ag.sit={k:'bad', from:'X', text:'代码评审被组长打回，评语写了三行', i:0, until:w.t};   // 已过期
     ok(V.agentCard(ag,'diary').indexOf('今天的心境')<0,'处境过期 → 心境整行省略');
     delete ag.sit;
     ok(V.agentCard(ag,'diary').indexOf('今天的心境')<0,'从未挂过 → 心境整行省略');
@@ -6613,6 +6613,100 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   }
 }
 
+// ═══ 第 120 单·文案池全量体检（把第 27／119 单那把尺推广到全部写死句池）═══════════════
+/* 缘由：第 119 单把两张兜底回应表纳进"非空／同池零撞句／零语气词起手／无 ✨ 与英文"这把尺，
+   当场抓出一条语气词起手的老违规——说明这把尺此前只架在三个兜底池（第 27 单）与两张回应表
+   （第 119 单）上，其余写死句池全在闸外。本单把 25 张句池一次扫码：
+   5 条老违规（`IDE`／`bug`／`CR`×2 三条英文、`TALK_OPEN` 一条「哎」起手）已改成中文同义句，
+   UI 标签类短词池（MSGS／SIT_MOOD／CLIP_CATNAME…）一并用同一把尺管起来。
+   **池表＝唯一真相源**：表里每一池抠不到（改名／被搬走）当场判红；新增句池须登记进表。
+   边界（照实登记）：`BACK_SUM`／晨报这类**运行期拼接的模板函数**不是句池，不在表内——
+   它们的中文片段本单人工读过一遍（无语气词起手／无英文），但机器闸覆盖不到，写在交付件里。
+   反向自查四条：英文、语气词起手、撞句、空串各把生产源文写坏一次，必须各判红一次（只在内存里改）。 */
+{
+  const fs120=require('fs'), path120=require('path');
+  const src120=fs120.readFileSync(path120.resolve(__dirname,'city-life-framework.html'),'utf8');
+  const LI120=(src120.match(/const LEAD_INTERJ=\[[\s\S]*?\nfunction leadsWithInterj\(s\)\{[\s\S]*?\n\}/)||[''])[0];
+  const lead120=new Function(LI120+'\nreturn leadsWithInterj;')();
+  // 取常量：按括号配对截 `const NAME=…;`；字符串字面量整段跳过（免得串里的括号／分号被误算），
+  // 标量字符串（如 SMS_NOREPLY）也照此截到分号。
+  const 取常量=(源文,n)=>{
+    const i=源文.indexOf('const '+n+'=');
+    if(i<0) return '';
+    let j=源文.indexOf('=',i)+1, 深=0, 始=false;
+    for(;j<源文.length;j++){
+      const c=源文[j];
+      if(c==='"'||c==="'"||c==='`'){
+        const q=c; j++;
+        while(j<源文.length){ if(源文[j]==='\\') j++; else if(源文[j]===q) break; j++; }
+        if(!始&&深===0){ let k=j+1; while(k<源文.length&&/\s/.test(源文[k])) k++; if(源文[k]===';') j=k; break; }
+        continue;
+      }
+      if(c==='['||c==='{'||c==='('){ 深++; 始=true; }
+      else if(c===']'||c==='}'||c===')'){ 深--;
+        if(始&&深===0){ let k=j+1; while(k<源文.length&&/\s/.test(源文[k])) k++; if(源文[k]===';') j=k; break; }
+      }
+    }
+    return 源文.slice(i,j+1);
+  };
+  const 平120=v=>{
+    if(typeof v==='string') return [v];
+    if(Array.isArray(v)) return v.flatMap(平120);
+    if(v&&typeof v==='object') return Object.values(v).flatMap(平120);
+    return [];
+  };
+  // 池表＝唯一真相源：[池名, 取值函数]（取值函数把该池摊平成"一句一条"）
+  const 池表120=[
+    ['MSGS', v=>v.map(x=>x&&x.label)],
+    ['IDLE_THOUGHTS',平120],['COOK_THOUGHTS',平120],['NAP_THOUGHTS',平120],['SLEEP_THOUGHTS',平120],
+    ['STROLL_THOUGHTS',平120],['MARKET_THOUGHTS',平120],['STORE_THRIFTY',平120],['STORE_GEN',平120],
+    ['STORE_PLAIN',平120],['SLACK_THOUGHTS',平120],['WORK_THOUGHTS',平120],
+    ['RAIN_STROLL_THOUGHTS',平120],['RAIN_IDLE_THOUGHTS',平120],
+    ['PEER_EVENTS', v=>Object.values(v).flat().map(e=>e&&e.text)],
+    ['NOTE_LINES',平120],['MISS_NOTE',平120],['TALK_TOPICS',平120],['TOPIC_POOL',平120],['TALK_OPEN',平120],
+    ['GOALS', v=>v.flatMap(g=>[g.label,g.why,g.done,g.miss].filter(x=>typeof x==='string'))],
+    ['BDAY_CO', v=>Object.values(v.think||{})],
+    ['SIT_MOOD',平120],['SMS_NOREPLY', v=>[v]],['CLIP_CATNAME',平120],
+  ];
+  const 取者120=名=>池表120.find(x=>x[0]===名)[1];
+  const 查池120=(源文,名,取)=>{
+    const def=取常量(源文,名);
+    if(!def) return {错:'抠不到'};
+    let v;
+    try{ v=new Function(def+'\nreturn '+名+';')(); }
+    catch(e){ return {错:'求值失败：'+e.message}; }
+    let 全;
+    try{ 全=取(v).map(String); }
+    catch(e){ return {错:'取值失败：'+e.message}; }
+    return { 条:全.length, 空:全.filter(s=>!s.trim()), 撞:全.filter((s,i)=>全.indexOf(s)!==i),
+             语气:全.filter(s=>lead120(s)), 符:全.filter(s=>/✨|[A-Za-z]/.test(s)) };
+  };
+  const 坏120=[]; let 总条120=0; const 行120=[];
+  for(const [名,取] of 池表120){
+    const q=查池120(src120,名,取);
+    if(q.错){ 坏120.push(名+'：'+q.错); continue; }
+    总条120+=q.条; 行120.push(名+' '+q.条);
+    if(!q.条) 坏120.push(名+'：0 条');
+    if(q.空.length) 坏120.push(名+'：空 '+q.空.length);
+    if(q.撞.length) 坏120.push(名+'：撞句 '+q.撞.length+'（'+q.撞[0]+'）');
+    if(q.语气.length) 坏120.push(名+'：语气词起手 '+q.语气.length+'（'+q.语气[0]+'）');
+    if(q.符.length) 坏120.push(名+'：✨或英文 '+q.符.length+'（'+q.符[0]+'）');
+  }
+  ok(坏120.length===0,'第 120 单·文案纪律（'+池表120.length+' 池共 '+总条120
+     +' 条）：非空／同池零撞句／零语气词起手／无 ✨ 与英文——'+(坏120.length?('头一条 '+坏120[0]):'全部通过'));
+  读数('第 120 单·逐池条数：'+行120.join('｜'));
+  {
+    const 坏1=查池120(src120.replace('挂着编辑器刷了会儿论坛','挂着 IDE 刷了会儿论坛'),'SLACK_THOUGHTS',取者120('SLACK_THOUGHTS'));
+    ok(坏1.符.length===1,'第 120 单·反向自查·拦得住：把「编辑器」写回 `IDE` ⇒ 英文判红 '+坏1.符.length+' 条');
+    const 坏2=查池120(src120.replace('说起{题}——这个我有话说！','哎，{题}——这个我有话说！'),'TALK_OPEN',取者120('TALK_OPEN'));
+    ok(坏2.语气.length===1,'第 120 单·反向自查·拦得住：把「说起」写回语气词「哎」⇒ 语气词起手判红 '+坏2.语气.length+' 条');
+    const 坏3=查池120(src120.replace('会开得比代码还长。','改了个不太体面的漏洞。'),'WORK_THOUGHTS',取者120('WORK_THOUGHTS'));
+    ok(坏3.撞.length===1,'第 120 单·反向自查·拦得住：把一条独白写成另一条的复读 ⇒ 撞句判红 '+坏3.撞.length+' 条');
+    const 坏4=查池120(src120.replace('吹吹江风，把今天散掉一半。','   '),'STROLL_THOUGHTS',取者120('STROLL_THOUGHTS'));
+    ok(坏4.空.length===1,'第 120 单·反向自查·拦得住：把一条独白掏成空白 ⇒ 空串判红 '+坏4.空.length+' 条');
+  }
+}
+
 // ═══ 第 35 单·入夜点灯（屋里亮起来）═════════════════════════════════════════
 /* 被验的是生产源码原文：SKYTINT ＋ NIGHTLAMP 两段一起抠出来求值（灯要调 skyTint，两段必须同源），
    在一个只记账的假 ctx 上跑。四条闸：
@@ -7226,7 +7320,7 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   ok(恒绿===0,'第 66 单·闸二：`ok` 第一参数写死 true 的**读数型假断言**为 0 条（实测 '+恒绿+'；读数一律走 `读数()`）');
   // 闸三 · 反向自查登记（防整条被删）
   const 登记=['第 48 单','第 49 单','第 51 单','第 52 单','第 53 单','第 54 单','第 56 单','第 57 单',
-              '第 58 单','第 59 单','第 62 单','第 63 单','第 64 单','第 65 单','第 67 单','第 70 单','第 71 单','第 72 单','第 73 单','第 74 单','第 75 单','第 76 单','第 77 单','第 79 单','第 80 单','第 81 单','第 84 单','第 85 单','第 87 单','第 88 单','第 90 单','第 91 单','第 92 单','第 93 单','第 94 单','第 95 单','第 96 单','第 97 单','第 98 单','第 99 单','第 100 单','第 102 单','第 103 单','第 106 单','第 107 单','第 109 单','第 110 单','第 111 单','第 112 单','第 113 单','第 115 单','第 116 单','第 117 单','第 118 单','第 119 单',
+              '第 58 单','第 59 单','第 62 单','第 63 单','第 64 单','第 65 单','第 67 单','第 70 单','第 71 单','第 72 单','第 73 单','第 74 单','第 75 单','第 76 单','第 77 单','第 79 单','第 80 单','第 81 单','第 84 单','第 85 单','第 87 单','第 88 单','第 90 单','第 91 单','第 92 单','第 93 单','第 94 单','第 95 单','第 96 单','第 97 单','第 98 单','第 99 单','第 100 单','第 102 单','第 103 单','第 106 单','第 107 单','第 109 单','第 110 单','第 111 单','第 112 单','第 113 单','第 115 单','第 116 单','第 117 单','第 118 单','第 119 单','第 120 单',
               '闸四','闸五','闸十','闸十一','闸十二'];
   const 实有=[...new Set((自源.match(/(第 \d+ 单|闸[一二三四五六七八九十]+)·反向自查/g)||[])
                             .map(x=>x.replace('·反向自查','')))];
