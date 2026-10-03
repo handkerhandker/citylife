@@ -101,6 +101,14 @@ button{ font:inherit; color:inherit; }
 .tab .tab-ico{ font-size:1.15rem; line-height:1; }
 .tab .tab-label{ font-size:.68rem; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .tab[aria-current="true"]{ color:var(--gold); background:var(--bg2); border-color:var(--line); }
+/* 第 80 单·未读小圆点：只占一个角标，不改按钮尺寸（照第 31 单"另起一行画"那条口径） */
+.tab{ position:relative; }
+.tab .tab-dot{
+  position:absolute; top:2px; right:6px; min-width:14px; height:14px; padding:0 3px;
+  border-radius:999px; background:var(--gold); color:#1b2130; font-size:.6rem; line-height:14px;
+  text-align:center; font-weight:700;
+}
+.tab .tab-dot[hidden]{ display:none; }
 
 /* ---- 内容区：每个屏幕自己滚，body 永不滚 ---- */
 #content{ grid-area:content; min-height:0; min-width:0; position:relative; overflow:hidden; background:var(--bg0); }
@@ -312,7 +320,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
     <button class="tab" data-tab="roles"   data-fx><span class="tab-ico">👥</span><span class="tab-label">角色</span></button>
     <button class="tab" data-tab="log"     data-fx><span class="tab-ico">☰</span><span class="tab-label">日志</span></button>
     <button class="tab" data-tab="clip"    data-fx><span class="tab-ico">✂</span><span class="tab-label">剪辑</span></button>
-    <button class="tab" data-tab="phone"   data-fx><span class="tab-ico">📱</span><span class="tab-label">短信</span></button>
+    <button class="tab" data-tab="phone"   data-fx><span class="tab-ico">📱</span><span class="tab-label">短信</span><span class="tab-dot" id="tab-dot" hidden></span></button>
     <button class="tab" data-tab="settings"data-fx><span class="tab-ico">⚙</span><span class="tab-label">设置</span></button>
   </nav>
 
@@ -432,7 +440,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v76</span>
+<span class="num dim" id="set-build">v77</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -3141,6 +3149,9 @@ if(saveMode==='normal'){
 const state={
   world:bootWorld||Sim.makeWorld(bootSeed),
   selected:(bootMeta && bootWorld && bootWorld.agents.some(a=>a&&a.id===bootMeta.selected))?bootMeta.selected:'a1',
+  /* 第 80 单·未读小圆点：**读到哪一条**的水位（存的是日志序号）。它属"界面读到哪了"，
+     不进世界状态（`state.world` 一个字节不动），随存档信封走（见 `saveMeta`／引导读取那两处）。 */
+  phSeen:(bootMeta && isFinite(bootMeta.phSeen))?(bootMeta.phSeen|0):0,
   screen:'live',
   forcedLayout:'auto',
   logStick:true,
@@ -3367,6 +3378,7 @@ function setScreen(id){
   if(id==='roles') renderRoles();
   if(id==='clip') renderClips();
   if(id==='phone') renderPhone();
+  if(id==='phone'){ state.phSeen=state.world.lidSeq; 上次未读=-1; refreshUnread(); }   // 第 80 单：进这一页即算读过
   if(id==='settings') renderStats();
   if(id==='log'){ const s=$('#scr-log'); s.scrollTop=1e9; state.logStick=true; const jb=$('#log-jump'); if(jb) jb.hidden=true; }
   Focus.refresh();
@@ -3748,6 +3760,31 @@ function renderPhone(){
   $('#ph-history').innerHTML=phoneHistoryHTML(w, state.selected);   // 第 75 单：每帧照"这个人"的往来刷
   syncLLMStat();
 }
+/* ---------- 第 80 单·未读小圆点（"有新回音/留言"要看得出来）----------
+   第 75 单把往来记录接上了，第 76／77 单让居民也会留话——可**新回音不会提示你**（那条已登记为欠账）。
+   本单补一个角标：**水位之后**的往来条数 >0 就在"短信"页签上点一个小圆点；进那一页即清零。
+   水位 `state.phSeen` 属"界面读到哪了"，**不进世界状态**，随存档信封走。 */
+function 未读条数(w, 水位){
+  let n=0;
+  const 起=isFinite(水位)?水位:0;
+  for(let i=w.log.length-1;i>=0;i--){
+    const e=w.log[i];
+    /* 只数**来的**：`read`（TA 读了）／`noreply`（已读不回）／`note`（TA 留话）；
+       `out` 是**你发出去的**——刚发完就给自己点个红点，那是噪声。 */
+    if(e && e.type==='player' && isFinite(e.lid) && e.lid>起
+       && (e.sms==='read'||e.sms==='noreply'||e.sms==='note')) n++;
+  }
+  return n;
+}
+let 上次未读=-1;
+function refreshUnread(){
+  const dot=$('#tab-dot'); if(!dot) return;
+  const n=未读条数(state.world, state.phSeen);
+  if(n===上次未读) return;                      // 没变就不碰 DOM（每帧都会调它）
+  上次未读=n;
+  dot.hidden = n<=0;
+  dot.textContent = n>9?'9+':String(n);
+}
 function sendCustom(){
   const inp=$('#ph-input');
   const t=inp.value.trim();
@@ -3832,7 +3869,8 @@ function refreshSaveLine(){
   if(el.textContent!==txt) el.textContent=txt;
 }
 let saveHold=false;   // 导入/重开已定稿到 reload 之间，封锁自动写档，防止 pagehide 把旧世界覆盖回去
-function saveMeta(){ return {selected:state.selected, lastReflectDay:state.lastReflectDay, at:Date.now()}; }
+function saveMeta(){ return {selected:state.selected, lastReflectDay:state.lastReflectDay,
+  phSeen:(state.phSeen|0), at:Date.now()}; }   // 第 80 单：未读水位随存档信封走
 function saveNow(){
   if(saveHold || saveMode!=='normal') return false;
   const meta=saveMeta();
@@ -5445,7 +5483,7 @@ function loop(now){
   drainLog();
   penSweep(now);   // 第 29 单：占位符收尾死线按真实时钟在这里判（不用 setTimeout：后台标签页会把它节流到分钟级）
   const tick=Math.floor(w.t/10);
-  if(tick!==lastTick){ lastTick=tick; renderTopbar();
+  if(tick!==lastTick){ lastTick=tick; renderTopbar(); refreshUnread();   // 第 80 单：未读角标跟着世界走
     if(state.llm.on){
       const d=PURE.dayOf(w.t);
       if(d!==state.lastReflectDay && PURE.minuteOfDay(w.t)>=REFLECT_MIN){ state.lastReflectDay=d; runReflection(); }

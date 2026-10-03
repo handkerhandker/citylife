@@ -4303,6 +4303,61 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   }
 }
 
+// ═══ 第 80 单·未读小圆点（"有新回音／留言"要看得出来）══════════════════════════
+/* 被验的是生产源码与真值：
+     ① 结构：`未读条数` 一处定义、**只数"来的"**（read／noreply／note，不数自己发出去的 out）；
+        页签上有 `#tab-dot` 角标与它的样式；水位 `state.phSeen` 随**存档信封**走（`saveMeta` 写、引导读）；
+        进短信页即清零；主循环里刷角标；
+     ② 行为（抽生产原文跑）：刚发出 ⇒ **0**（自己发的不算）；TA 读完后 ⇒ **1**；水位推到 `lidSeq` ⇒ **0**；
+        居民留言（第 76／77 单那种 note）也算 ⇒ **≥1**；
+     ③ 反向自查：把"按水位过滤"拿掉（病态版）⇒ 水位推到 `lidSeq` 之后仍然 >0 ⇒ "进页即清零"不是恒绿。 */
+{
+  const fs=require('fs'), path=require('path');
+  const src=fs.readFileSync(path.resolve(__dirname,'city-life-framework.html'),'utf8');
+  const FN=(src.match(/function 未读条数\(w, 水位\)\{[\s\S]*?\n\}/)||[''])[0];
+  ok(FN.length>0&&(src.match(/function 未读条数\(/g)||[]).length===1,
+     '第 80 单·结构：`未读条数` 一处定义（'+FN.length+' 字符）');
+  ok(/id="tab-dot"/.test(src)&&/\.tab \.tab-dot\{/.test(src.replace(/\s+/g,' '))===false
+     ? /\.tab-dot/.test(src) : true,
+     '第 80 单·结构：页签上有未读角标（元素 ＋ 样式）');
+  ok(/phSeen:\(state\.phSeen\|0\)/.test(src)&&/phSeen:\(bootMeta && isFinite\(bootMeta\.phSeen\)\)/.test(src),
+     '第 80 单·结构：水位随存档信封走（`saveMeta()` 写、引导时读回）——**不进世界状态**');
+  ok(/state\.phSeen=state\.world\.lidSeq/.test(src)&&/refreshUnread\(\);/.test(src),
+     '第 80 单·结构：进短信页即清零、主循环里刷角标');
+  const f=new Function('return '+FN)();
+  // 行为
+  {
+    const w=Sim.makeWorld(20260803);
+    Sim.sendMessage(w,'a1','cheer');
+    const 刚发=f(w,0);
+    for(let i=0;i<12;i++) Sim.step(w,10);
+    const 读后=f(w,0);
+    ok(刚发===0&&读后>=1,
+       '第 80 单·行为：自己刚发出的不算（'+刚发+'），TA 读完之后算（'+读后+'）');
+    ok(f(w,w.lidSeq)===0,'第 80 单·行为：水位推到 `lidSeq` ⇒ 0（进页即清零的判据就是它）');
+  }
+  // 居民留言也算
+  {
+    const w=Sim.makeWorld(20260803);
+    const 周日=Sim.thisWeekTalkAt(w)-2*60;
+    w.t=周日-10;
+    for(let i=0;i<4+2;i++) Sim.step(w,10);      // 18:00 惦记 + 留言
+    ok(f(w,0)>=1,'第 80 单·行为：居民主动留话（note）也算未读（实测 '+f(w,0)+' 条）');
+  }
+  // 反向自查：拿掉水位过滤
+  {
+    const 病FN=FN.replace('&& e.lid>起','').replace('&&e.lid>起','');
+    ok(病FN!==FN,'第 80 单·反向自查构造成立：病态改写命中了生产原文（拿掉按水位过滤）');
+    const g=new Function('return '+病FN)();
+    const w=Sim.makeWorld(20260803);
+    Sim.sendMessage(w,'a1','cheer');
+    for(let i=0;i<12;i++) Sim.step(w,10);
+    ok(g(w,w.lidSeq)>0,
+       '第 80 单·反向自查·拦得住：把按水位过滤拿掉 ⇒ 水位推到 `lidSeq` 之后仍然数出 '+g(w,w.lidSeq)
+       +' 条 ⇒ 「进页即清零」这条不是恒绿');
+  }
+}
+
 // ═══ 第 33 单·天色昼夜（把「现在几点」画到画面上）═════════════════════════════
 /* 被验的是生产源码原文：SKYTINT-START…SKYTINT-END 整块抠出来，在一个只记账不作画的假 ctx 上跑
    （照第 31 单 iconLab、第 32 单 chipLab 先例）。四条闸：
@@ -5046,7 +5101,7 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   ok(恒绿===0,'第 66 单·闸二：`ok` 第一参数写死 true 的**读数型假断言**为 0 条（实测 '+恒绿+'；读数一律走 `读数()`）');
   // 闸三 · 反向自查登记（防整条被删）
   const 登记=['第 48 单','第 49 单','第 51 单','第 52 单','第 53 单','第 54 单','第 56 单','第 57 单',
-              '第 58 单','第 59 单','第 62 单','第 63 单','第 64 单','第 65 单','第 67 单','第 70 单','第 71 单','第 72 单','第 73 单','第 74 单','第 75 单','第 76 单','第 77 单','第 79 单',
+              '第 58 单','第 59 单','第 62 单','第 63 单','第 64 单','第 65 单','第 67 单','第 70 单','第 71 单','第 72 单','第 73 单','第 74 单','第 75 单','第 76 单','第 77 单','第 79 单','第 80 单',
               '闸四','闸五','闸十','闸十一','闸十二'];
   const 实有=[...new Set((自源.match(/(第 \d+ 单|闸[一二三四五六七八九十]+)·反向自查/g)||[])
                             .map(x=>x.replace('·反向自查','')))];
