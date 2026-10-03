@@ -84,6 +84,20 @@ const ok = (好, 话) => { console.log((好 ? ' ok : ' : ' FAIL: ') + 话); if (
   ok(Sim.relYouWord(a)==='熟（30）'&&Sim.relYouWord({})==='还没说上过话',
     '②期·那句"你在他心里"一处定义：有账＝熟（30）／空账＝还没说上过话');
 }
+// ⑧ 第 119 单·兜底回应也按档位（没有中转站时，玩家看到的就是这张表）
+{
+  const 读=v=>{
+    const w=Sim.makeWorld(20260803), a=w.agents[0];
+    if(v>0) a.relYou={v,day:1};
+    w.credits=99; Sim.sendMessage(w,'a1','eat');
+    for(let i=0;i<24;i++) Sim.step(w,10);
+    const e=[...w.log].reverse().find(x=>x.type==='player'&&x.sms==='read'&&x.agent==='a1');
+    return e?String(e.thought||''):'';
+  };
+  const 生=读(0), 熟=读(20);
+  console.log('⑧ 同一条「记得吃饭」：生疏 → '+生+'；熟 → '+熟);
+  ok(生===Sim.REACT.eat&&熟===Sim.REACT_NEAR.eat,'玩家篇收尾·兜底回应按档位：生疏走原表、熟走近版');
+}
 console.log(红 ? ('✘ ' + 红 + ' 条判据不过')
-  : '✔ 玩家篇：①期（涨／落／下限／一天一次／默认不长表）＋②期（等你回话窗口按档位／那句"你在他心里"一处定义）——全绿');
+  : '✔ 玩家篇：①期（涨／落／下限／一天一次／默认不长表）＋②期（窗口按档位／那句一处定义）＋收尾（兜底回应按档位）——全绿');
 process.exit(红 ? 1 : 0);
