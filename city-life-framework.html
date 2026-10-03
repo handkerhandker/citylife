@@ -470,7 +470,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v121</span>
+<span class="num dim" id="set-build">v122</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -5746,21 +5746,40 @@ const 盒相交=(a,b)=>a.l<b.r && b.l<a.r && a.t<b.b && b.t<a.b;
    逐人黏性＋缓降（腾空 1.2 秒才落一道），再叠一层浮道 ~120ms 缓动——两道保险，换道不再瞬移。 */
 let 名牌道={}, 名牌降时={}, 名牌浮道={}, 上次名牌对=null, 名牌道上帧=0;
 function 名牌宽(text){ const 号=名号(); ctx.font=号+'px system-ui,sans-serif'; return ctx.measureText(text).width+8; }
-function 分名牌道(屏x){
+function 分名牌道(屏x, 屏y){
   const 人=state.world.agents, 宽={}, 位={};
   for(const a of 人){ 宽[a.id]=名牌宽(a.name); 位[a.id]=屏x[a.id]; }
   const 对=[];
   for(let i=0;i<人.length;i++) for(let j=i+1;j<人.length;j++){
     const A=人[i].id, B=人[j].id, k=A+'|'+B;
     const T=(宽[A]+宽[B])/2+NAME_CHIP_GAP, d=Math.abs(位[A]-位[B]);
+    /* 第 149 单·纵轴判定：名字盒重叠要求 x、y 双轴都近——旧口径只判 x，
+       实测 91.6% 的"对"是 y 差 36px 以上、名字根本叠不上的假对（同 seed 64s 样本），
+       无谓分道由此而来。成形：dy＜盒高；保持：dy＜盒高+20（与 x 迟滞同余量）。 */
+    const dy=Math.abs(屏y[A]-屏y[B]);
     const 上=!!(上次名牌对&&上次名牌对.indexOf(k)>=0);
-    if(d<T-3 || (上&&d<T+3)) 对.push(k);          // 迟滞：成形要更近、拆开要更远
+    const 近= d<T-3 && dy<名盒高();
+    const 带= 上 && d<T+20 && dy<名盒高()+20;    // 第 149 单：拆开迟滞 3→20（6px 带宽在走路速度下 30ms 就穿带，"落了又升"成串）
+    if(近 || 带) 对.push(k);
   }
   上次名牌对=对;
   const 图=new Set(对), 道={};
   const now=(typeof performance!=='undefined'&&performance.now)?performance.now():Date.now();
   const dt=名牌道上帧? Math.min(0.1,(now-名牌道上帧)/1000):0.016; 名牌道上帧=now;
-  for(const a of 人){                              // 固定名单顺序 ⇒ 与绘制顺序无关
+  /* 第 149 单·让位顺序＝「先来后到，同到让走的人」——
+     ① 上帧道数小的人先占低道：对内的上下关系一旦形成就锁定，不被"谁在走"的瞬时状态翻转
+        （旧规则实测：a1 在 a3 旁边停下的一瞬就把 a3 从 0 道顶到 1 道，a1 一走又落回，来回成串）；
+     ② 上帧同为一档（新成的对）时，站定者先占、移动者让位——路过的人抬自己，不抬旁人；
+     ③ 仍以固定名单序兜底，「与绘制顺序无关」的构造保证逐字保留（深序绘制交换不算数）。 */
+  const 名单序={}; 人.forEach((a,i)=>{ 名单序[a.id]=i; });
+  const 让位序=人.slice().sort((x,y)=>{
+    const kx=(名牌道[x.id]===undefined)?-1:名牌道[x.id], ky=(名牌道[y.id]===undefined)?-1:名牌道[y.id];
+    if(kx!==ky) return kx-ky;
+    const mx=state.vis[x.id].moving?1:0, my=state.vis[y.id].moving?1:0;
+    if(mx!==my) return mx-my;
+    return 名单序[x.id]-名单序[y.id];
+  });
+  for(const a of 让位序){
     const 邻居道=new Set();
     for(const b of 人){ const v=道[b.id]; if(v===undefined) continue;
       const k=(a.id<b.id)?a.id+'|'+b.id:b.id+'|'+a.id;
@@ -6747,7 +6766,8 @@ function draw(now){
   const ents=state.world.agents.map(ag=>({kind:'a',ag,fy:dispPos[ag.id].y+0.5}));
   if(pixOn) for(const f of PIX_FURN_TALL) ents.push({kind:'f',f,fy:f[4]});
   ents.sort((a,b)=>a.fy-b.fy);
-  const 本帧道=分名牌道(Object.fromEntries(state.world.agents.map(a=>[a.id, sx(dispPos[a.id].x)])));   // 第 125 单
+  const 本帧道=分名牌道(Object.fromEntries(state.world.agents.map(a=>[a.id, sx(dispPos[a.id].x)])),
+                         Object.fromEntries(state.world.agents.map(a=>[a.id, sy(dispPos[a.id].y)])));   // 第 125 单 / 第 149 单补纵轴
   for(const en of ents){
     if(en.kind==='f'){
       const fr=en.f;
