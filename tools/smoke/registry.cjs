@@ -23,6 +23,7 @@ const 清单 = [
   { 路径: 'tools/long-run/probe.cjs',         档: 1, 参数: ['--天=200'],               超时: 120000, 备注: '新状态耐久性（长跑不变量＋存档往返）' },
   { 路径: 'tools/save-fuzz/probe.cjs',        档: 1, 参数: [],                          超时: 180000, 备注: '坏档容错（畸形档过闸后必须跑得动；三处现场点名）' },
   { 路径: 'tools/closeout/writeback.cjs',     档: 1, 参数: ['--自测'],                    超时: 60000,  备注: '三件套回写器（--自测 8 场景：正常／坏形态／已写过／锚点缺失／版本行…）' },
+  { 路径: 'tools/closeout/commit.cjs',        档: 1, 参数: ['--自测'],                    超时: 60000,  备注: '提交器（--自测 5 场景：引号/换行逐字入库、空消息拒、无改动拒、预演不提交）' },
   { 路径: 'tools/save-fuzz/dom-probe.mjs',    档: 2, 参数: ['{OUT}/save-fuzz-dom'],     超时: 300000, 备注: '坏档容错·渲染面（角色卡／循环零报错）' },
   { 路径: 'tools/audio-audit/probe.mjs',      档: 2, 参数: ['{OUT}/audio-audit'],        超时: 180000, 备注: '提示音（关着不响／开着要响；AudioContext 计数）' },
   { 路径: 'tools/nameplate-audit/stability.mjs', 档: 2, 参数: ['{OUT}/nameplate-stability'], 超时: 180000, 备注: '名牌分道稳定性（同层零重叠／每 50ms 位移 ≤0.6 道）' },
