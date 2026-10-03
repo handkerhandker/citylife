@@ -36,6 +36,7 @@ const 清单 = [
   { 路径: 'tools/multitab-audit/probe.mjs',   档: 2, 参数: ['{OUT}/multitab-audit'],    超时: 300000, 备注: '双开（两标签页互相覆盖存档的现场＋丢动作实证；提示：单开不误报/双开两页都报/关了自动收）' },
   { 路径: 'tools/backpop-audit/probe.mjs',    档: 2, 参数: ['{OUT}/backpop-audit'],     超时: 180000, 备注: '回城弹窗「看全部剪辑」＋三处一致性（弹窗/横幅/日志的 N 与封顶文案；乙形态）' },
   { 路径: 'tools/umbrella/shots.mjs',         档: 2, 参数: ['{OUT}/umbrella'],          超时: 180000, 备注: '雨天撑伞（伞面像素计数：雨户外>10/室内0/晴0/兜底25vs0/稳定；--改前 对照全0）' },
+  { 路径: 'tools/scene-sweep/shots.mjs',      档: 2, 参数: ['{OUT}/scene-sweep'],       超时: 300000, 备注: '目验巡查（八景各出全景＋特写：聚厅/入睡/雨夜街道/公园/便利店/集市/深夜街灯/手机）' },
   { 路径: 'tools/gift-audit/probe.cjs',       档: 1, 参数: [],                        超时: 90000, 备注: '欠人情排队（与上一版并排跑生日那两周）' },
   { 路径: 'tools/offline-catchup/probe.cjs',  档: 1, 参数: [],    超时: 90000, 备注: '离线补算取证' },
   { 路径: 'tools/offline-catchup/pushprobe.cjs', 档: 1, 参数: [], 超时: 90000, 备注: '回城推送判据取证' },
