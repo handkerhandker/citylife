@@ -33,6 +33,7 @@ const 清单 = [
   { 路径: 'tools/night-lamp/shots.mjs',       档: 2, 参数: ['{OUT}/night-lamp'],   超时: 120000, 备注: '入夜点灯对照图' },
   { 路径: 'tools/room-tile/shots.mjs',        档: 2, 参数: ['{OUT}/room-tile'],    超时: 120000, 备注: '房间铺装对照图' },
   { 路径: 'tools/sky-tint/shots.mjs',         档: 2, 参数: ['{OUT}/sky-tint'],     超时: 120000, 备注: '天色对照图' },
+  { 路径: 'tools/season-tint/shots.mjs',      档: 2, 参数: ['{OUT}/season-tint'],  超时: 150000, 备注: '四季对照图（春夏秋冬 × 双档＋逐像素判据）' },
   { 路径: 'tools/street-glow/shots.mjs',      档: 2, 参数: ['{OUT}/street-glow'],  超时: 120000, 备注: '路灯光斑对照图' },
   { 路径: 'tools/offline-catchup/shots.mjs',  档: 2, 参数: ['{OUT}/catchup-shots'], 超时: 150000, 备注: '离线追帧实机截图' },
   { 路径: 'tools/offline-catchup/popshots.mjs', 档: 2, 参数: ['{OUT}/catchup-pop'], 超时: 150000, 备注: '回城弹窗实机截图' },

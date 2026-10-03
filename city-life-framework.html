@@ -442,7 +442,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v98</span>
+<span class="num dim" id="set-build">v99</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -5675,6 +5675,51 @@ function skyPaint(w,h,t){
   ctx.fillRect(0,0,w,h);
 }
 /*SKYTINT-END*/
+/*SEASON-START*/
+/* ---------- 四季：把「一年里的第几季」画到画面上（氛围一期）----------
+   缘由（第 111 单）：日历这把尺已经在世界里走了四步——「周」→「日」→「年」（第 62 单江灯节）→
+   「个人年」（第 64 单生日），可**画面上一年到头一个色**：春天和深冬、盛夏与初秋，逐像素相同。
+   同类作品里季节是最显眼的那把尺（星露谷／动森一到季节，整个世界换一套颜色；本项目的调研文件里
+   "天黑时刻随季节漂移"那条候选也写着"需要先有「季节」这个概念"——见 docs/规划/借鉴调研-2026-10-03.md
+   第 46／89 行）。
+
+   本单只做**氛围一期**（照本项目"先视觉、后行为"的老规矩：雨先壁纸（第 23 单）后行为（第 49 单）、
+   天色先罩层（第 33 单）后点灯（第 35 单））——**一只像素的世界行为都不动**：
+     · 纯显示层：一张表 ＋ 两个纯函数 ＋ 一处调用；不掷骰子、不碰世界、不读 `w.`（只吃 `w.t` 这个数）；
+     · **春＝不着色**（`a:0`）⇒ 头 90 天画面上一个像素都不改（这台日历的 D1–D90 是春）；
+     · 四季按**整段切**（第 90／180／270 天）——切换落在午夜，而那一刻天色罩层本来就在最暗档，
+       突变被夜色吃掉（同类作品也是"睡一觉醒来换季"）；
+     · 不透明度上限 0.10：与天色罩层叠在一起也不把名牌文字与选中金框的对比度压垮（照第 33 单那条口径）。 */
+const SEASON_DAYS=90;                       // 一季 90 天 ×4＝360 天（12 个月 ×30 天，与 `FESTIVAL.yearDays` 同一本日历）
+const SEASON_KEYS=[
+  // [季名, 年内第几天起（0 起）, R, G, B, 罩层不透明度]
+  ['春',   0, 255, 255, 255, 0.000],        // 春＝不着色（基线：头 90 天与改前逐像素相同）
+  ['夏',  90, 255, 216, 138, 0.055],        // 夏：暖亮（日照感）
+  ['秋', 180, 226, 150,  70, 0.080],        // 秋：琥珀（落叶感）
+  ['冬', 270, 176, 200, 224, 0.075],        // 冬：冷灰蓝（晴冷感）
+];
+const SEASON_MAX_ALPHA=0.10;                // 上限：再高压垮名牌文字与选中金框的对比度（第 32／33 单那条口径）
+function seasonOfDay(dayOfYear){
+  const Y=SEASON_DAYS*SEASON_KEYS.length;                    // 360
+  let d=Math.floor(Number(dayOfYear));
+  if(!isFinite(d)) d=0;                                      // 畸形输入一律当"春"（什么都不画），绝不抛错
+  d=((d%Y)+Y)%Y;                                             // 跨年归一：360 → 春、-1 → 冬
+  return SEASON_KEYS[Math.min(SEASON_KEYS.length-1, Math.floor(d/SEASON_DAYS))];
+}
+function seasonTint(dayOfYear){
+  const s=seasonOfDay(dayOfYear);
+  return { key:s[0], r:s[2], g:s[3], b:s[4], a:s[5] };
+}
+function seasonPaint(w,h,t){
+  const c=seasonTint(PURE.dayOf(t)-1);      // 与顶栏日历同一个数，不新起一本账
+  // 春不盖：省一次整屏填充，也让「头 90 天零改动」可断言。
+  // 写成 !(c.a>0.001) 而不是 c.a<=0.001 —— 后者对 NaN 为 false，会带 NaN 去赋值 fillStyle，
+  // 浏览器忽略非法色值后会用上一笔残留颜色涂满整屏（畸形时刻必须「什么都不画」，照 SKYTINT 先例）。
+  if(!(c.a>0.001)) return;
+  ctx.fillStyle='rgba('+Math.round(c.r)+','+Math.round(c.g)+','+Math.round(c.b)+','+c.a.toFixed(3)+')';
+  ctx.fillRect(0,0,w,h);
+}
+/*SEASON-END*/
 /*NIGHTLAMP-START*/
 /* ---------- 入夜点灯：屋里亮起来 ----------
    缘由（第 35 单）：第 33 单把画面按钟点压暗之后，公寓三间／便利店／公司一入夜**跟室外一样黑**——
@@ -5995,6 +6040,7 @@ function draw(now){
     if(labelBlockBoxes.some(k=>盒相交(k,b))) continue;
     chip(L.x, L.y, L.text, '#aeb6c6', L.size);
   }
+  seasonPaint(state.cvW,state.cvH,state.world.t); // 第 111 单：四季罩层——画在天色**之下**（夜色与灯要压在它上面）
   skyPaint(state.cvW,state.cvH,state.world.t);   // 第 33 单：天色罩层——画在最后一层，雨幕也一并跟着染色
   lampPaint(state.world.t);                       // 第 35 单：入夜点灯——画在天色**之上**，灯才亮得起来（否则被夜色吃掉）
   streetGlow(state.world.t);                      // 第 38 单：室外路灯光斑——同样画在天色之上；只画地面，不占格

@@ -5968,6 +5968,99 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   }
 }
 
+// ═══ 第 111 单·四季（氛围一期：把"一年里的第几季"画到画面上）═════════════════════
+/* 被验的是生产源码原文：SEASON 段整块抠出来（START／END 两条标记之间），在只记账不作画的假 ctx 上跑。
+     闸一 · 分季与边界：第 0／89／90／179／180／269／270／359 天分属 春春夏夏秋秋冬冬；跨年归一（360→春、-1→冬）；
+     闸二 · **春不着色**（零笔）＋落笔正确（夏 rsba 255,216,138,0.055、尺寸跟着画布）＋同一天换钟点同色；
+     闸三 · 不碰世界（跑完全年 52 笔后世界逐字节不变）＋ 畸形输入（负／越界／NaN／undefined／null／±∞）不抛错也不落坏色；
+     闸四 · 反向自查：把春也着色 ⇒ 「春＝基线」判红；把冬抬到 0.5 ⇒ 「上限」判红；边界挪一天 ⇒ 「分季」判红；
+     结构侧：draw() 里 `seasonPaint(` 恰 1 个调用点、排在 `skyPaint(` **之前**；全站 `seasonPaint` 恰 2 次。 */
+{
+  const fs=require('fs'), path=require('path');
+  const src=fs.readFileSync(path.resolve(__dirname,'city-life-framework.html'),'utf8');
+  const grab=(re,name)=>{ const m=src.match(re); if(!m){ ok(false,'源码抽取失败:'+name); return ''; } return m[0]; };
+  const SEASON_SRC=grab(/\/\*SEASON-START\*\/[\s\S]*?\/\*SEASON-END\*\//,'SEASON 段');
+  const DRAWFN=grab(/function draw\(now\)\{[\s\S]*?\n\}\n\/\/ 画布：拖动=平移镜头/,'draw() 全函数');
+  function seasonLab(mut){
+    const rec={rect:[]};
+    const ctx={ fillStyle:'', fillRect(x,y,w,h){ rec.rect.push({x,y,w,h,fill:ctx.fillStyle}); } };
+    let code=SEASON_SRC;
+    if(mut) code=mut(code);
+    const M=new Function('ctx','PURE',
+      code+'\nreturn {SEASON_KEYS,SEASON_DAYS,SEASON_MAX_ALPHA,seasonOfDay,seasonTint,seasonPaint};')(ctx,PURE);
+    return {M,rec,ctx};
+  }
+  // 判据抽成函数，正反两侧喂的是同一段判断
+  const 分对=M=>[[0,'春'],[89,'春'],[90,'夏'],[179,'夏'],[180,'秋'],[269,'秋'],[270,'冬'],[359,'冬'],[360,'春'],[-1,'冬']]
+    .every(p=>M.seasonTint(p[0]).key===p[1]);
+  const 春不盖=M=>M.seasonTint(0).a===0&&M.seasonTint(89).a===0&&M.seasonOfDay(0)[0]==='春';
+  const 上限内=M=>M.SEASON_KEYS.every(s=>s[5]<=M.SEASON_MAX_ALPHA+1e-9)&&M.SEASON_MAX_ALPHA<=0.10;
+  const 四色各异=M=>M.SEASON_KEYS.length===4
+    &&new Set(M.SEASON_KEYS.map(s=>s[2]+','+s[3]+','+s[4]+','+s[5])).size===4;
+  const 纯函数=M=>[0,90,180,270,359].every(d=>JSON.stringify(M.seasonTint(d))===JSON.stringify(M.seasonTint(d)));
+  // ── 闸一 · 分季与边界 ───────────────────────────────────────────────────
+  {
+    const M=seasonLab().M;
+    ok(分对(M),'闸一·分季与边界：0／89＝春、90／179＝夏、180／269＝秋、270／359＝冬；跨年归一 360→春、-1→冬');
+    ok(四色各异(M),'闸一·四季互不同色：'+M.SEASON_KEYS.map(s=>s[0]+'(a='+s[5]+')').join('／'));
+    ok(春不盖(M),'闸一·春＝基线：春两档不透明度都是 '+M.seasonTint(0).a+'（不着色 ⇒ 头 90 天画面上一个像素都不改）');
+    ok(上限内(M),'闸一·上限保守：SEASON_MAX_ALPHA='+M.SEASON_MAX_ALPHA+' ≤ 0.10（与天色罩层叠加也不压垮名牌文字与金框）');
+  }
+  // ── 闸二 · 落笔行为（假 ctx）────────────────────────────────────────────
+  {
+    const L=seasonLab();
+    L.M.seasonPaint(100,50,10*1440+720);                        // 春·某天正午
+    ok(L.rec.rect.length===0,'闸二·春不落笔：春某天正午一次 fillRect 都不发（实测 '+L.rec.rect.length
+       +' 次）——「不着色」不是画了一层透明的');
+    L.M.seasonPaint(100,50,100*1440+720);                       // 夏·同日正午
+    const 夏=L.rec.rect[L.rec.rect.length-1];
+    ok(L.rec.rect.length===1&&/^rgba\(255,216,138,0\.055\)$/.test(String(夏&&夏.fill))&&夏.w===100&&夏.h===50,
+       '闸二·落笔正确：夏整屏一笔 '+(夏&&夏.fill)+'，尺寸跟着画布（'+(夏&&夏.w)+'×'+(夏&&夏.h)+'）');
+    const before=L.rec.rect.length;
+    L.M.seasonPaint(100,50,100*1440+60); L.M.seasonPaint(100,50,100*1440+1300);
+    const 同=L.rec.rect.slice(before);
+    ok(同.length===2&&同[0].fill===同[1].fill,'闸二·只读"第几天"：同一天的清晨与深夜两笔色值相同（'+同[0].fill
+       +'）——罩层跟日历走，不跟钟点走');
+  }
+  // ── 闸三 · 不碰世界 ＋ 畸形输入 ─────────────────────────────────────────
+  {
+    const bare=SEASON_SRC.replace(/\/\*[\s\S]*?\*\//g,'').replace(/(^|[^:'"])\/\/.*$/gm,'$1');
+    ok(!/\.rng\s*\(|\bMath\.random|\bfetch\s*\(|rawCallClaude|actIcon/.test(bare)&&!/\bw\./.test(bare),
+       '闸三·源码侧：SEASON 段零 rng／零 Math.random／零出网／零 AI 入口／零 `w.`（只吃传进来的那个数）');
+    ok(/PURE\.dayOf\(t\)/.test(bare),'闸三·取日口径同源：第几天直接取 PURE.dayOf(t)——与顶栏日历同一个数，不新起一本账');
+    const w=Sim.makeWorld(20260803), snap=Sim.serialize(w,null), L=seasonLab();
+    for(let d=0;d<360;d+=7) L.M.seasonPaint(390,844,d*1440+720);
+    ok(Sim.serialize(w,null)===snap,'闸三·运行侧：全年 52 笔 seasonPaint 跑完，世界逐字节不变（只读不写）');
+    const L2=seasonLab(); let threw='';
+    try{ for(const t of [-1,0,1440,1441,1e9,NaN,undefined,null,-Infinity,Infinity]) L2.M.seasonPaint(10,10,t); }
+    catch(e){ threw=String((e&&e.message)||e); }
+    const 坏色=L2.rec.rect.filter(r=>/NaN|undefined|null|Infinity/.test(String(r.fill))).length;
+    ok(!threw&&坏色===0,'闸三·畸形输入：10 种（负／越界／NaN／undefined／null／±∞）不抛错、'
+       +L2.rec.rect.length+' 笔里坏色 '+坏色+' 笔'+(threw?('（实测抛了：'+threw+'）'):''));
+  }
+  // ── 闸四 · 反向自查 ＋ 不误伤 ＋ 构造成立 ＋ 结构侧 ─────────────────────
+  {
+    const 病1=seasonLab(s=>s.replace("['春',   0, 255, 255, 255, 0.000]","['春',   0, 255, 255, 255, 0.050]")).M;
+    ok(!春不盖(病1),'第 111 单·反向自查·一：把春也着色（a=0.05）⇒ 「春＝基线」当场判红');
+    const 病2=seasonLab(s=>s.replace("['冬', 270, 176, 200, 224, 0.075]","['冬', 270, 176, 200, 224, 0.500]")).M;
+    ok(!上限内(病2),'第 111 单·反向自查·二：把冬抬到 0.50 ⇒ 「上限 ≤ 0.10」当场判红');
+    const 病3=seasonLab(s=>s.replace('Math.floor(d/SEASON_DAYS)','Math.floor((d+1)/SEASON_DAYS)')).M;
+    ok(!分对(病3),'第 111 单·反向自查·三：把分季边界挪一天 ⇒ 「边界」当场判红');
+    const M=seasonLab().M;
+    ok(分对(M)&&春不盖(M)&&上限内(M)&&四色各异(M)&&纯函数(M),
+       '闸四·不误伤：生产原文五条判据全部照常放行（不是恒红也不是恒绿）');
+    ok(病1.SEASON_KEYS.length===M.SEASON_KEYS.length&&病3.SEASON_KEYS.length===M.SEASON_KEYS.length,
+       '闸四·构造成立：两处病态改写都真的命中生产原文（表键数不变、判断跑得起来）');
+    const nCall=(DRAWFN.match(/seasonPaint\(/g)||[]).length;
+    ok(nCall===1,'结构侧：draw() 里 seasonPaint 恰 1 个调用点（实测 '+nCall+' 处）——少了就是没画，多了就是重复着色');
+    ok(DRAWFN.indexOf('seasonPaint(')<DRAWFN.indexOf('skyPaint('),
+       '结构侧：四季画在天色**之下**——夜色、灯与路灯光斑都压在它上面，不被季节色冲淡');
+    const nAll=(src.match(/seasonPaint/g)||[]).length;
+    ok(nAll===2,'射程：seasonPaint 全站只出现 2 次（SEASON 段里的定义 ＋ draw 里的调用）——'
+       +'角色页／日志／剪辑／短信都是 DOM，四季不碰它们');
+  }
+}
+
 // ═══ 第 35 单·入夜点灯（屋里亮起来）═════════════════════════════════════════
 /* 被验的是生产源码原文：SKYTINT ＋ NIGHTLAMP 两段一起抠出来求值（灯要调 skyTint，两段必须同源），
    在一个只记账的假 ctx 上跑。四条闸：
@@ -6574,7 +6667,7 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   ok(恒绿===0,'第 66 单·闸二：`ok` 第一参数写死 true 的**读数型假断言**为 0 条（实测 '+恒绿+'；读数一律走 `读数()`）');
   // 闸三 · 反向自查登记（防整条被删）
   const 登记=['第 48 单','第 49 单','第 51 单','第 52 单','第 53 单','第 54 单','第 56 单','第 57 单',
-              '第 58 单','第 59 单','第 62 单','第 63 单','第 64 单','第 65 单','第 67 单','第 70 单','第 71 单','第 72 单','第 73 单','第 74 单','第 75 单','第 76 单','第 77 单','第 79 单','第 80 单','第 81 单','第 84 单','第 85 单','第 87 单','第 88 单','第 90 单','第 91 单','第 92 单','第 93 单','第 94 单','第 95 单','第 96 单','第 97 单','第 98 单','第 99 单','第 100 单','第 102 单','第 103 单','第 106 单','第 107 单','第 109 单','第 110 单',
+              '第 58 单','第 59 单','第 62 单','第 63 单','第 64 单','第 65 单','第 67 单','第 70 单','第 71 单','第 72 单','第 73 单','第 74 单','第 75 单','第 76 单','第 77 单','第 79 单','第 80 单','第 81 单','第 84 单','第 85 单','第 87 单','第 88 单','第 90 单','第 91 单','第 92 单','第 93 单','第 94 单','第 95 单','第 96 单','第 97 单','第 98 单','第 99 单','第 100 单','第 102 单','第 103 单','第 106 单','第 107 单','第 109 单','第 110 单','第 111 单',
               '闸四','闸五','闸十','闸十一','闸十二'];
   const 实有=[...new Set((自源.match(/(第 \d+ 单|闸[一二三四五六七八九十]+)·反向自查/g)||[])
                             .map(x=>x.replace('·反向自查','')))];
