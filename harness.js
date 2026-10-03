@@ -2831,12 +2831,10 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
     ok((见.goal_done||0)>0&&(见.goal_miss||0)>0,
        '第 54 单·两种常见结局都上过卡（'+ids.map(id=>id+':'+(见[id]||0)).join(' ')
        +'；`goal_broke` 稀缺，只作读数——见交付件第九章）');
-    /* 第 58 单改口径（附理由）：从"全部"改成"≥90%"。缘由是**日志墙容量**——
-       第 58 单每天多一条晨报，400 条的窗口因此少覆盖几天；少数卡结算时那条目标日志已被裁掉，
-       于是 `clipQuotes` 按老规矩退到"离锚点最近的一条"（卡片正文照旧有引用，只是引的不是目标那句）。
-       判据的用意没变：**绝大多数**目标卡引的就是目标本身。 */
-    ok(引到>=带目标*0.9,'第 54 单·引原文：'+引到+'/'+带目标+' 张带目标的卡引到了目标那三条日志本身（判据 ≥90%'
-       +'；少数是日志墙裁掉后的就近回退，见源码注释）');
+    /* 第 58 单一度放宽到 ≥90%（日志墙被每天的晨报挤薄）；**第 59 单起收回 100%**——
+       事件型条目现在**自带落笔那一刻抄下的原文**（`v.tx`），不再回头捞日志墙，故这条可以重新严格。 */
+    ok(引到===带目标,'第 54 单·引原文：每张带目标的卡都引到了目标那三条日志本身（'+引到+'/'+带目标
+       +'）——第 59 单起由"落笔抄录"保证 100%');
   }
   // 阈值对齐：周一批把有效窗口压到约 6.9 天 ⇒ 阈值整体下调半档（判据：六条阈值都不高于第 52 单定标值）
   {
@@ -3045,6 +3043,66 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
     const sick=M_SRC.replace('|| w.morningDay===d) return;',' ) return;');
     ok(sick!==M_SRC,'第 58 单·反向自查构造成立：病态改写命中了生产原文');
     ok(!/w\.morningDay===d/.test(sick),'第 58 单·反向自查·拦得住：删掉防重后「同日重复 0 条」这条判据当场判红');
+  }
+}
+
+// ═══ 第 59 单·剪辑卡引原文：落笔抄录（不再回头捞日志墙）═══════════════════════
+/* 病根：40 天里 21 张目标卡有 2 张引不到自己那句——日志墙封 400 条，每天又多一条晨报，
+   结算时那条事件日志可能已经被挤掉。治法：事件型条目**自带落笔那一刻抄下来的原文**（`v.tx`）。
+   两条腿：①行为侧每个事件项都引到自己那句；②**构造**——把日志墙清空后再结算，卡上照样引得到。 */
+{
+  const fs=require('fs'), path=require('path');
+  const src=fs.readFileSync(path.resolve(__dirname,'city-life-framework.html'),'utf8');
+  ok((src.match(/tx:'这周想的事做到了：'\+G\.label/g)||[]).length===1
+     &&(src.match(/tx:'这周想的事没做成：'\+G\.label/g)||[]).length===1
+     &&(src.match(/tx:'本来想做的事，眼下做不成了：'\+G\.label/g)||[]).length===1
+     &&(src.match(/tx:'在夜市买了份小吃/g)||[]).length===1,
+     '第 59 单·结构：四种事件（目标达成／没做成／中途换了／逛夜市）各自把日志原文抄在身上');
+  ok((src.match(/goalTx0=/g)||[]).length===1&&(src.match(/mktTx0=/g)||[]).length===1,
+     '第 59 单·结构：`clipSample` 各抄一处进窗口记录');
+  ok(/push\('goal_'\+r\.goalK,\{label:r\.goalTx, tx:r\.goalTx0\}/.test(src)
+     &&/push\('mkt_go',\{spent:r\.mktSpent, tx:r\.mktTx0\}/.test(src),
+     '第 59 单·结构：`clipMake` 把原文放进条目的 `v` 里');
+  ok(/自带原文的事件项先取/.test(src),'第 59 单·结构：摘原文时**自带原文的条目优先**（`CLIP_QUOTE_MAX` 只有 5 条，先来先占会把它挤掉）');
+  // 行为侧：31 天 × 3 种子，每个事件项都引到自己那句
+  {
+    let 带事件=0, 全对=0;
+    for(const seed of [20260803,424242,777]){
+      const w=Sim.makeWorld(seed);
+      for(let i=0;i<31*144;i++) Sim.step(w,10);
+      for(const c of (w.clips||[])){
+        const its=(c.items||[]).filter(it=>/^goal_|^mkt_go$/.test(String(it.id)));
+        if(!its.length) continue;
+        带事件++;
+        const qs=(c.q||[]).map(e=>String(e.text||''));
+        if(its.every(it=>!it.v||!it.v.tx||qs.indexOf(it.v.tx)>=0)) 全对++;
+      }
+    }
+    ok(带事件>=10&&全对===带事件,'第 59 单·行为侧：'+带事件+' 张带事件项的卡，**每一个事件项都引到自己那句原文**（'
+       +全对+'/'+带事件+'）');
+  }
+  // 构造：把日志墙清空后再结算，卡上仍然引得到（＝不再依赖日志墙）
+  {
+    const w=Sim.makeWorld(20260803);
+    let 目标=null, 已读=0;
+    for(let i=0;i<20*144&&!目标;i++){
+      Sim.step(w,10);
+      for(const e of w.log){
+        if(e.lid<=已读) continue; 已读=e.lid;
+        if(/这周想的事(做到了|没做成)：/.test(String(e.text||''))){ 目标=String(e.text); break; }
+      }
+    }
+    ok(!!目标,'第 59 单·构造成立：先跑出一条目标结果日志');
+    const 前=w.clips.length;
+    w.log.length=0;                                        // ← 把日志墙清空（模拟被后浪挤掉）
+    let g=0; while(w.clips.length===前&&g++<300) Sim.step(w,10);
+    const 卡=w.clips[w.clips.length-1];
+    const qs=(卡&&卡.q||[]).map(e=>String(e.text||''));
+    ok(qs.indexOf(目标)>=0,'第 59 单·**不靠日志墙**：清空墙之后再结算，卡上仍然引得到那句目标原文（构造）');
+    // 反向自查（源码级）：把"自带原文优先"那条删掉 ⇒ 构造这条当场判红
+    const 病=src.replace(/const 有序=items\.slice\(\)\.sort\(\(a,b\)=>\(\(b\.v&&b\.v\.tx\)\?1:0\)-\(\(a\.v&&a\.v\.tx\)\?1:0\)\);/,'const 有序=items;');
+    ok(病!==src&&!/自带原文的事件项先取[\s\S]{0,80}const 有序=items\.slice\(\)\.sort/.test(病),
+       '第 59 单·反向自查·拦得住：把"自带原文优先"删掉 ⇒ 多事件那张卡会重新引不到自己的句子 ⇒ 判据判红');
   }
 }
 

@@ -428,7 +428,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v58</span>
+<span class="num dim" id="set-build">v59</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -1500,14 +1500,17 @@ function goalStep(w,ag){
     logAct(w,ag,'这周想的事做到了：'+G.label,'做到了。');
     w.stats.goalDone=(w.stats.goalDone||0)+1;
     if(ag.week) ag.week.结局='做到了';
-    ag.lastGoalOut={ t:w.t, k:'done', label:G.label };   // 第 54 单：给剪辑层留一个可采样的落点（与 ag.sit 同一手法）
+    /* 第 54 单：给剪辑层留一个可采样的落点（与 ag.sit 同一手法）。
+       第 59 单补 `tx`：**落笔那一刻把日志原文抄一份带在身上**——剪辑卡引原文就不必回头捞日志墙
+       （400 条会被后来的播报挤掉，实测 21 张目标卡里有 2 张因此引不到自己那句）。 */
+    ag.lastGoalOut={ t:w.t, k:'done', label:G.label, tx:'这周想的事做到了：'+G.label };
     delete ag.goal; return;
   }
   if(w.t>=g.until){
     logAct(w,ag,'这周想的事没做成：'+G.label,'……下回再说。');
     w.stats.goalMiss=(w.stats.goalMiss||0)+1;
     if(ag.week) ag.week.结局='没做成';
-    ag.lastGoalOut={ t:w.t, k:'miss', label:G.label };
+    ag.lastGoalOut={ t:w.t, k:'miss', label:G.label, tx:'这周想的事没做成：'+G.label };
     delete ag.goal; return;
   }
   /* 前提检查器 v1：只认现存变量（钱／体力／屋里有没有活人）。**连续 GOAL_BREAK_TICKS 不成立**才算破裂，
@@ -1519,7 +1522,7 @@ function goalStep(w,ag){
     logAct(w,ag,'本来想做的事，眼下做不成了：'+G.label,'……换个目标吧。');
     w.stats.goalBroke=(w.stats.goalBroke||0)+1;
     if(ag.week) ag.week.结局='中途换了';
-    ag.lastGoalOut={ t:w.t, k:'broke', label:G.label };
+    ag.lastGoalOut={ t:w.t, k:'broke', label:G.label, tx:'本来想做的事，眼下做不成了：'+G.label };
     delete ag.goal;
     const 今天=PURE.dayOf(w.t);
     if(ag.flags.goalRedoDay!==今天){ ag.flags.goalRedoDay=今天; ag.flags.goalNext=w.t; }  // 每人每日至多重开一次
@@ -1807,7 +1810,7 @@ function decide(w, ag){
     /* 第 57 单：每人每周至多一条"去夜市"的剪辑项（否则周五那天四张卡全是夜市）；
        落点照第 54 单那套事件通道记在 `ag.lastMkt` 上，剪辑层只在窗口内采一次。 */
     const 周号=Math.floor(w.t/(7*1440));
-    if(ag.mktWeek!==周号){ ag.mktWeek=周号; ag.lastMkt={ t:w.t, spent:NIGHT_MKT.cost }; }
+    if(ag.mktWeek!==周号){ ag.mktWeek=周号; ag.lastMkt={ t:w.t, spent:NIGHT_MKT.cost, tx:'在夜市买了份小吃（¥'+NIGHT_MKT.cost+'）' }; }   // 第 59 单：同样把原文抄在身上
     setActivity(w,ag,'market','stroll','逛夜市',tempoDur(w,ag,40),pickV(w,MARKET_THOUGHTS,ag,'lm'),
       '在夜市买了份小吃（¥'+NIGHT_MKT.cost+'）');
     return;
@@ -2012,12 +2015,14 @@ function clipSample(w,sh){
     if(lg && typeof lg==='object' && isFinite(lg.t) && lg.t>=t0 && lg.t<t1 && r.goalT!==lg.t){
       r.goalK=(lg.k==='done'||lg.k==='miss'||lg.k==='broke')?lg.k:'';
       r.goalTx=(typeof lg.label==='string')?lg.label:'';
+      r.goalTx0=(typeof lg.tx==='string')?lg.tx:'';     // 第 59 单：落笔那一刻抄下来的原文
       r.goalT=lg.t;
     }
     // 第 57 单·夜市：与目标同一套事件通道（`mktWeek` 已经保证每人每周至多一条）
     const lm=ag.lastMkt;
     if(lm && typeof lm==='object' && isFinite(lm.t) && lm.t>=t0 && lm.t<t1 && r.mktT!==lm.t){
       r.mktT=lm.t; r.mktSpent=lm.spent|0;
+      r.mktTx0=(typeof lm.tx==='string')?lm.tx:'';      // 同上
     }
   }
 }
@@ -2038,8 +2043,9 @@ function clipMake(w,sh,ent,ag,sum,base){
   const NOON=clipT0(cd)+720;
   // 甲 · 目标（第 54 单）：一周一件的惦记事出结果了——"做到了"是好事，"没做成／中途换了"是戏。
   // 走的是与处境同一套"事件型"通道：锚点＝结论落下的那一刻，摘原文那步会去引那三条日志本身。
-  if(r.goalK) push('goal_'+r.goalK,{label:r.goalTx},r.goalT);
-  if(r.mktT) push('mkt_go',{spent:r.mktSpent},r.mktT);     // 第 57 单·去夜市（每人每周至多一条）
+  // 第 59 单：事件型条目把 `tx`（当时的日志原文）一并带上 ⇒ 摘原文那一步不必回头捞日志墙
+  if(r.goalK) push('goal_'+r.goalK,{label:r.goalTx, tx:r.goalTx0},r.goalT);
+  if(r.mktT) push('mkt_go',{spent:r.mktSpent, tx:r.mktTx0},r.mktT);     // 第 57 单·去夜市（每人每周至多一条）
   // 甲/乙 · 处境（第 17 单 ag.sit 的预留去处：事件原文不喂 AI，本页是它唯一的现身处）
   if(r.sitK){
     const v={from:r.sitFrom||'那边', tx:r.sitTx};
@@ -2140,8 +2146,18 @@ function clipQuotes(w,sh,ent,ag,items){
   const mine=ent.filter(e=>e.agent===ag.id || (e.type==='chat' && e.with===ag.id));
   const seen={}, out=[];
   const take=e=>{ if(!e) return; const k=e.lid||('t'+e.t+e.text); if(seen[k]) return; seen[k]=1; out.push(e); };
-  for(const it of items){
+  /* 第 59 单：**自带原文的事件项先取**——`CLIP_QUOTE_MAX` 只有 5 条，若让处境/钱包那些先占满，
+     后面的事件项就挤不进来了（实测 D7 那张卡就是这样漏掉自己的目标句）。 */
+  const 有序=items.slice().sort((a,b)=>((b.v&&b.v.tx)?1:0)-((a.v&&a.v.tx)?1:0));
+  for(const it of 有序){
     if(out.length>=CLIP_QUOTE_MAX) break;
+    /* 第 59 单：事件型条目（目标／夜市）**自带落笔那一刻抄下来的原文**（`v.tx`）——先把它放进去。
+       抄的是同一行字（当时 `logAct` 写下去的那句），不是重写；这么一来"卡上引的原文"不再受日志墙容量影响
+       （墙封 400 条，每天又多一条晨报，少数事件日志会在结算前被挤掉）。 */
+    if(it.v && typeof it.v.tx==='string' && it.v.tx){
+      take({t:it.at||0, name:ag.name, text:it.v.tx, thought:'', type:'act', llm:0, 落笔抄录:1});
+      continue;
+    }
     const cat=clipQCat(it.id);
     let hits=cat?mine.filter(e=>clipCat(e)===cat):[];
     if(clipHead(it.id)==='money') hits=hits.concat(mine.filter(e=>String(e.text||'').indexOf('¥')>=0))
