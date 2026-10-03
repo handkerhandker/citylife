@@ -66,8 +66,8 @@ function 回写构造(根, 参) {
   const 单 = String(参['单'] || '');
   if (!/^\d+$/.test(单)) throw new Error('--单 必须是数字');
   const 单条 = 去边(读(参['单条']));
-  const 交接块 = 去边(读(参['交接块'])) + '\r\n';
-  const 待办块 = 去边(读(参['待办块'])) + '\r\n';
+  const 交接块 = 去边(读(参['交接块'])).replace(/\r?\n/g, '\r\n') + '\r\n';   // 块内换行统一成 CRLF（与历次回写一致）
+  const 待办块 = 去边(读(参['待办块'])).replace(/\r?\n/g, '\r\n') + '\r\n';
   if (/\n/.test(单条)) throw new Error('单条必须是单行（基线行是一行）');
   if (!单条.includes('第 ' + 单 + ' 单') && !单条.includes('第' + 单 + '单')) throw new Error('单条里找不到「第 ' + 单 + ' 单」');
   if (坏形态.test(单条)) throw new Error('单条里出现「。））」坏形态（收尾括号只许一个）');

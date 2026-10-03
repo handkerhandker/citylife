@@ -470,7 +470,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v116</span>
+<span class="num dim" id="set-build">v117</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -5899,6 +5899,64 @@ function actChip(x, yBottom, ag){
   return yBottom-h;                            // 第 51 单：返回牌顶（气泡再往上排一层）
 }
 /*ACTICON-END*/
+/*UMBRELLA-START*/
+/* ---------- 第 139 单·雨天撑伞（把"正在下雨"从画面延伸到人物身上）----------------------------
+   调研出处（2026-10-04 复核 HTTP 200）：Nookipedia·Weather——
+     「Villagers who are outside when rain is falling carry umbrellas and might also comment on the
+       weather.」「If it is raining in the city, the animals there will carry umbrellas.」
+     （同页还有「Frog villagers … do not carry umbrellas」——本作没有蛙居民，只作趣味对照。）
+   ⇒ 同类里"雨天户外＝撑伞"是**直接看得见**的天气表达；本作此前雨天只有地面行为（第 49 单）
+     与雨幕（第 33 单），人身上没有任何记号。
+   本段：只画一层**覆盖在精灵之上、名牌之下**的伞（渲染层；零 rng、零存档字段、不改 SIM）：
+     · 触发：正在下雨 ∩ 人在户外（公寓整体＋五个建筑房间＝室内；公园／步道／街道＝户外）；
+     · 外观：48×96 的"伞帧"与人物**同源缩放**（同一 dx0/dy0/dw/dh ⇒ 像素逐格对齐；禁平滑后仍是硬边）；
+       伞面固定用一档灰蓝（四种发色／衣服上都读得出来；粉色头发的那位若用代表色会与头发糊在一起），
+       住户代表色做成**伞沿＋伞尖**的强调条（身份仍在，且不撞色）；深色描边＋顶面高光＋两道伞骨分缝＋伞柄垂到肩手位；
+     · 缓存：按颜色缓存，每人只画一次（零素材、零字体依赖）。 */
+const 建筑房=new Set(['living','kitchen','bedroom','store','office']);
+function 在室内(x,y){
+  if(x>=APT.x && x<APT.x+APT.w && y>=APT.y && y<APT.y+APT.h) return true;   // 公寓整体（含门厅走廊）
+  for(const r of ROOMS){ if(建筑房.has(r.id) && x>=r.x && x<r.x+r.w && y>=r.y && y<r.y+r.h) return true; }
+  return false;
+}
+const 伞缓存=new Map();
+function 伞帧(accent){
+  if(伞缓存.has(accent)) return 伞缓存.get(accent);
+  const c=document.createElement('canvas'); c.width=48; c.height=96;
+  const g=c.getContext('2d');
+  const 描边='#1b2130';
+  const 伞面='#647d9e';                                     // 固定灰蓝：与任何发色/衣服都拉开距离
+  /* 伞面：一顶浅拱（逐行加宽），先描边再上色，最后顶面高光 */
+  const 行=[[20,8],[18,12],[16,16],[14,20],[12,24],[10,28],[9,30],[8,32],[7,34],[6,36],[6,36]];
+  g.fillStyle=描边;
+  for(let k=0;k<行.length;k++){ const a=行[k]; g.fillRect(a[0]-1,3+k,a[1]+2,1); }
+  g.fillRect(23,1,2,2);                                    // 伞尖
+  g.fillStyle=伞面;
+  for(let k=0;k<行.length;k++){ const a=行[k]; g.fillRect(a[0],3+k,a[1],1); }
+  g.fillStyle=描边;                                        // 两道伞骨分缝（随拱形微斜）
+  for(let k=1;k<行.length;k++){ const a=行[k]; g.fillRect(a[0]+Math.round(a[1]*0.33),3+k,1,1); }
+  for(let k=1;k<行.length;k++){ const a=行[k]; g.fillRect(a[0]+Math.round(a[1]*0.67),3+k,1,1); }
+  g.fillStyle='rgba(255,255,255,.30)';                     // 顶面高光
+  g.fillRect(20,3,8,1); g.fillRect(18,4,12,1);
+  g.fillStyle=(accent||'#7fa8d9');                         // 住户代表色：伞沿（最后一整行）＋伞尖
+  { const a=行[行.length-1]; g.fillRect(a[0],3+行.length-1,a[1],1); }
+  g.fillRect(7,14,10,1); g.fillRect(19,14,10,1); g.fillRect(31,14,10,1);   // 底边三瓣（经典伞形）
+  g.fillRect(23,1,2,1);
+  g.fillStyle=描边;                                        // 伞柄：只留一小段＋小钩，收进发际线（不横穿脸）
+  g.fillRect(35,14,2,15);
+  g.fillRect(33,27,2,2);
+  伞缓存.set(accent,c);
+  return c;
+}
+function 雨伞画(ag,dx0,dy0,dw,dh){
+  const w=state.world;
+  if(!w || !w.weather || !w.weather.rain) return;
+  const v=state.vis[ag.id]; if(!v) return;
+  const x=(v.dspX!==undefined)?v.dspX:v.x, y=(v.dspY!==undefined)?v.dspY:v.y;
+  if(在室内(x,y)) return;
+  ctx.drawImage(伞帧(ag.color||'#7fa8d9'),0,0,48,96,dx0,dy0,dw,dh);
+}
+/*UMBRELLA-END*/
 /*BUBBLE-START*/
 /* ---------- 第 51 单·气泡一期：把「这个人此刻在做什么」写成一句话挂在他头顶 ----------
    定义（本仓第一次把「气泡」写成**可验收的定义**，办待办里第 31 单那条「下一次真要做气泡，先定义再开工」）：
@@ -6592,6 +6650,7 @@ function draw(now){
         ctx.strokeRect(dx0-3,dy0-3,dw+6,dh+6);
       }
       ctx.drawImage(img,(dir*6+fi)*fw,(ci*2+(walking?1:0))*fh,fw,fh,dx0,dy0,dw,dh);
+      雨伞画(ag, dx0, dy0, dw, dh);   // 第 139 单：雨天户外撑伞（画在精灵之上、名牌之下，同源缩放）
       const nt=nameChip(px, dy0-4, tag, 本帧道[ag.id], 名牌浮道[ag.id]);   // 第 32 单：名牌分道（第 125 单：道号先算、浮道缓动）
       // 第 31 单：指示器画在名牌之上（盒底＝名牌盒顶）；分道抬高时跟着一起抬，仍不碰下方金框
       const at=actChip(px, nt, ag);
@@ -6608,6 +6667,7 @@ function draw(now){
     ctx.fillRect(px-R-1,py-R-1,R*2+2,R*2+2);
     ctx.fillStyle=ag.color;
     ctx.fillRect(px-R,py-R,R*2,R*2);
+    雨伞画(ag, px-R, py-3*R, 2*R, 4*R);   // 第 139 单：兜底路径同样撑伞（盒按精灵比例 1:2，杆末端落在方块肩位）
     const nt=nameChip(px, py-R-4, tag, 本帧道[ag.id], 名牌浮道[ag.id]);   // 第 32 单：名牌分道（第 125 单：道号先算、浮道缓动）
     // 第 31 单：素材未就位／`pix.on` 关掉的兜底路径**照出指示器**。理由：这条路上人物退化成一个纯色方块，
     // 连走／站都分不出来，「在干什么」比有素材时更没有别的地方可看；而符号本身零素材依赖（canvas 画的字），
