@@ -78,6 +78,45 @@ for (const c of 坐标) {
   try { for (let i = 0; i < 720; i++) Sim.step(w2, 10); }
   catch (e) { 违规.push(`过闸后跑崩：${c.ai !== undefined ? 'agents.' + c.k : c.k}=${JSON.stringify(c.v).slice(0, 24)} ← ${String(e && e.message || e).slice(0, 80)}`); }
 }
+/* —— 第 127 单加测：**元素内层**字段（把 log／clips／stats／weather 与 agent 各小账的内层也逐个改坏）——
+   第 123 单只打到"数组元素"这一层；内层字段是渲染与运算真正读的地方，故补这一轮。 */
+const 深例 = [];
+{
+  const W = 底档.world, A = W.agents[0], 坏值 = [null, '', 'x', 0, -1, 12345, [], {}, true];
+  const 加 = (名, fn) => 深例.push([名, fn]);
+  const L = W.log[W.log.length - 1];
+  for (const k of Object.keys(L || {})) for (const v of 坏值) 加(`log[-1].${k}=${JSON.stringify(v)}`, d => { d.world.log[d.world.log.length - 1][k] = v; });
+  const C = (W.clips || [])[W.clips.length - 1];
+  if (C) for (const k of Object.keys(C)) for (const v of 坏值) 加(`clips[-1].${k}=${JSON.stringify(v)}`, d => { d.world.clips[d.world.clips.length - 1][k] = v; });
+  for (const v of 坏值) 加(`stats.act.work=${JSON.stringify(v)}`, d => { d.world.stats.act.work = v; });
+  for (const v of 坏值) 加(`stats.pair.a1=${JSON.stringify(v)}`, d => { d.world.stats.pair.a1 = v; });
+  for (const k of Object.keys(W.weather || {})) for (const v of 坏值) 加(`weather.${k}=${JSON.stringify(v)}`, d => { d.world.weather[k] = v; });
+  for (const k of Object.keys(A.week || {})) for (const v of 坏值) 加(`week.${k}=${JSON.stringify(v)}`, d => { d.world.agents[0].week[k] = v; });
+  for (const k of Object.keys(A.goal || {})) for (const v of 坏值) 加(`goal.${k}=${JSON.stringify(v)}`, d => { d.world.agents[0].goal[k] = v; });
+  for (const k of Object.keys(A.activity || {})) for (const v of 坏值) 加(`activity.${k}=${JSON.stringify(v)}`, d => { d.world.agents[0].activity[k] = v; });
+  for (const k of Object.keys(A.rest || {})) for (const v of 坏值) 加(`rest.${k}=${JSON.stringify(v)}`, d => { d.world.agents[0].rest[k] = v; });
+  for (const k of Object.keys(A.metab || {})) for (const v of 坏值) 加(`metab.${k}=${JSON.stringify(v)}`, d => { d.world.agents[0].metab[k] = v; });
+  if (A.rel && A.rel.a2) for (const k of Object.keys(A.rel.a2)) for (const v of 坏值) 加(`rel.a2.${k}=${JSON.stringify(v)}`, d => { d.world.agents[0].rel.a2[k] = v; });
+  if (A.relYou) for (const k of Object.keys(A.relYou)) for (const v of 坏值) 加(`relYou.${k}=${JSON.stringify(v)}`, d => { d.world.agents[0].relYou[k] = v; });
+  if (A.waiting) for (const k of Object.keys(A.waiting)) for (const v of 坏值) 加(`waiting.${k}=${JSON.stringify(v)}`, d => { d.world.agents[0].waiting[k] = v; });
+  if (Array.isArray(A.traits) && A.traits[0]) for (const v of 坏值) 加(`traits[0]=${JSON.stringify(v)}`, d => { d.world.agents[0].traits[0] = v; });
+  if (A.personalLog && A.personalLog[0]) for (const k of Object.keys(A.personalLog[0])) for (const v of 坏值) 加(`personalLog[0].${k}=${JSON.stringify(v)}`, d => { d.world.agents[0].personalLog[0][k] = v; });
+  if (A.inbox && A.inbox[0]) for (const k of Object.keys(A.inbox[0])) for (const v of 坏值) 加(`inbox[0].${k}=${JSON.stringify(v)}`, d => { d.world.agents[0].inbox[0][k] = v; });
+}
+let 深拒 = 0, 深过 = 0;
+for (const [名, fn] of 深例) {
+  const 档 = JSON.parse(JSON.stringify(底档));
+  try { fn(档); } catch (e) { continue; }
+  let s; try { s = JSON.stringify(档); } catch (e) { continue; }
+  let w2 = null;
+  try { const r = Sim.hydrate(s); w2 = r && r.world; }
+  catch (e) { 违规.push(`hydrate 抛错（深层）：${名} ← ${String(e.message).slice(0, 60)}`); continue; }
+  if (!w2) continue;
+  if (!worldUsable(w2)) { 深拒++; continue; }
+  深过++;
+  try { for (let i = 0; i < 720; i++) Sim.step(w2, 10); }
+  catch (e) { 违规.push(`过闸后跑崩（深层）：${名} ← ${String(e && e.message || e).slice(0, 60)}`); }
+}
 // 点名三处现场（防回归）
 const 点名 = [];
 {
@@ -102,6 +141,7 @@ const 点名 = [];
 const 点名坏 = 点名.filter(x => !x[1]);
 
 console.log(`坏档普查：喂 ${坐标.length} 个畸形档（${天} 天底档）→ 拒收 ${拒收}／hydrate 丢档 ${丢档}／过闸 ${过闸}；违规 ${违规.length} 处`);
+console.log(`深层加测（第 127 单）：内层字段 ${深例.length} 个 → 拒收 ${深拒}／过闸 ${深过}`);
 for (const l of 违规.slice(0, 10)) console.log('  ' + l);
 for (const [名, 好] of 点名) console.log((好 ? ' ok : ' : ' FAIL: ') + '点名·' + 名);
 if (违规.length || 点名坏.length) process.exit(1);
