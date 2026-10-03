@@ -4011,6 +4011,60 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   }
 }
 
+// ═══ 第 74 单·住户主动惦记你（一周没来信，他翻出上次那条看两遍）════════════════
+/* 被验的是生产源码与真值：
+     ① 结构：`MISS` 表（周日 18:00）＋ `missStep` 一处定义 ＋ `advance10` 里调它；
+        回城弹窗取材表里有 `miss` 桶（且它命中的是**带住户名的个人日志**，不是世界级播报）；
+        日志归类表里有 `miss` 类（不然第 21 单那条覆盖率闸判红）；
+     ② 行为（构造）：**周三给 a2 发过一条短信** → 周日 18:00 只有另外三人各留一条（a2 不惦记）；
+        同一分钟内**不重复**；**连续步进跑满一周**（这一周谁都没收到信）→ 下周同一时刻四人各一条；
+     ③ 反向自查：把 `MISS.day` 挪掉（＝不在周日触发）⇒ 同一构造里一条都没有（判据不是恒绿）。 */
+{
+  const fs=require('fs'), path=require('path');
+  const src=fs.readFileSync(path.resolve(__dirname,'city-life-framework.html'),'utf8');
+  ok(/const MISS=\{ day:6, at:18\*60 \}/.test(src),
+     '第 74 单·结构：`MISS` 表在位（周日 18:00）');
+  ok((src.match(/function missStep\(/g)||[]).length===1&&/missStep\(w\);/.test(src),
+     '第 74 单·结构：`missStep` 一处定义、且在 `advance10` 里被调');
+  ok(/\{k:'miss'/.test(src)&&/type==='act' && tx\.indexOf\('翻到上次的短信'\)/.test(src.replace(/e\./g,'')),
+     '第 74 单·结构：取材表里有 `miss` 桶，命中的是带住户名的个人日志（act）');
+  ok(/\[.miss.,\s*\[.翻到上次的短信.\]/.test(src.replace(/\s+/g,' ')),
+     '第 74 单·结构：日志归类表里有 `miss` 类');
+  // 行为：周三给 a2 发一条，跑到周日 18:00
+  const 跑=()=>{
+    const w=Sim.makeWorld(20260803);
+    const 周日=Sim.thisWeekTalkAt(w)-2*60;          // 本周日 18:00（夜谈是 20:00）
+    w.t=周日-4*1440;                                 // 回到本周三 18:00
+    Sim.sendMessage(w,'a2','cheer');
+    let 已=w.lidSeq;
+    for(let i=0;i<4*144;i++) Sim.step(w,10);         // 步进整四天 ⇒ 正好踩到周日 18:00
+    const 首夜=[]; 
+    for(let i=0;i<4;i++){ Sim.step(w,10);
+      for(const e of w.log){ if(e.lid<=已) continue; 已=e.lid;
+        if(String(e.text||'').indexOf('翻到上次的短信')===0) 首夜.push(e.agent); } }
+    // 再连跑一周（谁都没收到信）→ 下周同一时刻
+    let 已2=w.lidSeq; const 下周=[];
+    for(let i=0;i<7*144;i++){ Sim.step(w,10);
+      for(const e of w.log){ if(e.lid<=已2) continue; 已2=e.lid;
+        if(String(e.text||'').indexOf('翻到上次的短信')===0) 下周.push(e.agent); } }
+    return {首夜, 下周, 信:w.agents.map(a=>((a.week&&a.week.信)|0))};
+  };
+  const 健=跑();
+  ok(健.首夜.length===3&&健.首夜.indexOf('a2')<0,
+     '第 74 单·行为：周三给 a2 发过信 ⇒ 周日 18:00 只有另外三人各留一条（实测 '+JSON.stringify(健.首夜)+'）；'
+     +'a2 **不在列**（'+健.首夜.length+' 条）');
+  ok(健.下周.length===4,
+     '第 74 单·行为：下一周谁都没收到信 ⇒ 四人各一条（实测 '+JSON.stringify(健.下周)+'）');
+  // 反向自查：不在周日触发 ⇒ 一条都没有
+  {
+    const 原=Sim.MISS.day; Sim.MISS.day=-1;
+    let 病=null; try{ 病=跑(); } finally { Sim.MISS.day=原; }
+    ok(病.首夜.length===0&&病.下周.length===0,
+       '第 74 单·反向自查·拦得住：把 `MISS.day` 挪成 -1（不在周日触发）⇒ 首周 '
+       +病.首夜.length+' 条、下一周 '+病.下周.length+' 条 ⇒ 上面两条判据不是恒绿');
+  }
+}
+
 // ═══ 第 33 单·天色昼夜（把「现在几点」画到画面上）═════════════════════════════
 /* 被验的是生产源码原文：SKYTINT-START…SKYTINT-END 整块抠出来，在一个只记账不作画的假 ctx 上跑
    （照第 31 单 iconLab、第 32 单 chipLab 先例）。四条闸：
@@ -4754,7 +4808,7 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   ok(恒绿===0,'第 66 单·闸二：`ok` 第一参数写死 true 的**读数型假断言**为 0 条（实测 '+恒绿+'；读数一律走 `读数()`）');
   // 闸三 · 反向自查登记（防整条被删）
   const 登记=['第 48 单','第 49 单','第 51 单','第 52 单','第 53 单','第 54 单','第 56 单','第 57 单',
-              '第 58 单','第 59 单','第 62 单','第 63 单','第 64 单','第 65 单','第 67 单','第 70 单','第 71 单','第 72 单','第 73 单',
+              '第 58 单','第 59 单','第 62 单','第 63 单','第 64 单','第 65 单','第 67 单','第 70 单','第 71 单','第 72 单','第 73 单','第 74 单',
               '闸四','闸五','闸十','闸十一','闸十二'];
   const 实有=[...new Set((自源.match(/(第 \d+ 单|闸[一二三四五六七八九十]+)·反向自查/g)||[])
                             .map(x=>x.replace('·反向自查','')))];

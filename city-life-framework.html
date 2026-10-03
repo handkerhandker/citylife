@@ -428,7 +428,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v71</span>
+<span class="num dim" id="set-build">v72</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -1832,6 +1832,29 @@ function talkStep(w){
   }
 }
 /*TALK-END*/
+/*MISS-START*/
+/* ---------- 第 74 单·住户主动惦记你（把"你在不在"接进住户的一天）----------
+   出处（2026-10-03 实测可访问，见 `docs/规划/借鉴调研-2026-10-03.md`）：
+     · 星露谷 wiki·Friendship：**不打招呼会掉友情**（"Each day, not talking to a villager will slightly
+       decrease their friendship"）——关系是**双向**的，你不出声，对方会察觉；
+     · Nookipedia·Friendship：动森的友谊靠**日常互动**累积（"speaking to the villager for the first
+       time each day"）——反过来，长期不来也是"关系里的一件事"。
+   本作此前的口径是：居民只在**收到你短信**时才有反应（第 13／53 单）；**你不出声，他们一声不吭**。
+   本单补另一半：**一周将尽（周日 18:00）时，若这一周你一条短信都没来**，他会翻出上次那条看两遍
+   ——一条**个人日志**（带住户名，故 `BACK_SUM` 另开一桶 `miss`，回城弹窗会单列"有人惦记过你"）。
+   口径：**零 AI、零 rng、只写日志**——不改变任何行为（不去找你、不扣钱、不改作息）。 */
+const MISS={ day:6, at:18*60 };
+function missStep(w){
+  if(PURE.weekday(w.t)!==MISS.day || PURE.minuteOfDay(w.t)!==MISS.at) return;
+  const 周号=Math.floor(w.t/(7*1440));
+  for(const ag of w.agents){
+    if(ag.week && (ag.week.信|0)>0) continue;      // 这周收到过你的短信 ⇒ 不惦记
+    if(ag.missWeek===周号) continue;                // 每人每周至多一条（旧档缺字段＝当作没记过）
+    ag.missWeek=周号;
+    logAct(w,ag,'翻到上次的短信，看了两遍','（这周你一句话都没来。）');
+  }
+}
+/*MISS-END*/
 /*MORNING-START*/
 /* ---------- 第 58 单·云港晨报（把"今天是什么日子"每天说一次）----------
    调研出处（2026-10-03 实测可访问）：
@@ -2321,6 +2344,7 @@ const CLIP_LOGCAT=[
      摘原文也就近取这一类（照第 57 单 `mkt`／第 62 单 `fest` 同一套）。**一条只归一类**，
      故从 stroll 那张表里删掉（覆盖率闸只认第一个命中的类目）。 */
   ['talk',  ['在夜谈角坐下，听人说话']],
+  ['miss',  ['翻到上次的短信']],   // 第 74 单·惦记（个人日志，不是世界级播报；列在这里只为归类覆盖率）
   ['sleep', ['回卧室睡觉']],
   ['money', ['交了房租']],
   // 第 52／53 单：目标事件（定下／做到／没做成／**前提破裂**）与周记忆——只归类，不单独出卡。
@@ -2329,7 +2353,7 @@ const CLIP_LOGCAT=[
   ['fest',  ['在江边放了一盏灯']],   // 第 62 单·江灯节放灯（世界级播报另在 BACK_SUM 里登记）
   ['bday',  ['给自己买了块蛋糕']],   // 第 64 单·生日蛋糕（个人日志，不需要新桶；覆盖率闸照查）
 ];
-const CLIP_CATNAME={eat:'吃饭', work:'上班', nap:'小憩', stroll:'散步', sleep:'睡觉', chat:'闲聊', goal:'目标', fest:'放灯', bday:'生日', talk:'夜谈'};
+const CLIP_CATNAME={eat:'吃饭', work:'上班', nap:'小憩', stroll:'散步', sleep:'睡觉', chat:'闲聊', goal:'目标', fest:'放灯', bday:'生日', talk:'夜谈', miss:'惦记'};
 // 丙级只数这几类。刻意不含 chat：闲聊次数已由甲级 social_burst 按同一个数出活，
 // 两级同时命中会在同一张卡上把同一句话印两遍（实测 D10 「闲聊 4 次，平常 2 次」印了两行）。
 // 也不含 idle：在家待着 logText 恒为 null、不上墙，本层「只数上了墙的事」故无从计数。
@@ -2769,6 +2793,7 @@ function advance10(w){
   morningStep(w);   // 第 58 单·云港晨报（每天 08:10 一条，只用已存在的事实拼）
   festivalStep(w);  // 第 62 单·江灯节（一年一次：提前一周预告／开灯／收灯）
   talkStep(w);      // 第 70 单·周日夜谈（周日 20:00–22:00，22:00 散场播报）
+  missStep(w);      // 第 74 单·住户主动惦记你（周日 18:00；这周没收到短信的人各留一条）
   if(w.weather.rain && w.t>=w.weather.until){
     w.weather.rain=false; logSys(w,'雨停了，街道亮得像洗过。'); w.lastSpark=w.t;
   }
@@ -2964,6 +2989,7 @@ const Sim={makeWorld, step, sendMessage, sendCustomMessage, decide, MSGS, ANCHOR
   TALK, nightTalkStartAt, inTalk, thisWeekTalkAt, talkStep,   // 第 70 单·周日夜谈（门禁按真值读）
   TALK_TOPICS, talkTopicOf,   // 第 71 单·夜谈话题（门禁按真值读：话题按日号取、不摇 rng）
   TALK_OPEN, talkOpenLine, talkTopicOnDay,   // 第 72 单·题面带着台词走（门禁按真值读：占位符一处替换）
+  MISS, missStep,   // 第 74 单·惦记（门禁按真值读：周日 18:00、一周零来信才留一条）
   BIRTHDAYS, BDAY, bdayInDays, thisYearBdayAt, bdayAt, inBirthday,   // 第 64 单·住户生日（门禁按真值读同一份日历）
   CATCHUP_MIN_PER_MIN, CATCHUP_MAX_DAYS, REFLECT_MIN, SMS_NOREPLY,
   catchUpPlan, catchUp, reflectFallback, clipTopDay,
@@ -5356,6 +5382,7 @@ const BACK_SUM=[
   {k:'festAfter', hit:(e,tx)=>e.type==='sys' && tx.indexOf('的摊子收干净了')>=0, line:n=>'节后收过 '+n+' 回场子。'},
   {k:'morning', hit:(e,tx)=>e.type==='sys' && tx.indexOf('云港晨报')>=0, line:n=>'收到 '+n+' 份云港晨报。'},
   {k:'talkDone', hit:(e,tx)=>e.type==='sys' && tx.indexOf('夜谈散了')>=0, line:n=>'夜谈散过 '+n+' 回。'},
+  {k:'miss', hit:(e,tx)=>e.type==='act' && tx.indexOf('翻到上次的短信')>=0, line:n=>'有人惦记过你 '+n+' 回。'},
   // 第 62 单·江灯节的三条世界级播报（提前一周预告／开灯／收灯）——世界级播报必须各有桶
   {k:'festPlan', hit:(e,tx)=>e.type==='sys' && tx.indexOf('江灯节在')>=0, line:n=>'城里预告过 '+n+' 回江灯节。'},
   {k:'festOpen', hit:(e,tx)=>e.type==='sys' && tx.indexOf('开灯了，江边')>=0, line:n=>'江边亮过 '+n+' 回灯。'},
