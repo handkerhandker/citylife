@@ -440,7 +440,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v89</span>
+<span class="num dim" id="set-build">v90</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -605,6 +605,29 @@ const SLEEP_THOUGHTS=['今天到此为止。','被窝是白天欠我的。','明
 const STROLL_THOUGHTS=['吹吹江风，把今天散掉一半。','走一走，脑子里的浆糊沉淀一下。','路灯一盏一盏数过去。','风里有一点点凉下来的意思。','江面上一条船也没有，安静得很。','走到第三个路口才想起没带钥匙，还好门没锁。','桥洞下有人拉二胡，停下听了半支曲子。','晚风把一天的褶子吹平了些。','沿江的石栏摸上去还是温的。','遛狗的人和狗都一脸下班了的表情。'];
 const MARKET_THOUGHTS=['街市小吃，十块，气氛免费。','摊主多送了一勺辣，人情味。','边走边吃才是街市的正确吃法。','排队最长的那家，果然名不虚传。','捏着两串，钱包不心疼的快乐。','老板娘顺手把零头抹了。','走三步换一种香味，鼻子先饱了。','买了不认识的小吃，赌赢了。'];
 const STORE_THRIFTY=['饭团十二块，性价比之王。','临期打折区永远值得先看一眼。','算下来还是这个最划算。'];
+/* ---------- 第 97 单·雨天的独白（在外的人会聊天气）----------
+   出处（**本单复核：2026-10-03 实测 HTTP 200**，逐字摘）：
+     Nookipedia·Weather（https://nookipedia.com/wiki/Weather）
+     「**Villagers who are outside when rain is falling carry umbrellas and might also comment on the weather.**」
+     ＋「Weather is mentioned by villagers, influenced by the …」
+     ——在同类作品里，**天气是被居民"说出来"的**；本作此前雨天只有"少出门"（第 49 单）与一条屋内标签，
+       人嘴上不认这场雨。
+   落成：下雨时，**散步那一类独白**（在外）与**在家待着那句**（窗内看雨）改从下面两张池里抽。
+   ⚠ 两条硬约束（都照既有先例）：
+     ① `pickV` **无论池多大都恰好消耗 1 次 rng** ⇒ 换池不改 rng 流、不改世界指纹；
+     ② `pickV` 的看家去重按**键**存下标，**不同数组严禁共键** ⇒ 雨天用 `lo`＋`r` 这类独立键（见 `天气词`）。 */
+const RAIN_STROLL_THOUGHTS=['没带伞，索性慢慢走——反正都湿了。','雨点打在伞面上，像有人轻轻敲门。',
+  '屋檐下站了会儿，看雨把整条街洗了一遍。','踩着水洼走，鞋里进了点凉。','雨里的路灯毛茸茸的，比平时好看。',
+  '桥洞底下躲雨，听雨声比听人说话强。','雨顺着伞骨往下滴，一路都在数。','江面被雨点打出一层麻子。'];
+const RAIN_IDLE_THOUGHTS=['雨敲在窗上，一下一下，很匀。','把窗户开了一条缝，听外面的雨。','下雨天，什么都不想干。',
+  '晾在阳台的衣服白洗了。','泡了杯热的，看雨从玻璃上往下爬。','雨下大了，不知道他们带伞没有。',
+  '把伞立在门口，水淌了一小摊。','翻了翻天气预报，明天还是雨。'];
+/* 天气词：下雨就从雨池里抽，**键也跟着换**（`lo`→`lor`）——两个数组共键会把去重账串了。
+   除此之外一个字不多做：抽签次数、时机、去重口径都与晴天一模一样。 */
+function 天气词(w, 晴池, 雨池, ag, 键){
+  const 雨=!!(w.weather&&w.weather.rain);
+  return pickV(w, 雨?雨池:晴池, ag, 雨?(键+'r'):键);
+}
 const STORE_GEN=['加了个便当，犒劳一下自己。','顺手拿了瓶想喝很久的饮料。','今天值得吃好一点。'];
 const STORE_PLAIN=['随便对付一口。','吃什么不重要，别饿着就行。','收银台前想了三秒，还是老几样。','关东煮的汤面前，人人平等。','拿了和昨天一样的，省得选。','微波炉转的时候顺手看了眼杂志。','伸手够到第二层那个，不用想。','结账才想起冰箱里还有一盒没吃。'];
 const SLACK_THOUGHTS=['挂着 IDE 刷了会儿论坛，罪恶但快乐。','摸出手机看了两个视频，心虚地放回去。','对着屏幕发呆五分钟，装作在思考架构。','把周报的字体调了十分钟。','看了眼股票，装作在看监控面板。','给同事的表情包点了个赞，算社交了。','水接了三次，路过窗边三次。','把待办清单重新抄了一遍，一件没动。'];
@@ -2497,7 +2520,7 @@ function decide(w, ag){
   if(周末 && !sunday && mod>=10*60 && mod<17*60 && w.rng()<(raining?RAIN_RULES.dayOut:WEEKEND_OUT.dayOut)){
     const spots=WEEKEND_OUT.daySpots;                 // 表只有这一处取用（门禁按出现次数钉住）
     const spot=spots[Math.floor(w.rng()*spots.length)%spots.length];
-    setActivity(w,ag,spot,'stroll','出门逛逛',tempoDur(w,ag,40),pickV(w,STROLL_THOUGHTS,ag,'lo'),'周末出门逛逛');
+    setActivity(w,ag,spot,'stroll','出门逛逛',tempoDur(w,ag,40),天气词(w,STROLL_THOUGHTS,RAIN_STROLL_THOUGHTS,ag,'lo'),'周末出门逛逛');
     return;
   }
   // 第 52 单：目标旋钮（out）加在**晴天那一档**之上（雨天该压还是压；上班与吃饭一概不动）
@@ -2517,7 +2540,7 @@ function decide(w, ag){
     ag.money-=FESTIVAL.cost;
     const 年=PURE.dayOf(w.t)-((PURE.dayOf(w.t)-1)%FESTIVAL.yearDays);   // 今年是哪一年（按年号去重剪辑项）
     if(ag.festYear!==年){ ag.festYear=年; ag.lastFest={ t:w.t, spent:FESTIVAL.cost, tx:'在江边放了一盏灯（¥'+FESTIVAL.cost+'）' }; }
-    setActivity(w,ag,'river_walk','stroll','放灯',tempoDur(w,ag,40),pickV(w,STROLL_THOUGHTS,ag,'lo'),
+    setActivity(w,ag,'river_walk','stroll','放灯',tempoDur(w,ag,40),天气词(w,STROLL_THOUGHTS,RAIN_STROLL_THOUGHTS,ag,'lo'),
       '在江边放了一盏灯（¥'+FESTIVAL.cost+'）');
     return;
   }
@@ -2530,7 +2553,7 @@ function decide(w, ag){
       ag.bdayYear=年;
       ag.money-=BDAY.cost;
       ag.lastBday={ t:w.t, spent:BDAY.cost, tx:'给自己买了块蛋糕（¥'+BDAY.cost+'）' };
-      setActivity(w,ag,'market','stroll','买蛋糕',tempoDur(w,ag,40),pickV(w,STROLL_THOUGHTS,ag,'lo'),
+      setActivity(w,ag,'market','stroll','买蛋糕',tempoDur(w,ag,40),天气词(w,STROLL_THOUGHTS,RAIN_STROLL_THOUGHTS,ag,'lo'),
         '给自己买了块蛋糕（¥'+BDAY.cost+'）');
       return;
     }
@@ -2620,18 +2643,18 @@ function decide(w, ag){
     /* 第 73 单：把"去了一趟夜谈"落一个**事件锚**（每人每周至多一条），剪辑层据此上卡——
        照第 57 单夜市 `mktWeek`／第 62 单江灯节 `festYear` 那一套（落点带原文，摘原文不必回头捞日志墙）。 */
     if(ag.talkWeek!==周号){ ag.talkWeek=周号; ag.lastTalk={ t:w.t, topic:题面, tx:'在夜谈角坐下，听人说话（今晚聊：'+题面+'）' }; }
-    setActivity(w,ag,'plaza_talk','stroll','夜谈',tempoDur(w,ag,60),pickV(w,STROLL_THOUGHTS,ag,'lq'),
+    setActivity(w,ag,'plaza_talk','stroll','夜谈',tempoDur(w,ag,60),天气词(w,STROLL_THOUGHTS,RAIN_STROLL_THOUGHTS,ag,'lq'),
       '在夜谈角坐下，听人说话（今晚聊：'+题面+'）');
     return;
   }
   const eveClear=(周末?WEEKEND_OUT.eveStroll:0.3)+goalKnob(ag,'out');   // 晴天那一档（原值 0.3／0.45 原样保留）
   if(mod>=18.5*60 && mod<21*60 && w.rng()<(raining?(周末?RAIN_RULES.eveWeekend:RAIN_RULES.eveWorkday):eveClear)){
     const spot=w.rng()<0.5?'park_bench':'river_walk';
-    setActivity(w,ag,spot,'stroll','散步',tempoDur(w,ag,40),pickV(w,STROLL_THOUGHTS,ag,'lo'),'出门散步');
+    setActivity(w,ag,spot,'stroll','散步',tempoDur(w,ag,40),天气词(w,STROLL_THOUGHTS,RAIN_STROLL_THOUGHTS,ag,'lo'),'出门散步');
     return;
   }
   const spot=w.rng()<0.5?'home_table':'home_tv';
-  setActivity(w,ag,spot,'idle',(raining?RAIN_RULES.indoorLabel:'在家待着'),tempoDur(w,ag,30),pickV(w,IDLE_THOUGHTS,ag,'li'),null);
+  setActivity(w,ag,spot,'idle',(raining?RAIN_RULES.indoorLabel:'在家待着'),tempoDur(w,ag,30),天气词(w,IDLE_THOUGHTS,RAIN_IDLE_THOUGHTS,ag,'li'),null);
 }
 
 /*CLIP-START*/
@@ -3419,6 +3442,8 @@ const Sim={makeWorld, step, sendMessage, sendCustomMessage, decide, MSGS, ANCHOR
   GIFT,   // 第 81 单·生日礼物（门禁按真值读：窗口与价钱一处定义）
   REL, REL_TIERS, relV, relTier, relTierName, relGet,   // 第 88 单·关系状态机 A 档（门禁按真值读：档位表一处定义）
   HEART, heartMate,   // 第 91 单·交心（门禁按真值读：门槛与时长一处定义）
+  RAIN_STROLL_THOUGHTS, RAIN_IDLE_THOUGHTS, 天气词,   // 第 97 单·雨天的独白（门禁按真值读同一份池）
+  IDLE_THOUGHTS, STROLL_THOUGHTS,                     // 第 97 单：两张基础池也一并导出（门禁要按真值比对"串没串池"）
   CATCHUP_MIN_PER_MIN, CATCHUP_MAX_DAYS, REFLECT_MIN, SMS_NOREPLY,
   catchUpPlan, catchUp, reflectFallback, clipTopDay,
   DIARY_FB, DIARY_FB_RECENT, CHAT_FB_OPEN, CHAT_FB_REPLY, pickV, pickFresh, diaryFallback,   // 第 27 单·兜底文案扩池

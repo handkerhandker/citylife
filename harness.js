@@ -4933,6 +4933,77 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   }
 }
 
+// ═══ 第 97 单·雨天的独白（在外的人会聊天气）══════════════════════════════════
+/* 出处（**本单复核：2026-10-03 实测 HTTP 200**，逐字摘）：Nookipedia·Weather
+   「**Villagers who are outside when rain is falling carry umbrellas and might also comment on the weather.**」
+   ——在同类作品里，天气是被居民**说出来**的；本作此前雨天只有"少出门"（第 49 单）与一条屋内标签。
+   落成：下雨时，散步那一类独白（在外）与"在家待着"那句（窗内看雨）改从两张雨池里抽。
+   被验的是生产源码与真值：
+     ① 结构：两张雨池各一处定义；`天气词()` 一处定义；三处调用都走它；雨天用的是**独立键**（`+r`）；
+     ② 行为：`天气词` 在雨／晴两种情况下各抽 400 次 ⇒ **100% 落在对应池**（池尽重置也不会串池）；
+     ③ 真跑不变量：120 天里**雨池那几句只在真的下雨时出现**（晴天一次都不许有）；
+     ④ 反向自查：把天气锁成晴（不摇那一下）⇒ 同一构造抽到的全是晴池句 ⇒ 这条判据不是恒绿。 */
+{
+  const fs=require('fs'), path=require('path');
+  const src=fs.readFileSync(path.resolve(__dirname,'city-life-framework.html'),'utf8');
+  ok((src.match(/const RAIN_STROLL_THOUGHTS=\[/g)||[]).length===1
+     &&(src.match(/const RAIN_IDLE_THOUGHTS=\[/g)||[]).length===1
+     &&/function 天气词\(w, 晴池, 雨池, ag, 键\)\{/.test(src)
+     &&(src.match(/天气词\(w,STROLL_THOUGHTS,RAIN_STROLL_THOUGHTS,ag,'lo'\)/g)||[]).length===4
+     &&(src.match(/天气词\(w,STROLL_THOUGHTS,RAIN_STROLL_THOUGHTS,ag,'lq'\)/g)||[]).length===1
+     &&(src.match(/天气词\(w,IDLE_THOUGHTS,RAIN_IDLE_THOUGHTS,ag,'li'\)/g)||[]).length===1
+     &&/雨\?\(键\+'r'\):键/.test(src),
+     '第 97 单·结构：两张雨池各一处定义、`天气词()` 一处定义、6 处调用全走它，且雨天用独立键（不共键）');
+  {
+    const w=Sim.makeWorld(20260803), ag=w.agents[0];
+    const 试=(雨)=>{
+      w.weather.rain=雨; let 错=0;
+      for(let i=0;i<400;i++){
+        const s=Sim.天气词(w, Sim.STROLL_THOUGHTS, Sim.RAIN_STROLL_THOUGHTS, ag, 'lo');
+        const 在雨=Sim.RAIN_STROLL_THOUGHTS.indexOf(s)>=0;
+        if(在雨!==雨) 错++;
+      }
+      return 错;
+    };
+    const 晴错=试(false), 雨错=试(true);
+    ok(晴错===0&&雨错===0,'第 97 单·行为：`天气词` 晴／雨各抽 400 次 ⇒ 100% 落在对应池（错 '+晴错+'／'+雨错
+       +' 次；池尽会重置，但**绝不串池**）');
+  }
+  {
+    const 集合=new Set(Sim.RAIN_STROLL_THOUGHTS.concat(Sim.RAIN_IDLE_THOUGHTS));
+    let 晴里出现=0, 雨里出现=0;
+    for(const seed of [20260803,424242]){
+      const w=Sim.makeWorld(seed); let 已=0;
+      for(let i=0;i<120*144;i++){
+        const 起点=w.lidSeq; Sim.step(w,10);
+        const 雨=!!(w.weather&&w.weather.rain);
+        for(const e of w.log){
+          if(!(e.lid>起点)) continue;
+          const t=String(e.thought||''); if(!t) continue;
+          let 命中=false; for(const s of 集合) if(t.indexOf(s)>=0){ 命中=true; break; }
+          if(!命中) continue;
+          if(雨) 雨里出现++; else 晴里出现++;
+        }
+      }
+    }
+    ok(雨里出现>0&&晴里出现===0,'第 97 单·真跑不变量（120 天 × 2 种子）：雨池那几句只在**真的下雨**时出现'
+       +'（雨中 '+雨里出现+' 次／晴 '+晴里出现+' 次）——"下雨了嘴上认账"这件事在真世界里成立');
+    /* 反向自查（故障注入）：把雨池**整池换成一句记号**，同一构造抽出来的必须全是那句记号
+       ⇒ 证明"雨天走的是这张池"不是碰巧；抽完把池子还原（下一行断言就是还原后的读数）。 */
+    const 原池=Sim.RAIN_STROLL_THOUGHTS.slice();
+    Sim.RAIN_STROLL_THOUGHTS.length=0; Sim.RAIN_STROLL_THOUGHTS.push('【雨记号】雨点打在伞面上。');
+    const w=Sim.makeWorld(20260803), ag=w.agents[0]; w.weather.rain=true;
+    let 记号=0, 别=0;
+    for(let i=0;i<50;i++){
+      const s=Sim.天气词(w, Sim.STROLL_THOUGHTS, Sim.RAIN_STROLL_THOUGHTS, ag, 'lo');
+      if(s.indexOf('【雨记号】')===0) 记号++; else 别++;
+    }
+    Sim.RAIN_STROLL_THOUGHTS.length=0; for(const s of 原池) Sim.RAIN_STROLL_THOUGHTS.push(s);
+    ok(记号===50&&别===0,'第 97 单·反向自查·拦得住：把雨池整池换成一句记号 ⇒ 同一构造 50 次抽的全是那句记号（'
+       +记号+'／'+别+'）⇒ "下雨走雨池"这条判据不是恒绿（池子已还原：'+Sim.RAIN_STROLL_THOUGHTS.length+' 条）');
+  }
+}
+
 // ═══ 第 96 单·交心（二）：「家人一样」那一场（一起出门走一趟）══════════════════════
 /* 出处沿用第 91 单那条（星露谷 wiki·Friendship：「…cut-scenes called **heart events** occur…」）——
    heart events 本来就不止一场：**关系每深一档，就有一场自己的戏**。
@@ -5993,7 +6064,7 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   ok(恒绿===0,'第 66 单·闸二：`ok` 第一参数写死 true 的**读数型假断言**为 0 条（实测 '+恒绿+'；读数一律走 `读数()`）');
   // 闸三 · 反向自查登记（防整条被删）
   const 登记=['第 48 单','第 49 单','第 51 单','第 52 单','第 53 单','第 54 单','第 56 单','第 57 单',
-              '第 58 单','第 59 单','第 62 单','第 63 单','第 64 单','第 65 单','第 67 单','第 70 单','第 71 单','第 72 单','第 73 单','第 74 单','第 75 单','第 76 单','第 77 单','第 79 单','第 80 单','第 81 单','第 84 单','第 85 单','第 87 单','第 88 单','第 90 单','第 91 单','第 92 单','第 93 单','第 94 单','第 95 单','第 96 单',
+              '第 58 单','第 59 单','第 62 单','第 63 单','第 64 单','第 65 单','第 67 单','第 70 单','第 71 单','第 72 单','第 73 单','第 74 单','第 75 单','第 76 单','第 77 单','第 79 单','第 80 单','第 81 单','第 84 单','第 85 单','第 87 单','第 88 单','第 90 单','第 91 单','第 92 单','第 93 单','第 94 单','第 95 单','第 96 单','第 97 单',
               '闸四','闸五','闸十','闸十一','闸十二'];
   const 实有=[...new Set((自源.match(/(第 \d+ 单|闸[一二三四五六七八九十]+)·反向自查/g)||[])
                             .map(x=>x.replace('·反向自查','')))];
