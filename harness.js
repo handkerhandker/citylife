@@ -4546,6 +4546,54 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   }
 }
 
+// ═══ 第 85 单·门洞记号（零素材：门框柱 ＋ 地垫）════════════════════════════════
+/* 被验的是生产源码与真值：
+     ① 结构：`门洞记号` 一处定义、`draw` 里恰调用一次（在房间循环之后 ⇒ 拼合图接管的公寓三间也吃得到）；
+        它只读 `ROOMS[].door`（x／side），不写世界、不掷骰子；
+     ② 行为（假 ctx 台子 ＋ 假 sx/sy）：底门与顶门各画 **3** 个矩形（两柱 ＋ 一垫），
+        柱子在门洞两侧、**地垫落在门内侧**（底门 ⇒ 垫在门线之上；顶门 ⇒ 垫在门线之下）；
+     ③ 反向自查：把 `底=(r.door.side==='b')` 改成恒 `true` ⇒ 顶门的记号画到房间底边（门外侧）⇒ 判红。 */
+{
+  const fs=require('fs'), path=require('path');
+  const src=fs.readFileSync(path.resolve(__dirname,'city-life-framework.html'),'utf8');
+  const FN=(src.match(/function 门洞记号\(r\)\{[\s\S]*?\n\}/)||[''])[0];
+  ok(FN.length>0&&(src.match(/function 门洞记号\(/g)||[]).length===1,
+     '第 85 单·结构：`门洞记号` 一处定义（'+FN.length+' 字符）');
+  ok((src.match(/for\(const r of Sim\.ROOMS\) 门洞记号\(r\);/g)||[]).length===1
+     &&src.indexOf('for(const r of Sim.ROOMS) 门洞记号(r);')>src.indexOf('roomTile(r)'),
+     '第 85 单·结构：`draw` 里恰调用一次、且排在房间循环（含 `roomTile`）之后——拼合图接管的公寓三间也吃得到');
+  ok(!/state\.world\s*=|\.rng\(/.test(FN),'第 85 单·结构：只读门数据（不写世界、不掷骰子）');
+  const 台=(mut)=>{
+    const rec=[];
+    const ctx={fillStyle:'',fillRect(x,y,w,h){rec.push({x,y,w,h,fill:ctx.fillStyle});}};
+    const S=20, code=mut?mut(FN):FN;
+    const f=new Function('ctx','state','sx','sy',code+'\nreturn 门洞记号;')(ctx,{view:{s:S,ox:0,oy:0}},x=>x*S,y=>y*S);
+    return {f,rec,S};
+  };
+  {
+    const A=台(null), B=台(null);
+    A.f({id:'x',x:10,y:10,w:8,h:6,door:{x:13,side:'b'}});     // 底门：门线 y=16 格
+    B.f({id:'y',x:30,y:10,w:8,h:6,door:{x:33,side:'t'}});     // 顶门：门线 y=10 格
+    const 柱=A.rec.filter(b=>b.fill==='#b6924a'), 垫=A.rec.filter(b=>b.fill.indexOf('rgba')===0);
+    const 柱2=B.rec.filter(b=>b.fill==='#b6924a'), 垫2=B.rec.filter(b=>b.fill.indexOf('rgba')===0);
+    ok(A.rec.length===3&&B.rec.length===3&&柱.length===2&&垫.length===1&&柱2.length===2&&垫2.length===1,
+       '第 85 单·行为：每个门画 3 个矩形（两柱＋一垫）——实测底门 '+A.rec.length+' 个、顶门 '+B.rec.length+' 个');
+    const 门线底=16*20, 门线顶=10*20;
+    ok(柱[0].x<门线底*0+13.5*20&&柱[1].x>13.5*20-Math.max(2,20*0.12)
+       &&(垫[0].y+垫[0].h)<=门线底+1 &&垫2[0].y>=门线顶-1,
+       '第 85 单·行为：柱子横跨门洞两侧、**地垫在门内侧**（底门垫底 '+(垫[0].y+垫[0].h)+' ≤ 门线 '+门线底
+       +'；顶门垫顶 '+垫2[0].y+' ≥ 门线 '+门线顶+'）');
+  }
+  {
+    const A=台(s=>s.replace("底=(r.door.side==='b')",'底=true'));
+    A.f({id:'y',x:30,y:10,w:8,h:6,door:{x:33,side:'t'}});
+    const 垫=A.rec.filter(b=>b.fill.indexOf('rgba')===0)[0];
+    const 门线=10*20;
+    ok(垫 && 垫.y>门线, '第 85 单·反向自查·拦得住：把"按 side 选边"改成恒 true ⇒ 顶门的记号落到房间**底边**'
+       +'（垫顶 '+垫.y+' > 门线 '+门线+'）⇒ 「地垫在门内侧」这条判据不是恒绿');
+  }
+}
+
 // ═══ 第 33 单·天色昼夜（把「现在几点」画到画面上）═════════════════════════════
 /* 被验的是生产源码原文：SKYTINT-START…SKYTINT-END 整块抠出来，在一个只记账不作画的假 ctx 上跑
    （照第 31 单 iconLab、第 32 单 chipLab 先例）。四条闸：
@@ -5289,7 +5337,7 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   ok(恒绿===0,'第 66 单·闸二：`ok` 第一参数写死 true 的**读数型假断言**为 0 条（实测 '+恒绿+'；读数一律走 `读数()`）');
   // 闸三 · 反向自查登记（防整条被删）
   const 登记=['第 48 单','第 49 单','第 51 单','第 52 单','第 53 单','第 54 单','第 56 单','第 57 单',
-              '第 58 单','第 59 单','第 62 单','第 63 单','第 64 单','第 65 单','第 67 单','第 70 单','第 71 单','第 72 单','第 73 单','第 74 单','第 75 单','第 76 单','第 77 单','第 79 单','第 80 单','第 81 单','第 84 单',
+              '第 58 单','第 59 单','第 62 单','第 63 单','第 64 单','第 65 单','第 67 单','第 70 单','第 71 单','第 72 单','第 73 单','第 74 单','第 75 单','第 76 单','第 77 单','第 79 单','第 80 单','第 81 单','第 84 单','第 85 单',
               '闸四','闸五','闸十','闸十一','闸十二'];
   const 实有=[...new Set((自源.match(/(第 \d+ 单|闸[一二三四五六七八九十]+)·反向自查/g)||[])
                             .map(x=>x.replace('·反向自查','')))];

@@ -440,7 +440,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v80</span>
+<span class="num dim" id="set-build">v81</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -5300,6 +5300,19 @@ function streetGlow(t){
   ctx.restore();
 }
 /*STREETGLOW-END*/
+/* 第 85 单·门洞记号：门框柱 ＋ 地垫（**零素材**，只读 ROOMS[].door，一处定义） */
+function 门洞记号(r){
+  if(!r||!r.door||!isFinite(r.door.x)) return;
+  const s=state.view.s, dx=r.door.x+0.5, 底=(r.door.side==='b');
+  const y=sy(底 ? (r.y+r.h) : r.y);
+  // 门框：贴着门洞两侧各一小节（暖色，跟路灯/摊位同一族的金）
+  ctx.fillStyle='#b6924a';
+  ctx.fillRect(sx(dx-0.5), y-2, Math.max(2,s*0.12), 4);
+  ctx.fillRect(sx(dx+0.5)-Math.max(2,s*0.12), y-2, Math.max(2,s*0.12), 4);
+  // 地垫：门**内侧**半格（底门 ⇒ 往上；顶门 ⇒ 往下）
+  ctx.fillStyle='rgba(182,146,74,.30)';
+  ctx.fillRect(sx(dx-0.35), 底 ? y-s*0.55 : y+s*0.1, s*0.7, Math.max(2,s*0.45));
+}
 function draw(now){
   const {s,ox,oy}=state.view;
   ctx.setTransform(state.dpr,0,0,state.dpr,0,0);
@@ -5356,6 +5369,11 @@ function draw(now){
     if(TILE_ROOMS.indexOf(r.id)>=0) roomTile(r);   // 第 36 单：店面铺装（只对没被拼合图接管的房间）
   }
   // 广场常设件（B 案）：街市摊位 ×3 贴排于广场西列（已撤离步行动脉）＋夜谈角＋江畔景观锚；脚底全部 ≥ 行 15，零压主干道
+  /* 第 85 单·门洞记号（**零素材**）：此前门洞就是墙上一个"纯地板留口"——尤其被拼合图接管的
+     公寓三间（两格门洞），一眼看过去像断墙。本单给**每个有 door 的房间**补两样记号：
+     **门框柱**（门洞两侧各一小节暖色竖块）＋ **地垫**（门内半格淡色矩形）。
+     数据只用既有的 `ROOMS[].door`（x／side），一处取词、只读、不进 SIM ⇒ 三个指纹原样。 */
+  for(const r of Sim.ROOMS) 门洞记号(r);
   for(let i=0;i<PLAZA_STALL.n;i++){
     const ty=PLAZA_STALL.y+i*PLAZA_STALL.h;
     ctx.fillStyle='#b6924a';
