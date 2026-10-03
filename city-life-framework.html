@@ -442,7 +442,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v99</span>
+<span class="num dim" id="set-build">v100</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -5657,8 +5657,30 @@ const SKY_KEYS=[
   [1440,  26,  34,  70, 0.34],   // 24:00 与 00:00 同色 ⇒ 跨日不跳
 ];
 const SKY_MAX_ALPHA=0.34;   // 不透明度上限：再高就把名牌文字与选中金框的对比度压垮了
-function skyTint(minuteOfDay){
-  const m=PURE.clamp(minuteOfDay,0,1440);
+/* 第 112 单·天黑时刻随季节漂移（调研文件第 89 行那条候选；第 111 单先把「季节」这个概念落了地，本单才能接）。
+   出处（`docs/规划/借鉴调研-2026-10-03.md` 第 38 行，星露谷 Day_Cycle 页原文）：
+     「in Summer, it is **8pm**, while in Fall it is **7pm** and Winter is **6pm**」
+     ⇒ 夏比基准晚一小时、冬早一小时、秋与基准同档（本作的"基准"＝春）。
+   口径：**只在查询侧折**——曲线表 `SKY_KEYS` 与曲线形状一字不动，把"钟点"先折到基准曲线上再查表：
+     · 以正午为轴：**上午 m2 = m ＋ 日长/2、下午 m2 = m − 日长/2**（夏天为正、冬天为负）；
+     · 于是「同一钟点看天色」在四季各有早晚：夏天 20:30 还挂着暮色、冬天 20:30 已经黑透；
+     · 键 `SKY_SEASON_SUN` 的序号与 `SEASON_KEYS` 一一对应（春／夏／秋／冬），
+       季的边界只有 `SEASON_DAYS` 一处定义（正午接缝落在曲线最平的白天档上，两侧同色，看不见台阶）；
+     · 灯与路灯光斑的亮度本来就由 `skyTint().a` 换算 ⇒ **它们自动跟着季节走**（夏天灯亮得晚），
+       不需要第二套作息表（第 35／38 单那条"同源"口径照旧）。 */
+const SKY_SEASON_SUN=[0,30,0,-30];             // 半天位移（分钟）：春 0（基准）／夏 +30（天黑晚 1 小时）／秋 0（与春同档，照出处）／冬 −30（早 1 小时）
+function skySunShift(dayOfYear){
+  const Y=SEASON_DAYS*SKY_SEASON_SUN.length;  // 与 `SEASON_KEYS` 同一本日历（4×90＝360）
+  let d=Math.floor(Number(dayOfYear));
+  if(!isFinite(d)) d=0;
+  d=((d%Y)+Y)%Y;
+  return SKY_SEASON_SUN[Math.min(SKY_SEASON_SUN.length-1, Math.floor(d/SEASON_DAYS))]||0;
+}
+function skyTint(minuteOfDay, dayOfYear){
+  const m0=PURE.clamp(minuteOfDay,0,1440);
+  const s=skySunShift(dayOfYear);
+  let m=m0;
+  if(s){ m=(m0<720)?(m0+s):(m0-s); m=((m%1440)+1440)%1440; }   // 上午往后折、下午往前折（正午为轴，接缝落在最平的白天档）
   let i=0;
   while(i<SKY_KEYS.length-2 && SKY_KEYS[i+1][0]<=m) i++;
   const a=SKY_KEYS[i], b=SKY_KEYS[i+1], span=(b[0]-a[0])||1, k=(m-a[0])/span;
@@ -5666,7 +5688,7 @@ function skyTint(minuteOfDay){
   return { r:mix(a[1],b[1]), g:mix(a[2],b[2]), b:mix(a[3],b[3]), a:mix(a[4],b[4]) };
 }
 function skyPaint(w,h,t){
-  const c=skyTint(PURE.minuteOfDay(t));
+  const c=skyTint(PURE.minuteOfDay(t), PURE.dayOf(t)-1);
   // 白天不盖：省一次整屏填充，也让「白天不着色」可断言。
   // 写成 !(c.a>0.001) 而不是 c.a<=0.001 —— 后者对 NaN 为 false，会带着 NaN 去赋值 fillStyle，
   // 浏览器直接忽略非法色值 ⇒ 用上一笔残留的颜色涂满整屏（畸形钟点必须「什么都不画」）。
@@ -5743,7 +5765,9 @@ function seasonPaint(w,h,t){
 const LAMP_ROOMS=['living','kitchen','bedroom','store','office'];   // 室内五间；park／river 是室外，刻意不点
 const LAMP_COLOR={r:255,g:196,b:132};   // 暖黄（窗灯的观感）
 const LAMP_MAX_ALPHA=0.16;              // 上限：再高房间就成一块发光贴纸，也会压垮房内名牌
-function lampLevel(t){ return PURE.clamp(skyTint(PURE.minuteOfDay(t)).a/SKY_MAX_ALPHA,0,1); }
+/* 第 112 单：灯跟着**季节的天色**走——同一个 `skyTint` 的第二参（第几天）也一并传进去，
+   夏天日落晚 ⇒ 灯亮得晚；冬天日落早 ⇒ 灯亮得早。仍然只有这一处换算（同源口径照旧）。 */
+function lampLevel(t){ return PURE.clamp(skyTint(PURE.minuteOfDay(t), PURE.dayOf(t)-1).a/SKY_MAX_ALPHA,0,1); }
 function lampPaint(t){
   const k=lampLevel(t);
   // 白天不点：与天色同一套写法——!(k>0.001) 对 NaN 也为真，畸形钟点一笔都不落

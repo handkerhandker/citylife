@@ -12,10 +12,11 @@
 //   ④ 判据（四条，全部写进 `读数.json`，不靠嘴说）——量尺是**画布的 16×16 分区均色**（`getImageData` 现读），
 //      不是 PNG 逐字节：平移一帧的平滑与抗锯齿会有几十个像素的噪声（实测 69／821k＝0.008%），
 //      分区均色对这点噪声免疫，而对"整屏 5–8% 的罩层"非常敏感（实测同季跨版本 ≈0.0，跨季 ≥3.0）：
-//      · 春（本版）与 改前=基线 的春：距离 ≤0.5 —— 四季是纯加法，春天就是原本的颜色；
-//      · 改前那一趟的 春夏秋冬：两两距离 ≤0.5 —— 那就是本单的病（一年到头一个色）；
-//      · 本版 夏／秋／冬 与 本版春：距离 ≥3 —— 罩层真的落到了画布上；
-//      · 本版 春夏秋冬：两两距离 ≥2 —— 四季各有各的色（噪声底 ≤0.34、实测最接近的一对 2.91＝夏↔秋）。
+//      · 本版 春夏秋冬（正午）：两两距离 ≥2 —— 四季各有各的色（第 111 单的口径）；
+//      · 本版春 与 改前春：距离 ≤0.5 —— 春天是基线（纯加法）；
+//      · **第 112 单新增**：正午 四档 本版 vs 改前 都 ≤0.5（天黑漂移只动晨昏，正午一个像素不动）；
+//        20:30 春／秋 ≤0.5（位移为 0 的两季原地不动）、夏／冬 ≥2（晨昏真被挪了一小时）。
+//      另附：改前那一趟四季互相的距离值记在 `读数.json`（当基线本身已含四季时，它是"季节色罩"的量，不是病）。
 //
 // 用法：node tools/season-tint/shots.mjs <输出目录> [--改前=<git-ref>]
 //   浏览器用预装 Chromium（CITYLIFE_CHROME 可覆盖）。
@@ -113,20 +114,20 @@ const 距离 = (a, b) => {
   return s / (a.grid.length * 3);
 };
 
-async function 跑一轮(page, 季名, day, vpName, 前缀) {
-  await pose(page, day, 12, 0);
+async function 跑一轮(page, 季名, day, vpName, 前缀, hour, minute, 后缀) {
+  await pose(page, day, hour, minute);
   await settle(420);
-  const f = `${前缀}${季名}-${vpName}.png`;
+  const f = `${前缀}${季名}-${vpName}${后缀}.png`;
   await page.screenshot({ path: path.join(OUT, f) });
-  const f2 = `${前缀}${季名}-${vpName}-画布.png`;
+  const f2 = `${前缀}${季名}-${vpName}${后缀}-画布.png`;
   await page.locator('#cv').screenshot({ path: path.join(OUT, f2) });
   const b = fs.readFileSync(path.join(OUT, f2));
   const h = createHash('sha256').update(b).digest('hex');
-  哈希[`${前缀}${季名}-${vpName}`] = h;
-  文件[`${前缀}${季名}-${vpName}`] = f;
+  哈希[`${前缀}${季名}${后缀}-${vpName}`] = h;
+  文件[`${前缀}${季名}${后缀}-${vpName}`] = f;
   const sg = await 取签名(page);
-  签名[`${前缀}${季名}-${vpName}`] = sg;
-  读数.档.push({ 视口: vpName, 季: 季名, 全页图: f, 画布图: f2, 画布字节: b.length,
+  签名[`${前缀}${季名}${后缀}-${vpName}`] = sg;
+  读数.档.push({ 视口: vpName, 季: 季名, 时刻: hour+':'+String(minute).padStart(2,'0'), 全页图: f, 画布图: f2, 画布字节: b.length,
     画布sha256: h.slice(0, 16), 画布均色RGB: sg.mean });
 }
 
@@ -134,13 +135,19 @@ for (const [vpName, vp] of [['桌面', { width: 1400, height: 900 }], ['手机',
   const page = await browser.newPage({ viewport: vp, deviceScaleFactor: vpName === '手机' ? 2 : 1 });
   await page.goto(`http://127.0.0.1:18934/city-life-framework.html?seed=20260803`);
   await settle(2600);
-  for (const [季名, day] of 季档) await 跑一轮(page, 季名, day, vpName, '');
+  for (const [季名, day] of 季档) {
+    await 跑一轮(page, 季名, day, vpName, '', 12, 0, '');
+    await 跑一轮(page, 季名, day, vpName, '', 20, 30, '-2030');
+  }
   await page.close();
   if (BEFORE) {
     const pageB = await browser.newPage({ viewport: vp, deviceScaleFactor: vpName === '手机' ? 2 : 1 });
     await pageB.goto(`http://127.0.0.1:18935/city-life-framework.html?seed=20260803`);
     await settle(2600);
-    for (const [季名, day] of 季档) await 跑一轮(pageB, 季名, day, vpName, '改前-');
+    for (const [季名, day] of 季档) {
+      await 跑一轮(pageB, 季名, day, vpName, '改前-', 12, 0, '');
+      await 跑一轮(pageB, 季名, day, vpName, '改前-', 20, 30, '-2030');
+    }
     await pageB.close();
   }
 }
@@ -164,14 +171,29 @@ for (const vpName of ['桌面', '手机']) {
   if (BEFORE) {
     const 改前春 = 签名[`改前-春-${vpName}`];
     {
-      let 大 = 0;
-      for (const s of ['夏', '秋', '冬']) 大 = Math.max(大, 距离(改前春, 签名[`改前-${s}-${vpName}`]));
-      判.push(['改前四季互相距离 ≤0.5（一年一个色＝病）', 大 <= 0.5, '最大距离 ' + 大.toFixed(2)]);
-    }
-    {
       const d = 距离(春, 改前春);
       判.push(['本版春 与 改前春 距离 ≤0.5（纯加法）', d <= 0.5, '距离 ' + d.toFixed(2)]);
     }
+    // 第 112 单：正午四档都不动；20:30 只有"有位移"的夏／冬动
+    for (const s of ['春', '夏', '秋', '冬']) {
+      const d = 距离(签名[`${s}-${vpName}`], 签名[`改前-${s}-${vpName}`]);
+      判.push(['正午 ' + s + ' 本版＝改前（≤0.5）', d <= 0.5, '距离 ' + d.toFixed(2)]);
+    }
+    for (const s of ['春', '秋']) {
+      const d = 距离(签名[`${s}${'-2030'}-${vpName}`], 签名[`改前-${s}${'-2030'}-${vpName}`]);
+      判.push(['20:30 ' + s + ' 本版＝改前（位移为 0，≤0.5）', d <= 0.5, '距离 ' + d.toFixed(2)]);
+    }
+    for (const s of ['夏', '冬']) {
+      const d = 距离(签名[`${s}${'-2030'}-${vpName}`], 签名[`改前-${s}${'-2030'}-${vpName}`]);
+      判.push(['20:30 ' + s + ' 本版≠改前（晨昏被挪了一小时，≥2）', d >= 2, '距离 ' + d.toFixed(2)]);
+    }
+  }
+  // —— 附记（不判红）：改前那一趟四季互相的距离（基线含四季时它量的是季节色罩）——
+  {
+    const 亮 = sg => (sg.mean[0] + sg.mean[1] + sg.mean[2]) / 3;
+    const 比 = (前, s) => 亮(签名[`${前}${s}${'-2030'}-${vpName}`]) / 亮(签名[`${前}${s}-${vpName}`]);
+    读数['20点半相对亮度_' + vpName] = { 本版: ['春', '夏', '秋', '冬'].map(s => +比('', s).toFixed(3)),
+      改前: BEFORE ? ['春', '夏', '秋', '冬'].map(s => +比('改前-', s).toFixed(3)) : null };
   }
 }
 读数.对照 = 判.map(x => ({ 判据: x[0], 通过: x[1], 备注: x[2] }));

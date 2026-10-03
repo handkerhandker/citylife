@@ -5849,7 +5849,10 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   function skyLab(mut){
     const rec={rect:[]};
     const ctx={ fillStyle:'', fillRect(x,y,w,h){ rec.rect.push({x,y,w,h,fill:ctx.fillStyle}); } };
-    let code=SKY_SRC;
+    /* 第 112 单：天色开始读季节（`skySunShift` 要 `SEASON_DAYS`）⇒ 这门"抠源码求值"的闸
+       把 SEASON 段一起抠进来（**同源**：天色 → 四季，两段必须同一份日历）。 */
+    const SEASON_SRC=grab(/\/\*SEASON-START\*\/[\s\S]*?\/\*SEASON-END\*\//,'SEASON 段');
+    let code=SEASON_SRC+'\n'+SKY_SRC;
     if(mut) code=mut(code);
     const M=new Function('ctx','PURE',
       code+'\nreturn {SKY_KEYS,SKY_MAX_ALPHA,skyTint,skyPaint};')(ctx,PURE);
@@ -6061,6 +6064,93 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   }
 }
 
+// ═══ 第 112 单·天黑时刻随季节漂移（天色曲线读四季）═════════════════════════════
+/* 被验的是生产源码原文：SEASON ＋ SKYTINT 两段一起抠出来求值（天色要读季节，两段必须同源）。
+     闸一 · 日长有季节：白天（a≤0.05）的分钟数 夏 ＞ 春 ＝ 秋 ＞ 冬（照出处：夏 8pm／秋 7pm／冬 6pm，
+            春是基准 ⇒ 秋与春同档），且 夏−冬 ≈ 120（半天位移 30×2×2）；
+     闸二 · 同一钟点看天色：20:30 的不透明度 夏 ＜ 春 ＝ 秋 ＜ 冬（夏天还亮着、冬天已黑透）；
+            07:00 同理 夏 ＜ 春 ＝ 秋 ＜ 冬；
+     闸三 · 不动曲线本身：任一季都仍连续（5 分钟步长不跳变）、仍不越 SKY_MAX_ALPHA、跨日首末同色；
+     闸四 · 反向自查：把四季位移全设 0 ⇒「同一钟点四季同色」判红；把夏冬颠倒 ⇒「日长序」判红；
+            把"以正午为轴折"改成"整体平移"⇒ 日长不再有季节 ⇒ 判红；
+     结构侧：位移表一处（`SKY_SEASON_SUN`，键与 `SEASON_KEYS` 一一对应）、`skyTint` 两参形态、
+            `skyPaint` 与 `lampLevel` 两处调用都传了"第几天"。 */
+{
+  const fs=require('fs'), path=require('path');
+  const src=fs.readFileSync(path.resolve(__dirname,'city-life-framework.html'),'utf8');
+  const grab=(re,name)=>{ const m=src.match(re); if(!m){ ok(false,'源码抽取失败:'+name); return ''; } return m[0]; };
+  const SEASON_SRC=grab(/\/\*SEASON-START\*\/[\s\S]*?\/\*SEASON-END\*\//,'SEASON 段');
+  const SKY_SRC=grab(/\/\*SKYTINT-START\*\/[\s\S]*?\/\*SKYTINT-END\*\//,'SKYTINT 段');
+  function skyLab2(mut){
+    const rec={rect:[]};
+    const ctx={ fillStyle:'', fillRect(x,y,w,h){ rec.rect.push({x,y,w,h,fill:ctx.fillStyle}); } };
+    let code=SEASON_SRC+'\n'+SKY_SRC;
+    if(mut) code=mut(code);
+    const M=new Function('ctx','PURE',
+      code+'\nreturn {SEASON_KEYS,SEASON_DAYS,SKY_KEYS,SKY_MAX_ALPHA,SKY_SEASON_SUN,skySunShift,skyTint,skyPaint};')(ctx,PURE);
+    return {M,rec};
+  }
+  const 日长=(M,day)=>{ let n=0; for(let m=0;m<1440;m++) if(M.skyTint(m,day).a<=0.05) n++; return n; };
+  const 日长序=M=>日长(M,100)>日长(M,10)&&Math.abs(日长(M,10)-日长(M,190))<=5&&日长(M,190)>日长(M,280);
+  const 傍晚序=M=>M.skyTint(1230,100).a<M.skyTint(1230,10).a
+    &&Math.abs(M.skyTint(1230,10).a-M.skyTint(1230,190).a)<1e-9&&M.skyTint(1230,190).a<M.skyTint(1230,280).a;
+  const 早晨序=M=>M.skyTint(420,100).a<M.skyTint(420,10).a
+    &&Math.abs(M.skyTint(420,10).a-M.skyTint(420,190).a)<1e-9&&M.skyTint(420,190).a<M.skyTint(420,280).a;
+  const 不越限=M=>{ for(const d of [10,100,190,280]) for(let m=0;m<=1440;m+=5)
+    if(M.skyTint(m,d).a>M.SKY_MAX_ALPHA+1e-9) return false; return true; };
+  const 连续=M=>{ for(const d of [10,100,190,280]) for(let m=0;m<1440;m+=5){
+      const a=M.skyTint(m,d), b=M.skyTint(m+5,d);
+      if(Math.abs(b.a-a.a)>0.012) return false;
+      if(Math.abs(b.a*(b.r+b.g+b.b)-a.a*(a.r+a.g+a.b))/255>0.04) return false;
+    } return true; };
+  const 跨日=M=>[10,100,190,280].every(d=>Math.abs(M.skyTint(0,d).a-M.skyTint(1440,d).a)<1e-9);
+  // ── 闸一 · 日长有季节 ───────────────────────────────────────────────────
+  {
+    const M=skyLab2().M;
+    const 表=[10,100,190,280].map(d=>日长(M,d));
+    ok(日长序(M),'闸一·日长（白天 a≤0.05 的分钟数）：夏 '+表[1]+' ＞ 春＝秋 '+表[0]+'／'+表[2]+' ＞ 冬 '+表[3]
+       +'（照出处"夏 8pm／秋 7pm／冬 6pm"，春是基准 ⇒ 秋与春同档；四季：'+表.join('／')+'）');
+    ok(表[1]-表[3]>=100&&表[1]-表[3]<=140,'闸一·夏冬昼长差 ≈120 分钟（半天位移 30×2×2）：实测 '+(表[1]-表[3])+' 分钟');
+  }
+  // ── 闸二 · 同一钟点看天色 ───────────────────────────────────────────────
+  {
+    const M=skyLab2().M;
+    const 傍=[10,100,190,280].map(d=>M.skyTint(1230,d).a), 晨=[10,100,190,280].map(d=>M.skyTint(420,d).a);
+    ok(傍晚序(M),'闸二·20:30 的不透明度 夏 ＜ 春＝秋 ＜ 冬（夏天还亮着、冬天已黑透）：'
+       +傍.map(v=>v.toFixed(3)).join('／'));
+    ok(早晨序(M),'闸二·07:00 同理 夏 ＜ 春＝秋 ＜ 冬（冬天七点天还暗着）：'+晨.map(v=>v.toFixed(3)).join('／'));
+    ok([10,100,190,280].every(d=>Math.abs(M.skyTint(120,d).a-M.skyTint(120,10).a)<1e-9),
+       '闸二·深夜四季一样黑（02:00）：位移只动"晨昏那两段"，夜里四档不透明度同值');
+  }
+  // ── 闸三 · 曲线本身没被动过 ─────────────────────────────────────────────
+  {
+    const M=skyLab2().M;
+    ok(连续(M),'闸三·任一季仍连续：四季各扫全天（5 分钟步长）不透明度与合成亮度都不跳变');
+    ok(不越限(M),'闸三·任一季仍不越 SKY_MAX_ALPHA='+M.SKY_MAX_ALPHA);
+    ok(跨日(M),'闸三·跨日首末同色（四季都不出现 23:59→00:00 的台阶）');
+  }
+  // ── 闸四 · 反向自查 ＋ 不误伤 ＋ 构造成立 ＋ 结构侧 ─────────────────────
+  {
+    const 病1=skyLab2(s=>s.replace('const SKY_SEASON_SUN=[0,30,0,-30];','const SKY_SEASON_SUN=[0,0,0,0];')).M;
+    ok(!傍晚序(病1)&&!早晨序(病1),'第 112 单·反向自查·一：把四季位移全设 0 ⇒「同一钟点四季同色」当场判红');
+    const 病2=skyLab2(s=>s.replace('const SKY_SEASON_SUN=[0,30,0,-30];','const SKY_SEASON_SUN=[0,-30,0,30];')).M;
+    ok(!日长序(病2),'第 112 单·反向自查·二：把夏冬颠倒（夏 −30／冬 +30）⇒「日长序」当场判红');
+    const 病3=skyLab2(s=>s.replace('m=(m0<720)?(m0+s):(m0-s);','m=m0+s;')).M;
+    ok(!日长序(病3),'第 112 单·反向自查·三：把"以正午为轴折"改成"整体平移"⇒ 日长不再有季节差别 ⇒ 判红');
+    const M=skyLab2().M;
+    ok(日长序(M)&&傍晚序(M)&&早晨序(M)&&连续(M)&&不越限(M)&&跨日(M),
+       '闸四·不误伤：生产原文六条判据全部照常放行（不是恒红也不是恒绿）');
+    ok(病1.SKY_SEASON_SUN.length===4&&病2.SKY_SEASON_SUN[1]===-30&&病3.SKY_KEYS.length===M.SKY_KEYS.length,
+       '闸四·构造成立：三处病态改写都真的命中生产原文（表还在、曲线键数不变）');
+    ok(/function skyTint\(minuteOfDay, dayOfYear\)/.test(src)&&/const SKY_SEASON_SUN=\[0,30,0,-30\];/.test(src)
+       &&M.SKY_SEASON_SUN.length===M.SEASON_KEYS.length,
+       '结构侧：`skyTint` 两参形态；位移表一处定义、键数与 `SEASON_KEYS` 一一对应（'+M.SKY_SEASON_SUN.length+' 档）');
+    ok(/function skyPaint\(w,h,t\)\{[\s\S]{0,120}skyTint\(PURE\.minuteOfDay\(t\), PURE\.dayOf\(t\)-1\)/.test(src)
+       &&/function lampLevel\(t\)\{[^}]*skyTint\(PURE\.minuteOfDay\(t\), PURE\.dayOf\(t\)-1\)/.test(src),
+       '结构侧：天色与灯两处调用都把"第几天"传进去（灯自动跟着季节的天色走，不另起一套作息表）');
+  }
+}
+
 // ═══ 第 35 单·入夜点灯（屋里亮起来）═════════════════════════════════════════
 /* 被验的是生产源码原文：SKYTINT ＋ NIGHTLAMP 两段一起抠出来求值（灯要调 skyTint，两段必须同源），
    在一个只记账的假 ctx 上跑。四条闸：
@@ -6075,13 +6165,14 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   const SKY_SRC=grab(/\/\*SKYTINT-START\*\/[\s\S]*?\/\*SKYTINT-END\*\//,'SKYTINT 段');
   const LAMP_SRC=grab(/\/\*NIGHTLAMP-START\*\/[\s\S]*?\/\*NIGHTLAMP-END\*\//,'NIGHTLAMP 段');
   const DRAWFN=grab(/function draw\(now\)\{[\s\S]*?\n\}\n\/\/ 画布：拖动=平移镜头/,'draw() 全函数');
+  const SEASON_SRC=grab(/\/\*SEASON-START\*\/[\s\S]*?\/\*SEASON-END\*\//,'SEASON 段');   // 第 112 单：灯→天色→四季，三段同源
 
   function lampLab(mut){
     const rec={rect:[]};
     const ctx={ fillStyle:'', fillRect(x,y,w,h){ rec.rect.push({x,y,w,h,fill:ctx.fillStyle}); } };
     const state={view:{s:24}};
     const sx=x=>100+x*24, sy=y=>50+y*24;
-    let code=SKY_SRC+'\n'+LAMP_SRC;
+    let code=SEASON_SRC+'\n'+SKY_SRC+'\n'+LAMP_SRC;
     if(mut) code=mut(code);
     const M=new Function('ctx','PURE','Sim','state','sx','sy',
       code+'\nreturn {SKY_MAX_ALPHA,skyTint,lampLevel,lampPaint,LAMP_ROOMS,LAMP_COLOR,LAMP_MAX_ALPHA};')
@@ -6097,9 +6188,13 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
        '闸一·同源：灯亮度由 `skyTint(...).a/SKY_MAX_ALPHA` 换算 ⇒ 改天色曲线灯自动跟着变，'
        +'不存在「两套作息表各走各的」');
     const M=lampLab().M;
-    let 同源=0;
-    for(let m=0;m<1440;m+=15) if(Math.abs(M.lampLevel(m)-PURE.clamp(M.skyTint(m).a/M.SKY_MAX_ALPHA,0,1))<1e-9) 同源++;
-    ok(同源===96,'闸一·同源（逐点核）：全天 96 个采样点上 lampLevel 都等于天色换算值（实测 '+同源+' 点）');
+    let 同源=0, 总=0;
+    for(let d=0;d<360;d+=15) for(const m of [0,360,720,1140,1260]){ 总++;
+      const t=d*1440+m;
+      if(Math.abs(M.lampLevel(t)-PURE.clamp(M.skyTint(PURE.minuteOfDay(t), PURE.dayOf(t)-1).a/M.SKY_MAX_ALPHA,0,1))<1e-9) 同源++;
+    }
+    ok(同源===总,'闸一·同源（逐点核）：全年 24 天 × 5 个钟点＝'+总+' 个采样点上 lampLevel 都等于**当季**天色换算值（实测 '
+       +同源+' 点）——★第 112 单把这条从"单参、只看春天"改成两参形态：天色开始读季节，灯必须跟着同一份天色走');
   }
   // ── 闸二 · 白天不点、夜里够亮、上限保守 ──────────────────────────────────
   {
@@ -6158,7 +6253,7 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
     const 坏色=L2.rec.rect.filter(r=>/NaN|undefined|null/.test(String(r.fill))).length;
     ok(坏色===0,'闸四·畸形钟点不画坏色：落下 '+L2.rec.rect.length+' 笔，色值含 NaN／undefined 的 '+坏色+' 笔');
     // 反向自查一 · 灯灭（＝改前那种「屋里也黑着」）
-    const sick1=lampLab(s=>s.replace('return PURE.clamp(skyTint(PURE.minuteOfDay(t)).a/SKY_MAX_ALPHA,0,1);','return 0;')).M;
+    const sick1=lampLab(s=>s.replace('return PURE.clamp(skyTint(PURE.minuteOfDay(t), PURE.dayOf(t)-1).a/SKY_MAX_ALPHA,0,1);','return 0;')).M;
     ok(!(sick1.lampLevel(三更)>=0.99),'闸四·反向一：把灯灭掉（亮度恒 0）⇒「夜里点满」当场判红');
     // 反向自查二 · 名单里塞进室外那间
     const sick2=lampLab(s=>s.replace("const LAMP_ROOMS=['living','kitchen','bedroom','store','office'];",
@@ -6330,7 +6425,9 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
     // 病态改写**只作用于 STREETGLOW 段**：`const k=lampLevel(t);` 这句在 lampPaint 与 streetGlow
     // 里各有一份，整段拼起来再 replace 会命中前面那份（本单第一版就栽在这里：改的是室内灯，
     // 却拿「光了」去判街灯 —— 判据与靶子对不上，反向自查当场变成假阳性）。
-    const code=SKY_SRC+'\n'+LAMP_SRC+'\n'+(mut?mut(GLOW_SRC):GLOW_SRC);
+    // 第 112 单：光斑读 lampLevel → 天色 → 四季 ⇒ SEASON 段也要一起抠进来（同源四段）
+    const SEASON_SRC=grab(/\/\*SEASON-START\*\/[\s\S]*?\/\*SEASON-END\*\//,'SEASON 段');
+    const code=SEASON_SRC+'\n'+SKY_SRC+'\n'+LAMP_SRC+'\n'+(mut?mut(GLOW_SRC):GLOW_SRC);
     const M=new Function('ctx','PURE','Sim','state','sx','sy',
       code+'\nreturn {lampLevel,streetGlow,GLOW_SPOTS,GLOW_COLOR,GLOW_MAX_ALPHA};')(ctx,PURE,Sim,state,sx,sy);
     return {M,rec};
@@ -6667,7 +6764,7 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   ok(恒绿===0,'第 66 单·闸二：`ok` 第一参数写死 true 的**读数型假断言**为 0 条（实测 '+恒绿+'；读数一律走 `读数()`）');
   // 闸三 · 反向自查登记（防整条被删）
   const 登记=['第 48 单','第 49 单','第 51 单','第 52 单','第 53 单','第 54 单','第 56 单','第 57 单',
-              '第 58 单','第 59 单','第 62 单','第 63 单','第 64 单','第 65 单','第 67 单','第 70 单','第 71 单','第 72 单','第 73 单','第 74 单','第 75 单','第 76 单','第 77 单','第 79 单','第 80 单','第 81 单','第 84 单','第 85 单','第 87 单','第 88 单','第 90 单','第 91 单','第 92 单','第 93 单','第 94 单','第 95 单','第 96 单','第 97 单','第 98 单','第 99 单','第 100 单','第 102 单','第 103 单','第 106 单','第 107 单','第 109 单','第 110 单','第 111 单',
+              '第 58 单','第 59 单','第 62 单','第 63 单','第 64 单','第 65 单','第 67 单','第 70 单','第 71 单','第 72 单','第 73 单','第 74 单','第 75 单','第 76 单','第 77 单','第 79 单','第 80 单','第 81 单','第 84 单','第 85 单','第 87 单','第 88 单','第 90 单','第 91 单','第 92 单','第 93 单','第 94 单','第 95 单','第 96 单','第 97 单','第 98 单','第 99 单','第 100 单','第 102 单','第 103 单','第 106 单','第 107 单','第 109 单','第 110 单','第 111 单','第 112 单',
               '闸四','闸五','闸十','闸十一','闸十二'];
   const 实有=[...new Set((自源.match(/(第 \d+ 单|闸[一二三四五六七八九十]+)·反向自查/g)||[])
                             .map(x=>x.replace('·反向自查','')))];
