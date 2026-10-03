@@ -16,6 +16,7 @@ const 清单 = [
   { 路径: 'tools/fallback-pool/wall.cjs',     档: 1, 参数: [],    超时: 90000, 备注: '日志墙全文实录' },
   { 路径: 'tools/rel-audit/compare.cjs',      档: 1, 参数: ['--天=30','--种子=20260803,424242'], 超时: 90000, 备注: '关系 A 档行为零改动（与上一版逐拍比对）' },
   { 路径: 'tools/rel-audit/shot.mjs',         档: 2, 参数: ['{OUT}/rel-shot'],         超时: 120000, 备注: '关系外显真页面截图（角色页／角色卡／详情）' },
+  { 路径: 'tools/fest-audit/probe.cjs',       档: 1, 参数: [],                        超时: 90000, 备注: '江灯节每人每晚一盏（与上一版并排跑那一晚）' },
   { 路径: 'tools/offline-catchup/probe.cjs',  档: 1, 参数: [],    超时: 90000, 备注: '离线补算取证' },
   { 路径: 'tools/offline-catchup/pushprobe.cjs', 档: 1, 参数: [], 超时: 90000, 备注: '回城推送判据取证' },
   { 路径: 'tools/live-walkgate/audit.mjs',    档: 2, 参数: ['{OUT}/live-walkgate'], 超时: 120000, 备注: '真页面逐帧走位' },

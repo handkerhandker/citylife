@@ -440,7 +440,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v83</span>
+<span class="num dim" id="set-build">v84</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -2386,6 +2386,12 @@ function decide(w, ag){
   // 第 63 单：拿到"这周去江边看灯"那条目标的人，当晚去得更坚决（0.8→0.95，上限 0.98）
   if(inFestival(w) && (ag.flags.wantFest || w.rng()<Math.min(0.98,FESTIVAL.p+goalKnob(ag,'fest')))){
     delete ag.flags.wantFest;
+    /* 第 90 单·每人每晚一盏（第 62 单登记的那条接受项）：原来一晚反复去——实测一晚 **11–12 盏来自 4 个人**
+       （顾云帆／陆知秋各 4 盏），"一年一次"的日子读起来反而像在刷。现在：今晚已经放过的人不再去，
+       收灯播报的盏数最多 4。**rng 调用位置一个字没动**（那次抽签照摇，抽中之后才看"今晚去过没有"），
+       故 rng 流与改前逐位对齐、六项读数与两枚指纹据此不变。跳过只是"这一拍不去"——他留在原地，下一拍重新决策。 */
+    if(ag.festLampDay===PURE.dayOf(w.t)) return;
+    ag.festLampDay=PURE.dayOf(w.t);
     w.festCount=(w.festCount|0)+1;
     ag.money-=FESTIVAL.cost;
     const 年=PURE.dayOf(w.t)-((PURE.dayOf(w.t)-1)%FESTIVAL.yearDays);   // 今年是哪一年（按年号去重剪辑项）
