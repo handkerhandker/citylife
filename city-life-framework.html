@@ -428,7 +428,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v68</span>
+<span class="num dim" id="set-build">v69</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -1761,6 +1761,16 @@ function nightMktStep(w){
      · 22:00 一条世界级播报：「夜谈散了，今晚在夜谈角坐了 N 个人。」（故 `BACK_SUM` 补一桶）
      · 同一间屋（`room:'street'`）里的人照旧走既有闲聊那套——夜谈角本身就是个聊天热点 */
 const TALK={ day:6, open:20*60, close:22*60, p:0.5 };
+/* 第 71 单·夜谈二期：**今晚聊什么**。原来"夜谈"只落一句"坐下，听人说话"——坐着干什么没人知道。
+   现在每周日晚上给这一场定一个话题，写进坐下那条日志、也写进散场播报里。
+   话题写到「地点／事由」粒度即止（照第 18 单 `TOPIC_POOL` 的口径：不写到具体物件，留口吻的余地）。 */
+const TALK_TOPICS=['这周的雨','楼下那家便利店','阳台上晾的东西','月底那笔房租','江边的灯','广场的夜市','最近的觉够不够睡','手里的活和欠的稿'];
+/* 今晚聊什么：按**日号**取（同一晚所有人、20:00 与 22:00 两处读到的都是同一句）。
+   用哈希、**不摇 rng**（照第 52 单派活那条先例：确定性、可复现，且不位移事件流的抽签）。 */
+function talkTopicOf(w){
+  const d=Math.max(0,PURE.dayOf(w.t)-1);
+  return TALK_TOPICS[((d*2654435761)>>>0)%TALK_TOPICS.length];
+}
 // 本周日 20:00（这一刻已经过了 ⇒ 顺延到下周）——照第 56 单 `nightMktStartAt` 同一套
 function nightTalkStartAt(w){
   const wd=PURE.weekday(w.t), mod=PURE.minuteOfDay(w.t);
@@ -1784,7 +1794,7 @@ function talkStep(w){
   const 闭=本+TALK.close-TALK.open;
   if(w.t>=闭 && w.talkClosed!==本){
     w.talkClosed=本;
-    logSys(w,'夜谈散了，今晚在夜谈角坐了 '+(w.talkCount|0)+' 个人。');
+    logSys(w,'夜谈散了，今晚聊的是「'+talkTopicOf(w)+'」，坐了 '+(w.talkCount|0)+' 个人。');
   }
 }
 /*TALK-END*/
@@ -2171,7 +2181,7 @@ function decide(w, ag){
     if(!w.talkWho || typeof w.talkWho!=='object') w.talkWho={};
     if(!w.talkWho[ag.id]){ w.talkWho[ag.id]=1; w.talkCount=(w.talkCount|0)+1; }
     setActivity(w,ag,'plaza_talk','stroll','夜谈',tempoDur(w,ag,60),pickV(w,STROLL_THOUGHTS,ag,'lq'),
-      '在夜谈角坐下，听人说话');
+      '在夜谈角坐下，听人说话（今晚聊：'+talkTopicOf(w)+'）');
     return;
   }
   const eveClear=(周末?WEEKEND_OUT.eveStroll:0.3)+goalKnob(ag,'out');   // 晴天那一档（原值 0.3／0.45 原样保留）
@@ -2893,6 +2903,7 @@ const Sim={makeWorld, step, sendMessage, sendCustomMessage, decide, MSGS, ANCHOR
   MORNING, morningFacts, morningStep,   // 第 58 单·云港晨报（门禁按真值读同一份日历）
   FESTIVAL, festAt, thisYearFestAt, inFestival, festivalStep,   // 第 62 单·江灯节（门禁按真值读同一份日历）
   TALK, nightTalkStartAt, inTalk, thisWeekTalkAt, talkStep,   // 第 70 单·周日夜谈（门禁按真值读）
+  TALK_TOPICS, talkTopicOf,   // 第 71 单·夜谈话题（门禁按真值读：话题按日号取、不摇 rng）
   BIRTHDAYS, BDAY, bdayInDays, thisYearBdayAt, bdayAt, inBirthday,   // 第 64 单·住户生日（门禁按真值读同一份日历）
   CATCHUP_MIN_PER_MIN, CATCHUP_MAX_DAYS, REFLECT_MIN, SMS_NOREPLY,
   catchUpPlan, catchUp, reflectFallback, clipTopDay,

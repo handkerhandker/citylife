@@ -3803,6 +3803,77 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   }
 }
 
+// ═══ 第 71 单·夜谈话题（坐着到底在聊什么）════════════════════════════════════
+/* 被验的是生产源码与真值：
+     ① 结构：话题池 ≥6 条、条条非空且互不相同；`talkTopicOf` 一处定义；取话题**不摇 rng**（确定性）；
+        坐下那条日志与散场播报**调的是同一处取词**；
+     ② 行为（构造一晚）：在场每个人的坐下日志都带同一个话题，散场播报里也是同一个；
+     ③ 变化性：未来四周的话题**不止一种**（不然等于没话题）；
+     ④ 反向自查：把话题池砍到 1 条 ⇒ 变化性判据当场哑掉 ⇒ 证明它量的是真东西。 */
+{
+  const fs=require('fs'), path=require('path');
+  const src=fs.readFileSync(path.resolve(__dirname,'city-life-framework.html'),'utf8');
+  ok(Array.isArray(Sim.TALK_TOPICS)&&Sim.TALK_TOPICS.length>=6
+     &&Sim.TALK_TOPICS.every(x=>typeof x==='string'&&x.trim().length>0)
+     &&new Set(Sim.TALK_TOPICS).size===Sim.TALK_TOPICS.length,
+     '第 71 单·结构：话题池 '+Sim.TALK_TOPICS.length+' 条，条条非空、互不相同');
+  ok((src.match(/function talkTopicOf\(/g)||[]).length===1,'第 71 单·结构：`talkTopicOf` 一处定义');
+  {
+    const FN=(src.match(/function talkTopicOf\(w\)\{[\s\S]*?\n\}/)||[''])[0];
+    ok(FN.length>0&&!/rng\(|Math\.random/.test(FN),
+       '第 71 单·结构：取话题**不摇 rng**（确定性；照第 52 单派活用哈希那条先例）');
+  }
+  ok((src.match(/talkTopicOf\(w\)/g)||[]).length>=3,
+     '第 71 单·结构：坐下那条日志与散场播报**都调同一处取词**（共 '+(src.match(/talkTopicOf\(w\)/g)||[]).length+' 处）');
+  // 行为：构造一晚
+  {
+    const w=Sim.makeWorld(20260803);
+    const 本=Sim.thisWeekTalkAt(w);
+    w.t=本-10;
+    const 今晚=Sim.talkTopicOf(w);      // 话题按**日号**取 ⇒ 必须在把钟拨到那一晚之后再读（第一版读早了，量到 D1 的话题）
+    let 已=w.lidSeq, 坐=[], 播=[];
+    for(let i=0;i<14;i++){
+      Sim.step(w,10);
+      for(const e of w.log){
+        if(e.lid<=已) continue; 已=e.lid;
+        const t=String(e.text||'');
+        if(t.indexOf('在夜谈角坐下')===0) 坐.push(t);
+        if(t.indexOf('夜谈散了')>=0) 播.push(t);
+      }
+    }
+    ok(坐.length>=2&&坐.every(t=>t.indexOf('（今晚聊：'+今晚+'）')>=0),
+       '第 71 单·行为：坐下的 '+坐.length+' 条日志都写着同一个话题「'+今晚+'」');
+    ok(播.length===1&&播[0].indexOf('「'+今晚+'」')>=0,
+       '第 71 单·行为：散场播报里也是同一个话题（'+播[0]+'）');
+  }
+  // 话题要换：未来四周不止一种（同一晚读两次必须一样）
+  {
+    const 四周=[];
+    for(let k=0;k<4;k++){
+      const w=Sim.makeWorld(20260803);
+      w.t=Sim.thisWeekTalkAt(w)+k*7*1440;
+      四周.push(Sim.talkTopicOf(w));
+    }
+    const w0=Sim.makeWorld(20260803);
+    ok(Sim.talkTopicOf(w0)===Sim.talkTopicOf(w0),'第 71 单·同一天读两次必相同（确定性）');
+    ok(new Set(四周).size>=2,
+       '第 71 单·变化性：未来四周的话题有 '+new Set(四周).size+' 种（'+四周.join(' ／ ')+'）——不是一句话用到底');
+    // 反向自查：把池子砍到 1 条 ⇒ 上面那条当场哑
+    const 原=Sim.TALK_TOPICS.slice();
+    Sim.TALK_TOPICS.splice(1);
+    const 病=[];
+    for(let k=0;k<4;k++){
+      const w=Sim.makeWorld(20260803);
+      w.t=Sim.thisWeekTalkAt(w)+k*7*1440;
+      病.push(Sim.talkTopicOf(w));
+    }
+    Sim.TALK_TOPICS.length=0; 原.forEach(x=>Sim.TALK_TOPICS.push(x));
+    ok(new Set(病).size===1,
+       '第 71 单·反向自查·拦得住：把话题池砍到 1 条之后，四周话题塌成 '+new Set(病).size
+       +' 种（'+病[0]+'）⇒ 「不止一种」这条判据不是恒绿');
+  }
+}
+
 // ═══ 第 33 单·天色昼夜（把「现在几点」画到画面上）═════════════════════════════
 /* 被验的是生产源码原文：SKYTINT-START…SKYTINT-END 整块抠出来，在一个只记账不作画的假 ctx 上跑
    （照第 31 单 iconLab、第 32 单 chipLab 先例）。四条闸：
@@ -4546,7 +4617,7 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   ok(恒绿===0,'第 66 单·闸二：`ok` 第一参数写死 true 的**读数型假断言**为 0 条（实测 '+恒绿+'；读数一律走 `读数()`）');
   // 闸三 · 反向自查登记（防整条被删）
   const 登记=['第 48 单','第 49 单','第 51 单','第 52 单','第 53 单','第 54 单','第 56 单','第 57 单',
-              '第 58 单','第 59 单','第 62 单','第 63 单','第 64 单','第 65 单','第 67 单','第 70 单',
+              '第 58 单','第 59 单','第 62 单','第 63 单','第 64 单','第 65 单','第 67 单','第 70 单','第 71 单',
               '闸四','闸五','闸十','闸十一','闸十二'];
   const 实有=[...new Set((自源.match(/(第 \d+ 单|闸[一二三四五六七八九十]+)·反向自查/g)||[])
                             .map(x=>x.replace('·反向自查','')))];
