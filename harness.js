@@ -2790,6 +2790,55 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   }
 }
 
+// ═══ 第 54 单·目标接进剪辑层 ＋ 阈值与周节奏对齐 ═══════════════════════════════
+/* 被验的是生产源码与真值：三条目标项的权重落在甲级区间、引原文会去引目标那三条日志、
+   30 天里真的出卡且三种结局都出现过；外加一条源码级反向自查（把权重删掉 ⇒ 判据当场判红）。 */
+{
+  const fs=require('fs'), path=require('path');
+  const src=fs.readFileSync(path.resolve(__dirname,'city-life-framework.html'),'utf8');
+  const ids=['goal_done','goal_miss','goal_broke'];
+  const 权=ids.map(id=>Sim.clipWeight(id));
+  ok(权.every(v=>v>=1.2&&v<=3.0),
+     '第 54 单·剪辑权重：三条目标项都在甲级区间 [1.2, 3.0]（实测 '+ids.map((id,i)=>id+'='+权[i]).join('／')+'）');
+  ok(ids.every(id=>v(Sim.clipItemText({id:id,v:{label:'X'}}))),
+     '第 54 单·文案：三条目标项都印得出来（例：'+Sim.clipItemText({id:'goal_miss',v:{label:'这周出门看三回天'}})+'）');
+  function v(s){ return typeof s==='string'&&s.indexOf('目标 · ')===0; }
+  ok(/goal:'goal'/.test(src),'第 54 单·结构：`CLIP_QCAT` 把 goal 项指到 goal 类 ⇒ 摘原文会去引那三条日志');
+  // 行为侧：30 天 × 3 种子，真出卡、三种结局都出现过、且每张带目标的卡都引到了目标原文
+  {
+    const 种=[20260803,424242,777];
+    let 带目标=0, 引到=0, 见={};
+    for(const seed of 种){
+      const w=Sim.makeWorld(seed);
+      for(let i=0;i<30*144;i++) Sim.step(w,10);
+      for(const c of (w.clips||[])){
+        const its=(c.items||[]).filter(it=>ids.indexOf(String(it.id||''))>=0);
+        if(!its.length) continue;
+        带目标++;
+        for(const it of its) 见[it.id]=(见[it.id]||0)+1;
+        const qs=(c.q||[]).map(e=>String(e.text||''));
+        if(qs.some(t=>/这周想的事|本来想做的事/.test(t))) 引到++;
+      }
+    }
+    ok(带目标>=10,'第 54 单·行为侧：30 天 × 3 种子里有 '+带目标+' 张剪辑卡带「目标」项（不是恒零）');
+    ok(ids.every(id=>(见[id]||0)>0),'第 54 单·三种结局都上过卡（'+ids.map(id=>id+':'+(见[id]||0)).join(' ')+'）');
+    ok(引到===带目标,'第 54 单·引原文：每张带目标的卡都引到了目标那三条日志本身（'+引到+'/'+带目标+'）');
+  }
+  // 阈值对齐：周一批把有效窗口压到约 6.9 天 ⇒ 阈值整体下调半档（判据：六条阈值都不高于第 52 单定标值）
+  {
+    const 上限={thrift:6,greet:23,sky:5,tidy:190,book:190,steady:0};
+    ok(Object.keys(上限).every(k=>Sim.GOAL_TARGETS[k]<=上限[k]),
+       '第 54 单·阈值对齐：六条阈值都 ≤ 第 52 单的定标值（'+Object.keys(上限).map(k=>k+' '+Sim.GOAL_TARGETS[k]+'≤'+上限[k]).join('／')+'）');
+  }
+  // 反向自查（源码级）：把权重表里那一段删掉 ⇒ `clipWeight` 归零 ⇒ 上面第一条判据当场判红
+  {
+    const 删=src.replace(/goal_done:2\.6, goal_miss:2\.8, goal_broke:2\.4,/,'');
+    ok(删!==src,'第 54 单·反向自查构造成立：病态改写命中了生产原文');
+    const 病权=ids.map(id=>{ const m=删.match(new RegExp(id+':\\s*([\\d.]+)')); return m?Number(m[1]):0; });
+    ok(病权.every(x=>!(x>=1.2&&x<=3.0)),'第 54 单·反向自查·拦得住：把权重删掉后三条都读到 0 ⇒ 「落在甲级区间」当场判红');
+  }
+}
+
 // ═══ 第 33 单·天色昼夜（把「现在几点」画到画面上）═════════════════════════════
 /* 被验的是生产源码原文：SKYTINT-START…SKYTINT-END 整块抠出来，在一个只记账不作画的假 ctx 上跑
    （照第 31 单 iconLab、第 32 单 chipLab 先例）。四条闸：

@@ -428,7 +428,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v54</span>
+<span class="num dim" id="set-build">v55</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -1342,7 +1342,9 @@ const GOAL_DAYS=7;
        「这周少在外面吃几顿」按次数记，与发薪／交租的相位无关；
      · **"上限型"目标（少做某事）不能每拍判**——开局就满足、当场完成，故一律要求
        `w.t-g.born` 走到本轮末尾才判（见 `thrift.met`）。 */
-const GOAL_TARGETS={ thrift:6, greet:23, sky:5, tidy:190, book:190, steady:0 };
+/* 第 54 单·阈值对齐：周一批把有效窗口从"满 7 天"压到约 6.9 天（到下一个周一 08:00），
+   按满 7 天定的阈值因此让达成率从 58.9% 掉到 49.0%。这里整体下调**半档**，把达成率拉回"多数够得着"那一带。 */
+const GOAL_TARGETS={ thrift:6, greet:23, sky:4, tidy:180, book:180, steady:0 };
 /* 第 53 单·前提破裂：**连续 6 小时（36 拍）**不成立才算"这件事眼下做不成"——
    防的是"别人的一拍状态"（比如同屋的人正睡着）把目标当场废掉。 */
 const GOAL_BREAK_TICKS=36;
@@ -1496,12 +1498,14 @@ function goalStep(w,ag){
     logAct(w,ag,'这周想的事做到了：'+G.label,'做到了。');
     w.stats.goalDone=(w.stats.goalDone||0)+1;
     if(ag.week) ag.week.结局='做到了';
+    ag.lastGoalOut={ t:w.t, k:'done', label:G.label };   // 第 54 单：给剪辑层留一个可采样的落点（与 ag.sit 同一手法）
     delete ag.goal; return;
   }
   if(w.t>=g.until){
     logAct(w,ag,'这周想的事没做成：'+G.label,'……下回再说。');
     w.stats.goalMiss=(w.stats.goalMiss||0)+1;
     if(ag.week) ag.week.结局='没做成';
+    ag.lastGoalOut={ t:w.t, k:'miss', label:G.label };
     delete ag.goal; return;
   }
   /* 前提检查器 v1：只认现存变量（钱／体力／屋里有没有活人）。**连续 GOAL_BREAK_TICKS 不成立**才算破裂，
@@ -1513,6 +1517,7 @@ function goalStep(w,ag){
     logAct(w,ag,'本来想做的事，眼下做不成了：'+G.label,'……换个目标吧。');
     w.stats.goalBroke=(w.stats.goalBroke||0)+1;
     if(ag.week) ag.week.结局='中途换了';
+    ag.lastGoalOut={ t:w.t, k:'broke', label:G.label };
     delete ag.goal;
     const 今天=PURE.dayOf(w.t);
     if(ag.flags.goalRedoDay!==今天){ ag.flags.goalRedoDay=今天; ag.flags.goalNext=w.t; }  // 每人每日至多重开一次
@@ -1773,6 +1778,7 @@ const CLIP_NOISE={
 //   即：任凭一个人当天在所有活动上同时刷出频次异常，也压不过任何一条有戏的偏离。
 //   money_debt 归乙级：它是 money_broke 的附加项（「已经是负数了」），不单独成立。
 const CLIP_W={
+  goal_done:2.6, goal_miss:2.8, goal_broke:2.4,   // 第 54 单·目标（一周一件的惦记事出了结果，甲级区间内）
   sit_bad:3.0, sit_first:1.5, sit_good:1.4, sit_flat:0.6, sit_none:1.0,
   money_broke:2.6, money_debt:0.8, money_swing:1.8, money_flatpay:2.4,
   social_mute:2.2, social_all:2.4, social_burst:1.2,
@@ -1797,7 +1803,7 @@ const CLIP_CATNAME={eat:'吃饭', work:'上班', nap:'小憩', stroll:'散步', 
 // 两级同时命中会在同一张卡上把同一句话印两遍（实测 D10 「闲聊 4 次，平常 2 次」印了两行）。
 // 也不含 idle：在家待着 logText 恒为 null、不上墙，本层「只数上了墙的事」故无从计数。
 const CLIP_FREQ_CATS=['eat','work','nap','stroll'];
-const CLIP_QCAT={sit:'work', money:'money', social:'chat', sleep:'sleep', wake:'sleep', hunger:'eat', worn:'nap', freq:''};
+const CLIP_QCAT={sit:'work', money:'money', social:'chat', sleep:'sleep', wake:'sleep', hunger:'eat', worn:'nap', freq:'', goal:'goal'};
 
 function clipDayOf(t){ return PURE.dayOf(t-CLIP_CUT); }     // 剪辑日：窗口＝[D 日 04:00, D+1 日 04:00)
 function clipT0(cd){ return (cd-1)*1440+CLIP_CUT; }
@@ -1895,6 +1901,13 @@ function clipSample(w,sh){
         r.sitT=at;
       }
     }
+    // 第 54 单·目标：只认「落点时刻落在本窗内」的那一条（与处境同一个手法：不读日志墙，读人身上的记账）
+    const lg=ag.lastGoalOut;
+    if(lg && typeof lg==='object' && isFinite(lg.t) && lg.t>=t0 && lg.t<t1 && r.goalT!==lg.t){
+      r.goalK=(lg.k==='done'||lg.k==='miss'||lg.k==='broke')?lg.k:'';
+      r.goalTx=(typeof lg.label==='string')?lg.label:'';
+      r.goalT=lg.t;
+    }
   }
 }
 
@@ -1912,6 +1925,9 @@ function clipMake(w,sh,ent,ag,sum,base){
   // 「什么都没发生」类偏离（零对话／一天没吃／处境空白）本身没有对应条目可引，
   // 时间锚点取当窗正午，让摘原文那步退到「当天中段他在干什么」，而不是空手而归。
   const NOON=clipT0(cd)+720;
+  // 甲 · 目标（第 54 单）：一周一件的惦记事出结果了——"做到了"是好事，"没做成／中途换了"是戏。
+  // 走的是与处境同一套"事件型"通道：锚点＝结论落下的那一刻，摘原文那步会去引那三条日志本身。
+  if(r.goalK) push('goal_'+r.goalK,{label:r.goalTx},r.goalT);
   // 甲/乙 · 处境（第 17 单 ag.sit 的预留去处：事件原文不喂 AI，本页是它唯一的现身处）
   if(r.sitK){
     const v={from:r.sitFrom||'那边', tx:r.sitTx};
@@ -1976,6 +1992,9 @@ function clipMake(w,sh,ent,ag,sum,base){
 function clipItemText(it){
   const id=(it&&it.id)||'', v=(it&&it.v)||{};
   switch(id){
+    case 'goal_done':  return '目标 · 做到了：「'+v.label+'」';
+    case 'goal_miss':  return '目标 · 没做成：「'+v.label+'」';
+    case 'goal_broke': return '目标 · 中途换了：「'+v.label+'」眼下做不成';
     case 'sit_bad':   return '处境 · 逆：'+v.from+'那边——「'+v.tx+'」';
     case 'sit_good':  return '处境 · 顺：'+v.from+'那边——「'+v.tx+'」';
     case 'sit_flat':  return '处境 · 平：'+v.from+'那边——「'+v.tx+'」';
