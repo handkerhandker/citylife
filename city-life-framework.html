@@ -428,7 +428,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v66</span>
+<span class="num dim" id="set-build">v67</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -3342,6 +3342,27 @@ function memText(ag){
   const m=ag&&ag.mem;
   return (m&&typeof m.text==='string'&&m.text)?('上周：'+m.text):'（还没有记录）';
 }
+/* ---------- 第 67 单·关系一期（**只做"看得见"，零新增世界状态**）----------
+   本作一直在记"谁跟谁说过话"——第 48 单起闲聊每场都往 `w.stats.pair`（键＝两个 id 排序后拼）
+   记一笔，但**玩家一处都看不到**：想知道谁跟谁熟，只能去日志页一行行翻。
+   本单把它摆到台面上：角色卡与角色详情各加一行「常聊」——聊得最多的那个人、聊过多少次。
+
+   数据源就是既有那份账（`w.stats.pair`，**累计自开局**），故：
+     · **不新增任何世界状态**、不动 SIM 块、不掷骰子、不读出网；世界指纹与 SIM 块 md5 逐字节不变；
+     · 口径写在词里："**聊过 N 次**"（累计），不是"最近"——不拿旧账冒充新账。
+   为什么只做到这一步：真正的"关系状态机"（关系值随事涨落、进目标谓词、进剪辑判据）属**改结构**，
+   照改动分级要先出方案、等决策者点头；一期先把**已有的**数据变成看得见的东西，不抢那一步。 */
+function relText(w, ag){
+  const st=(w&&w.stats&&w.stats.pair)||{}; let bestId='', n=0;
+  for(const k in st){
+    const ids=String(k).split('+');
+    if(ids.length!==2 || ids.indexOf(ag.id)<0) continue;      // 只认两人一对的键
+    const c=st[k]|0; if(c<=n) continue;
+    n=c; bestId=(ids[0]===ag.id?ids[1]:ids[0]);
+  }
+  const mate=bestId ? (w.agents||[]).find(a=>a.id===bestId) : null;
+  return (n>0&&mate) ? ('和 '+mate.name+' 聊过 '+n+' 次') : '还没跟谁聊过';
+}
 function buildRoles(){
   $('#roles-grid').innerHTML=state.world.agents.map(ag=>
     '<div class="card" data-role="'+ag.id+'">'
@@ -3353,6 +3374,7 @@ function buildRoles(){
     +'<div class="kv"><span>担忧</span><span class="rr-fear"></span></div>'
     +'<div class="kv"><span>目标</span><span class="rr-goal"></span></div>'
     +'<div class="kv"><span>上周</span><span class="rr-mem"></span></div>'
+    +'<div class="kv"><span>常聊</span><span class="rr-rel"></span></div>'
     +'<div class="kv"><span>正在</span><span class="rr-act"></span></div>'
     +'<div class="row" style="margin-top:.4rem"><span class="faint" style="font-size:.72rem">饱食</span><span class="bar"><i class="rr-h"></i></span></div>'
     +'<div class="row" style="margin-top:.25rem"><span class="faint" style="font-size:.72rem">体力</span><span class="bar"><i class="rr-e" style="background:var(--blue)"></i></span></div>'
@@ -3372,6 +3394,7 @@ function renderRoles(){
     c.querySelector('.rr-fear').textContent='⚠ '+((ag.money<300)?'凑不齐下个月房租':ag.fear);
     const gEl=c.querySelector('.rr-goal'); if(gEl) gEl.textContent=goalText(ag);   // 第 52 单·目标外显
     const mEl=c.querySelector('.rr-mem'); if(mEl) mEl.textContent=memText(ag);     // 第 53 单·周记忆外显
+    const rEl=c.querySelector('.rr-rel'); if(rEl) rEl.textContent=relText(state.world, ag);   // 第 67 单·关系外显（一期）
     c.querySelector('.rr-act').textContent=ag.activity.label+' · '+(loc?loc.label:'路上');
     c.querySelector('.rr-h').style.width=(100-ag.hunger)+'%';
     c.querySelector('.rr-e').style.width=ag.energy+'%';
@@ -3401,7 +3424,9 @@ function openAgentDialog(id){
     +'<div class="row" style="flex-wrap:wrap;margin-bottom:.5rem">'+traitChips(ag)+'</div>'
     +'<div class="kv"><span>心愿</span><span>✨ '+esc(ag.want)+'</span></div>'
     +'<div class="kv"><span>担忧</span><span>⚠ '+esc((ag.money<300)?'凑不齐下个月房租':ag.fear)+'</span></div>'
-    +'<div class="kv"><span>关系</span><span>累计 '+ag.relNotes+' 次来往记在心里</span></div>'
+    /* 第 67 单：这一行原先是"累计 N 次来往记在心里"——只有总数，看不出**跟谁**。
+       现在把既有那份 `w.stats.pair` 账摆出来（谁、多少次），旧的总数保留在括号里。 */
+    +'<div class="kv"><span>关系</span><span>'+esc(relText(state.world, ag))+'（累计 '+(ag.relNotes|0)+' 次来往）</span></div>'
     +'<div class="kv"><span>钱包</span><span class="num">¥'+Math.round(ag.money)+'</span></div>'
     +'<h2 class="sec">最近的 TA</h2><ul class="log-ul">'+recent+'</ul>'
     +'<div class="row" style="margin-top:.7rem;justify-content:flex-end">'

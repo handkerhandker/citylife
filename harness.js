@@ -3672,6 +3672,57 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   }
 }
 
+// ═══ 第 67 单·关系一期（只做"看得见"，零新增世界状态）══════════════════════════
+/* 被验的是生产源码与真值：
+     ① 角色卡与角色详情各有一行「常聊」，两处都调**同一个** `relText`（一处定义）；
+     ② 口径取自既有账 `w.stats.pair`：空账照实说"还没跟谁聊过"；多对时取**最大**那对；
+     ③ 只读不写：真跑 30 天 → 逐人调一遍 `relText` → 世界序列化逐字节不变；
+     ④ 反向自查：把那对账改一改（让次高的反超）⇒ 文案必须跟着换 ⇒ 不是写死的。 */
+{
+  const fs=require('fs'), path=require('path');
+  const src=fs.readFileSync(path.resolve(__dirname,'city-life-framework.html'),'utf8');
+  const FN=(src.match(/function relText\(w, ag\)\{[\s\S]*?\n\}/)||[''])[0];
+  ok(FN.length>0&&(src.match(/function relText\(/g)||[]).length===1,
+     '第 67 单·结构：`relText` 一处定义（抽到的函数体 '+FN.length+' 字符）');
+  ok(/<div class="kv"><span>常聊<\/span><span class="rr-rel"><\/span><\/div>/.test(src)
+     &&/rEl\.textContent=relText\(state\.world, ag\)/.test(src)
+     &&/relText\(state\.world, ag\)\)\+'（累计 '/.test(src),
+     '第 67 单·结构：角色卡骨架／角色卡刷新／角色详情**三处**都接上了这一行（同一处取词）');
+  ok(!/state\.world\s*=|\.rng\(|fetch\(|XMLHttpRequest/.test(FN),
+     '第 67 单·结构：`relText` 只读不写（不赋值世界、不掷骰子、不出网）');
+  const rel=new Function('return '+FN)();
+  // 取值：空账 / 单对 / 多对（含并列）
+  {
+    const mk=pairs=>({stats:{pair:pairs}, agents:[{id:'a1',name:'顾云帆'},{id:'a2',name:'沈小满'},{id:'a3',name:'陆知秋'},{id:'a4',name:'白一鸣'}]});
+    ok(rel(mk({}),{id:'a1'})==='还没跟谁聊过','第 67 单·空账照实说：还没有人来往时说「还没跟谁聊过」');
+    ok(rel(mk({'a1+a2':7}),{id:'a1'})==='和 沈小满 聊过 7 次','第 67 单·单对：一对一时报「和 X 聊过 N 次」');
+    const w2=mk({'a1+a3':5,'a1+a2':9,'a2+a4':12});
+    ok(rel(w2,{id:'a1'})==='和 沈小满 聊过 9 次',
+       '第 67 单·多对取最大：a1 身上 9 次 > 5 次 ⇒ 报沈小满（实测 ' +rel(w2,{id:'a1'})+'）');
+    ok(rel(mk({'a2+a3':12}),{id:'a1'})==='还没跟谁聊过','第 67 单·只认自己的那几对：别人的 12 次不算在 a1 头上');
+  }
+  // 反向自查：把最大那对压下去 ⇒ 文案必须换人（证明不是写死的/不是取第一对）
+  {
+    const mk=pairs=>({stats:{pair:pairs}, agents:[{id:'a1',name:'顾云帆'},{id:'a2',name:'沈小满'},{id:'a3',name:'陆知秋'}]});
+    const 健=mk({'a1+a2':9,'a1+a3':5});
+    const 病=mk({'a1+a2':3,'a1+a3':8});     // 反超
+    ok(rel(健,{id:'a1'}).indexOf('沈小满')>=0&&rel(病,{id:'a1'}).indexOf('陆知秋')>=0,
+       '第 67 单·反向自查·拦得住：把 9 次那对压到 3 次、5 次那对抬到 8 次 ⇒ 文案从'
+       +rel(健,{id:'a1'})+' 换成 '+rel(病,{id:'a1'})+'（不是写死的）');
+  }
+  // 只读不写（运行侧）：真跑 30 天 → 逐人调一遍 → 序列化逐字节不变
+  {
+    const w3=Sim.makeWorld(20260803);
+    for(let i=0;i<30*144;i++) Sim.step(w3,10);
+    const 前=Sim.serialize(w3,null);
+    for(const ag of w3.agents) rel(w3, ag);
+    const 后=Sim.serialize(w3,null);
+    ok(前===后,'第 67 单·只读不写（运行侧）：30 天的世界逐人取词一遍，序列化逐字节不变');
+    ok(w3.agents.every(ag=>/^和 .+ 聊过 \d+ 次$|^还没跟谁聊过$/.test(rel(w3, ag))),
+       '第 67 单·真世界里四种人都取得到词：'+w3.agents.map(ag=>ag.name+'→'+rel(w3, ag)).join('；'));
+  }
+}
+
 // ═══ 第 33 单·天色昼夜（把「现在几点」画到画面上）═════════════════════════════
 /* 被验的是生产源码原文：SKYTINT-START…SKYTINT-END 整块抠出来，在一个只记账不作画的假 ctx 上跑
    （照第 31 单 iconLab、第 32 单 chipLab 先例）。四条闸：
@@ -4415,7 +4466,7 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   ok(恒绿===0,'第 66 单·闸二：`ok` 第一参数写死 true 的**读数型假断言**为 0 条（实测 '+恒绿+'；读数一律走 `读数()`）');
   // 闸三 · 反向自查登记（防整条被删）
   const 登记=['第 48 单','第 49 单','第 51 单','第 52 单','第 53 单','第 54 单','第 56 单','第 57 单',
-              '第 58 单','第 59 单','第 62 单','第 63 单','第 64 单','第 65 单',
+              '第 58 单','第 59 单','第 62 单','第 63 单','第 64 单','第 65 单','第 67 单',
               '闸四','闸五','闸十','闸十一','闸十二'];
   const 实有=[...new Set((自源.match(/(第 \d+ 单|闸[一二三四五六七八九十]+)·反向自查/g)||[])
                             .map(x=>x.replace('·反向自查','')))];
