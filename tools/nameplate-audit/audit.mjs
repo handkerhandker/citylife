@@ -55,7 +55,9 @@ const 复算 = page => page.evaluate(() => {
   const ANCH = Sim.ANCHORS, ROOMS = Sim.ROOMS;
   const sx = x => st.view.ox + x * s, sy = y => st.view.oy + y * s;
   const 人 = st.world.agents;
-  const 名宽 = n => { ctx.font = '10px system-ui,sans-serif'; return ctx.measureText(n).width + 8; };
+  // 第 84 单：名牌字号随缩放走 ⇒ 量宽也得用同一个字号（旧版写死 10px，量表与源码就不同源了）
+  const 名牌号 = Math.max(9, Math.min(12, s * 0.7));
+  const 名宽 = n => { ctx.font = 名牌号 + 'px system-ui,sans-serif'; return ctx.measureText(n).width + 8; };
   const 结果 = [];
   for (const [锚名, spots] of Object.entries(SPOTS)) {
     const A = ANCH[锚名]; if (!A) continue;
@@ -73,8 +75,11 @@ const 复算 = page => page.evaluate(() => {
         if (!撞) break;
         lane++;
       }
-      const y = dy0 - 4 - lane * 15;               // chip 的 y 参数
-      boxes.push({ 人: ag.name, lane, x, w, 盒顶: y - 14, 盒底: y + 1 });
+      /* 第 84 单：名牌字号改成随缩放走（`clamp(9,12,s*0.7)`），盒高与道距都从字号推——
+         本工具的口径必须**与源码同源**，故这里照新式子复算（旧版写死 10px／15 道距）。 */
+      const 盒高 = Math.round(Math.max(9, Math.min(12, s * 0.7)) * 1.5);
+      const y = dy0 - 4 - lane * 盒高;               // nameChip 的 y 参数（y=dy0−4，再抬 lane×道距）
+      boxes.push({ 人: ag.name, lane, x, w, 盒顶: y - 盒高 + 1, 盒底: y + 1 });
     });
     // 房间名盒
     const fs2 = Math.max(9, Math.min(12, s * 0.7));
@@ -85,7 +90,8 @@ const 复算 = page => page.evaluate(() => {
     const 重叠 = boxes.filter(b => b.盒顶 < 名盒.盒底 && 名盒.盒顶 < b.盒底
       && (b.x - b.w / 2) < 名盒.右 && 名盒.左 < (b.x + b.w / 2));
     结果.push({ 锚: 锚名, 房间: room.id, s, 精灵高: 2 * s, 精灵宽: s,
-      字号: 10, 名牌宽: 名宽('顾云帆'), 房间名字号: Math.round(fs2 * 10) / 10, 房间名宽: Math.round(名宽2),
+       字号: Math.round(Math.max(9, Math.min(12, s * 0.7)) * 10) / 10, 名牌宽: 名宽('顾云帆'),
+       房间名字号: Math.round(fs2 * 10) / 10, 房间名宽: Math.round(名宽2),
       最上盒顶: Math.min(...boxes.map(b => b.盒顶)), 房间名盒底: Math.round(名盒.盒底),
       盒间隙: Math.round(Math.min(...boxes.map(b => b.盒顶)) - 名盒.盒底),
       重叠人数: 重叠.length, 重叠: 重叠.map(b => b.人 + '·道' + b.lane) });
@@ -191,13 +197,14 @@ for (const [档名, vp] of [['桌面', { width: 1400, height: 900 }], ['手机�
     await settle(350);
     const r = await page.evaluate(() => {
       const st = __pv.state, s = st.view.s, c = __pv.ctx;
-      c.font = '10px system-ui,sans-serif';
+      const 名牌号2 = Math.max(9, Math.min(12, s * 0.7));   // 第 84 单：名牌字号随缩放（与源码同式）
+      c.font = 名牌号2 + 'px system-ui,sans-serif';
       const 名宽 = c.measureText('顾云帆').width + 8;
       const 房名号 = Math.max(9, Math.min(12, s * 0.7));
       c.font = 房名号 + 'px system-ui,sans-serif';
       const 房名宽 = c.measureText('公寓·厨房').width + 8;
       return { s: Math.round(s * 100) / 100, 精灵宽: Math.round(s), 精灵高: Math.round(2 * s),
-        名牌宽: Math.round(名宽), 名牌字号: 10, 名牌宽对精灵宽: Math.round(名宽 / s * 100) / 100,
+        名牌宽: Math.round(名宽), 名牌字号: Math.round(名牌号2 * 10) / 10, 名牌宽对精灵宽: Math.round(名宽 / s * 100) / 100,
         房间名字号: Math.round(房名号 * 10) / 10, 房间名宽: Math.round(房名宽) };
     });
     const f = pre + '布局档-' + 名 + '.png';

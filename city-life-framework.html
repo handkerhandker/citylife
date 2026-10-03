@@ -440,7 +440,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v79</span>
+<span class="num dim" id="set-build">v80</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -4707,7 +4707,14 @@ function chip(x,y,text,color,size){
    **由构造保证**：道数上限＝住户人数，故同一帧内任意多个名牌都能各占一道、零重叠，
    且与缩放无关（判据落在像素上，不落在格上）。
    只作用于名牌：房间名/地标名是静态背景，跟着抬会闪，一律不走这道闸。 */
-const NAME_CHIP_LANE_H=15;      // 道距＝名牌盒高（chip 的盒高恒 15）
+/* 第 84 单：**名牌字号随缩放走**（第 32 单登记的第一条遗留）——
+   改前它写死 10px，房间名反倒走 `Math.max(9,Math.min(12,s*0.7))`，于是镜头缩得越小、
+   名牌相对越宽（手机上四个名字能糊成一条黑杠）。现在两者用**同一把尺**：
+   字号＝`clamp(9, 12, s*0.7)`；盒高与道距都从字号推（盒高 1.5×字号、道距＝盒高），
+   故**缩放越小、名字越小、道距越紧**，逻辑不变（仍然每人一道、零重叠）。
+   口径只此一处：`名号()`。 */
+const 名号=()=>Math.max(9, Math.min(12, state.view.s*0.7));
+const 名盒高=()=>Math.round(名号()*1.5);
 const NAME_CHIP_GAP=3;          // 同一道上两个盒子之间至少留的横向缝
 let nameChipBoxes=[];           // 本帧名牌登记表（每帧绘制前由 nameChipReset 清账）
 /* 第 42 单：本帧「会挡住房间名」的盒子 —— **精灵盒 ∪ 名牌盒**。
@@ -4719,7 +4726,8 @@ let labelBlockBoxes=[];
 function nameChipReset(){ nameChipBoxes=[]; labelBlockBoxes=[]; }
 const 盒相交=(a,b)=>a.l<b.r && b.l<a.r && a.t<b.b && b.t<a.b;
 function nameChip(x,y,text){
-  ctx.font='10px system-ui,sans-serif';
+  const 号=名号(), 高=名盒高(), 道距=高;
+  ctx.font=号+'px system-ui,sans-serif';
   const w=ctx.measureText(text).width+8;
   let lane=0;
   while(lane<state.world.agents.length){          // 上限＝住户人数 ⇒ 各占一道，结构上不可能重叠
@@ -4731,10 +4739,17 @@ function nameChip(x,y,text){
     lane++;
   }
   nameChipBoxes.push({x,y,w,lane});
-  chip(x, y-lane*NAME_CHIP_LANE_H, text, '#ece5d0', 10);
+  /* 第 84 单：自己画这块底（不再借 `chip()`）——因为 `chip()` 的盒高写死 15、字号一变就露馅，
+     而它还被房间名／地标名／活动指示器共用，动它等于动全站。名牌这块只改自己。 */
+  const 顶=y-高+1-lane*道距;
+  ctx.fillStyle='rgba(14,17,26,.78)';
+  ctx.fillRect(x-w/2, 顶, w, 高);
+  ctx.font=号+'px system-ui,sans-serif';
+  ctx.fillStyle='#ece5d0'; ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText(text, x, 顶+高/2);
   // 第 42 单：把这一块名牌的**最终盒**也登记进「遮挡表」，供房间名让位判据消费
-  labelBlockBoxes.push({ l:x-w/2, r:x+w/2, t:y-14-lane*NAME_CHIP_LANE_H, b:y+1-lane*NAME_CHIP_LANE_H });
-  return y-14-lane*NAME_CHIP_LANE_H;   // 盒顶：头顶指示器以它为盒底（ACT_CHIP.gap 口径同源）
+  labelBlockBoxes.push({ l:x-w/2, r:x+w/2, t:顶, b:顶+高 });
+  return 顶;   // 盒顶：头顶指示器以它为盒底（ACT_CHIP.gap 口径同源）
 }
 /*NAMECHIP-END*/
 /*ACTICON-START*/

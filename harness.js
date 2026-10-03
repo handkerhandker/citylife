@@ -2243,9 +2243,11 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
     };
     let code=CHIP_SRC+'\n'+NAMECHIP_SRC;
     if(mut) code=mut(code);
+    /* 第 84 单：名牌字号改成随缩放走（`名号()`／`名盒高()`），故台子要把 `state.view.s` 也喂进去，
+       并把这两个新函数一并交出来（旧常量 `NAME_CHIP_LANE_H` 已删——它写死的正是本单要治的那件事）。 */
     const M=new Function('ctx','state',
-      code+'\nreturn {chip,nameChip,nameChipReset,NAME_CHIP_LANE_H,NAME_CHIP_GAP,boxes:()=>nameChipBoxes};')
-      (ctx,{world:{agents:new Array(nAgents||AG.length)}});
+      code+'\nreturn {chip,nameChip,nameChipReset,名号,名盒高,NAME_CHIP_GAP,boxes:()=>nameChipBoxes};')
+      (ctx,{view:{s:(nAgents&&nAgents.s)||13}, world:{agents:new Array((nAgents&&nAgents.n)||AG.length)}});
     return {M, rec, ctx};
   }
   const AG=Sim.makeWorld(20260803).agents;
@@ -2369,7 +2371,7 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
       const L=iconLab();
       const dy0=200;                                   // 精灵顶（金框 strokeRect 的 y＝dy0−3，lineWidth 2 ⇒ 上边线占 [dy0−4, dy0−2]）
       const 金框顶=dy0-4;
-      const laneH=chipLab().M.NAME_CHIP_LANE_H;
+      const laneH=chipLab().M.名盒高();      // 第 84 单：道距＝盒高，盒高从字号推（不再写死 15）
       const got=[];
       for(let lane=0;lane<AG.length;lane++){
         L.rec.rect.length=0;
@@ -2396,7 +2398,7 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
      三个人并排就必然首尾相接，读出来是一行「顾云帆 陆知秋 白一鸣」。
      治法＝同帧内贪心排道，道数上限＝住户人数 ⇒ 各占一道、零重叠，与缩放无关。 */
   {
-    const laneH=chipLab().M.NAME_CHIP_LANE_H;
+    const laneH=chipLab().M.名盒高();      // 第 84 单：道距＝盒高，盒高从字号推
     const boxOf=r=>({l:r.x, r:r.x+r.w, t:r.y, b:r.y+r.h});
     const 相交=(a,b)=>a.l<b.r && b.l<a.r && a.t<b.b && b.t<a.b;
     const 数重叠=bs=>{ let n=0; for(let i=0;i<bs.length;i++) for(let j=i+1;j<bs.length;j++) if(相交(bs[i],bs[j])) n++; return n; };
@@ -2410,8 +2412,11 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
       const lanes=L.M.boxes().map(b=>b.lane).sort((a,b)=>a-b);
       ok(JSON.stringify(lanes)==='[0,1,2,3]','闸五·构造成立：最挤那一档各自占 0/1/2/3 道（实测 ['+lanes.join(',')+']）'
          +'—— 不是「刚好没撞上」，是排出来的');
+      /* 第 84 单：盒顶的式子随"字号推盒高"改了——现在是 `顶 = y − 盒高 + 1 − 道×道距`，
+         故这条"四条盒顶恰为四道高度"的断言也照**生产源码那一式**重算（口径没松）。 */
+      const 盒高=chipLab().M.名盒高();
       const tops=L.rec.rect.map(r=>r.y).sort((a,b)=>a-b);
-      ok(JSON.stringify(tops)===JSON.stringify([200-14-3*laneH,200-14-2*laneH,200-14-laneH,200-14]),
+      ok(JSON.stringify(tops)===JSON.stringify([200-盒高+1-3*laneH,200-盒高+1-2*laneH,200-盒高+1-laneH,200-盒高+1]),
          '闸五·构造成立：四条名牌盒顶恰为四道的高度（实测 '+JSON.stringify(tops)+'，道距 '+laneH+'px）');
     }
     {
@@ -2453,8 +2458,13 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
          +'否则分道被绕开、几个人又叠回一行');
       ok(/while\(lane<state\.world\.agents\.length\)/.test(NAMECHIP_SRC),
          '闸五·构造成立：道数上限直接取住户人数（不是写死的数字）—— 住户加到几个就分几道');
-      ok(/const NAME_CHIP_LANE_H=15;/.test(NAMECHIP_SRC) && /const NAME_CHIP_GAP=3;/.test(NAMECHIP_SRC),
-         '闸五·构造成立：分道常量在生产源码里可抽取（道距 '+laneH+'px）');
+      /* 第 84 单一并改：原断言钉的是写死的 `NAME_CHIP_LANE_H=15`——那正是本单要治的东西
+         （字号不随缩放走）。改后道距**从字号推**（盒高＝1.5×字号），故断言改成
+         "字号与盒高都出自同一处 `名号()`"，口径不松：仍然可抽取、仍然一处定义。 */
+      ok(/const 名号=\(\)=>Math\.max\(9, Math\.min\(12, state\.view\.s\*0\.7\)\)/.test(NAMECHIP_SRC)
+         &&/const 名盒高=\(\)=>Math\.round\(名号\(\)\*1\.5\)/.test(NAMECHIP_SRC)
+         &&/const NAME_CHIP_GAP=3;/.test(NAMECHIP_SRC),
+         '闸五·构造成立：字号与盒高在生产源码里一处定义、可抽取（本台 state.view.s=13 ⇒ 道距 '+laneH+'px）');
       /* 第 42 单改了房间名的画法（推到人物之后、带让位判据），故本条随之换形态——
          但**口径未松**：分道只作用于名牌，地标名与房间名仍走裸 `chip()`，不经过 nameChip。 */
       const 地标 = (src.match(/\bchip\(sx\(/g)||[]).length;
@@ -4485,6 +4495,57 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
      +' 支／要人给参数 '+表.清单.filter(x=>x.档===0).length+' 支');
 }
 
+// ═══ 第 84 单·名牌字号随缩放（治第 32 单登记的第一条遗留）══════════════════════
+/* 被验的是生产源码与真值：
+     ① 结构：字号与盒高**一处定义**（`名号()`／`名盒高()`，与房间名同一把尺 `clamp(9,12,s*0.7)`）；
+        NAMECHIP 段里**不再出现写死的 `10px`**，也没有旧常量 `NAME_CHIP_LANE_H`；
+     ② 行为（假 ctx 台子）：**同一批人名**在 s=13 与 s=27 两个缩放下量出的字号／盒高**不一样**
+        （9.1／14 与 12／18），且**四个挤在一起仍然零重叠**——分道与缩放无关这条性质不许被打破；
+     ③ 反向自查：把 `名号()` 改成恒 10（＝退回"写死"那版）⇒ 「随缩放」这条判据当场判红。 */
+{
+  const fs=require('fs'), path=require('path');
+  const src=fs.readFileSync(path.resolve(__dirname,'city-life-framework.html'),'utf8');
+  const NAMECHIP=(src.match(/\/\*NAMECHIP-START\*\/[\s\S]*?\/\*NAMECHIP-END\*\//)||[''])[0];
+  ok(/const 名号=\(\)=>Math\.max\(9, Math\.min\(12, state\.view\.s\*0\.7\)\)/.test(NAMECHIP)
+     &&/const 名盒高=\(\)=>Math\.round\(名号\(\)\*1\.5\)/.test(NAMECHIP),
+     '第 84 单·结构：字号与盒高一处定义、且与房间名同一把尺（clamp(9,12,s*0.7)）');
+  ok(NAMECHIP.indexOf("'10px")<0&&NAMECHIP.indexOf('NAME_CHIP_LANE_H')<0,
+     '第 84 单·结构：NAMECHIP 段里不再有写死的 10px、也不再有旧常量 NAME_CHIP_LANE_H');
+  // 行为：借第 32 单那个假 ctx 台子（它已随本单改成从字号推盒高）
+  const CHIP_SRC=(src.match(/function chip\(x,y,text,color,size\)\{[\s\S]*?\n\}/)||[''])[0];
+  const 台=s=>new Function('ctx','state',
+    CHIP_SRC+'\n'+NAMECHIP+'\nreturn {nameChip,nameChipReset,名号,名盒高,boxes:()=>nameChipBoxes};')(
+    { set font(v){this._f=String(v);}, get font(){return this._f||'';}, fillStyle:'', textAlign:'', textBaseline:'',
+      measureText(t){ return {width:[...String(t)].length*13}; }, fillRect(){}, fillText(){} },
+    {view:{s}, world:{agents:new Array(4)}});
+  const 小=台(13), 大=台(27);
+  ok(小.名号()<大.名号()&&小.名盒高()<大.名盒高(),
+     '第 84 单·行为：字号随缩放变（s=13 ⇒ '+小.名号().toFixed(1)+'px／盒高 '+小.名盒高()
+     +'；s=27 ⇒ '+大.名号().toFixed(1)+'px／盒高 '+大.名盒高()+'）');
+  {
+    const L=台(13); L.nameChipReset();
+    for(const x of [100,112,124,136]) L.nameChip(x, 200, '顾云帆');   // 中心只隔 12px（手机竖屏那档）
+    const bs=L.boxes().map(b=>({l:b.x-b.w/2, r:b.x+b.w/2, t:(()=>0)()}));
+    const 道=[...new Set(L.boxes().map(b=>b.lane))].sort((a,b)=>a-b);
+    ok(道.length===4&&JSON.stringify(道)==='[0,1,2,3]',
+       '第 84 单·行为：缩到 s=13 时四个人仍各占一道（实测 ['+道.join(',')+']）——分道与缩放无关这条没被破坏');
+  }
+  // 反向自查：把字号写死 10 ⇒ 随缩放这条判据哑
+  {
+    const 病=(s=>{
+      const 病源=NAMECHIP.replace(/const 名号=\(\)=>Math\.max\(9, Math\.min\(12, state\.view\.s\*0\.7\)\);/,
+        'const 名号=()=>10;');
+      return new Function('ctx','state',CHIP_SRC+'\n'+病源+'\nreturn {名号};')(
+        { set font(v){}, get font(){return '';}, fillStyle:'', textAlign:'', textBaseline:'',
+          measureText(t){ return {width:1}; }, fillRect(){}, fillText(){} },
+        {view:{s}, world:{agents:new Array(4)}});
+    });
+    ok(病(13).名号()===病(27).名号(),
+       '第 84 单·反向自查·拦得住：把 `名号()` 改成恒 10（＝退回"写死"那版）⇒ 两个缩放下字号一样'
+       +'（'+病(13).名号()+'／'+病(27).名号()+'）⇒ 「随缩放」这条判据不是恒绿');
+  }
+}
+
 // ═══ 第 33 单·天色昼夜（把「现在几点」画到画面上）═════════════════════════════
 /* 被验的是生产源码原文：SKYTINT-START…SKYTINT-END 整块抠出来，在一个只记账不作画的假 ctx 上跑
    （照第 31 单 iconLab、第 32 单 chipLab 先例）。四条闸：
@@ -5228,7 +5289,7 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   ok(恒绿===0,'第 66 单·闸二：`ok` 第一参数写死 true 的**读数型假断言**为 0 条（实测 '+恒绿+'；读数一律走 `读数()`）');
   // 闸三 · 反向自查登记（防整条被删）
   const 登记=['第 48 单','第 49 单','第 51 单','第 52 单','第 53 单','第 54 单','第 56 单','第 57 单',
-              '第 58 单','第 59 单','第 62 单','第 63 单','第 64 单','第 65 单','第 67 单','第 70 单','第 71 单','第 72 单','第 73 单','第 74 单','第 75 单','第 76 单','第 77 单','第 79 单','第 80 单','第 81 单',
+              '第 58 单','第 59 单','第 62 单','第 63 单','第 64 单','第 65 单','第 67 单','第 70 单','第 71 单','第 72 单','第 73 单','第 74 单','第 75 单','第 76 单','第 77 单','第 79 单','第 80 单','第 81 单','第 84 单',
               '闸四','闸五','闸十','闸十一','闸十二'];
   const 实有=[...new Set((自源.match(/(第 \d+ 单|闸[一二三四五六七八九十]+)·反向自查/g)||[])
                             .map(x=>x.replace('·反向自查','')))];
