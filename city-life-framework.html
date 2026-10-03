@@ -440,7 +440,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v77</span>
+<span class="num dim" id="set-build">v78</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -2050,6 +2050,13 @@ const BIRTHDAYS={
   a4:{ month:9,  dayOfMonth:22 },   // 白一鸣
 };
 const BDAY={ cost:12, noticeDays:3, cake:'小块奶油蛋糕', open:15*60, close:22*60 };
+/* 第 81 单·生日礼物（住户之间）：第 65 单让邻居**开口**道贺，本单让他**带点东西过来**——
+   星露谷 wiki·Friendship 里村民会在生日寄礼（"villagers are more likely to send gifts in the mail"），
+   Nookipedia·Birthday 也写着村民会为寿星张罗。落成口径：
+     · **只在 15:00–21:00**、且**寿星与他正待在同一间屋**（同 `roomOf` 锚点）时才递出去（当面的东西才是东西）；
+     · 每位送礼人**一年至多一次**（`ag.giftYear` 记年号，照 `bdayYear` 先例）；花自己的钱 **−¥8**；
+     · 两条日志（送的人一条、收的人一条）＋ 剪辑层乙级一项（摘原文引送的那句）。 */
+const GIFT={ cost:8, open:15*60, close:21*60, thing:'一小盒点心' };
 /* 还有几天过生日——**按日号差算，不看时刻**（第 62 单那个"时刻开窗把当天切在外面"的坑）：
    0 ＝ 今天。这是本段唯一一处日期判据，晨报、行为、短信三处都调它。 */
 function bdayInDays(w, ag){
@@ -2297,6 +2304,28 @@ function decide(w, ag){
     }
   }
   const 夜市率=w.weather.rain?NIGHT_MKT.pRain:NIGHT_MKT.p;          // 第 57 单：雨天打对折
+  /* 第 81 单·生日礼物（住户之间）：今天谁过生日、而他正跟自己待在一间屋 ⇒ 当面递过去（一年一次，−¥8）。
+     放在夜市之前：一年一次 > 每周一次（与第 62／63／64 单同一条取舍）。只占空闲那一档。 */
+  if(mod>=GIFT.open && mod<GIFT.close){
+    const 年=PURE.dayOf(w.t)-((PURE.dayOf(w.t)-1)%FESTIVAL.yearDays);
+    if(ag.giftYear!==年){
+      const 寿星=w.agents.find(o=>o!==ag && inBirthday(w,o)
+        && roomOf(o.anchor)===roomOf(ag.anchor)
+        && (o.activity.type==='idle'||o.activity.type==='stroll'));
+      if(寿星){
+        ag.giftYear=年;
+        ag.money-=GIFT.cost;
+        /* 日志首段必须是**固定前缀**（归类表按前缀匹配，第 21 单那条覆盖率闸盯着）——
+           故写作"带了…过去给‹名字›"，而不是"给‹名字›带了…"（后者的前缀会随名字变）。 */
+        const 句='带了'+GIFT.thing+'过去给'+寿星.name;
+        ag.lastGift={ t:w.t, to:寿星.id, toName:寿星.name, spent:GIFT.cost,
+          tx:句+'（¥'+GIFT.cost+'）' };
+        logAct(w,ag,句,'生日快乐，就不多说了。');
+        logAct(w,寿星,'收下了'+ag.name+'带来的'+GIFT.thing,'（放在桌上，看着挺高兴。）');
+        return;
+      }
+    }
+  }
   if(inNightMkt(w) && (ag.flags.wantMkt || w.rng()<夜市率)){
     delete ag.flags.wantMkt;                                        // 第 57 单：玩家发了「今晚去夜市」⇒ 这一趟必去
     w.nmCount=(w.nmCount|0)+1;                                      // 第 57 单：当晚到客数（收摊时播报）
@@ -2399,6 +2428,7 @@ const CLIP_W={
   fest_lamp:2.6,                                  // 第 62 单·江灯节放灯（甲级：一年一次，值得当天的卡）
   bday_cake:2.6,                                  // 第 64 单·生日蛋糕（甲级：一年一次的个人日，与江灯节同档——"值得当天的卡"）
   talk_go:1.0,                                    // 第 73 单·去了一趟夜谈角（乙级弱信号，与夜市 `mkt_go` 同档）
+  gift:1.2,                                       // 第 81 单·给寿星带了点东西（乙级上档：它是"两个人之间的事"）
   sit_bad:3.0, sit_first:1.5, sit_good:1.4, sit_flat:0.6, sit_none:1.0,
   money_broke:2.6, money_debt:0.8, money_swing:1.8, money_flatpay:2.4,
   social_mute:2.2, social_all:2.4, social_burst:1.2,
@@ -2406,7 +2436,7 @@ const CLIP_W={
   hunger_nomeal:2.6, hunger_peak:2.0, hunger_high:1.5, worn_out:2.2, worn_low:1.6,
   freq:0.2,
 };
-const CLIP_TIER={sit_flat:'b', sit_none:'b', money_debt:'b', freq:'c', mkt_go:'b', talk_go:'b'};   // 未列者一律甲级
+const CLIP_TIER={sit_flat:'b', sit_none:'b', money_debt:'b', freq:'c', mkt_go:'b', talk_go:'b', gift:'b'};   // 未列者一律甲级
 // 日志正文 → 类目。取的是 decide() 实际写出的字串（harness 有覆盖率断言：30 天里
 // 每条 act 条目都必须归到某一类，谁改了 logText 那条断言即红）。
 const CLIP_LOGCAT=[
@@ -2419,6 +2449,7 @@ const CLIP_LOGCAT=[
      故从 stroll 那张表里删掉（覆盖率闸只认第一个命中的类目）。 */
   ['talk',  ['在夜谈角坐下，听人说话']],
   ['miss',  ['翻到上次的短信']],   // 第 74 单·惦记（个人日志，不是世界级播报；列在这里只为归类覆盖率）
+  ['gift',  ['带了', '收下了']],    // 第 81 单·生日礼物（两句都取**固定前缀**；列在这里既管覆盖率也管摘原文）
   ['sleep', ['回卧室睡觉']],
   ['money', ['交了房租']],
   // 第 52／53 单：目标事件（定下／做到／没做成／**前提破裂**）与周记忆——只归类，不单独出卡。
@@ -2436,7 +2467,8 @@ const CLIP_QCAT={sit:'work', money:'money', social:'chat', sleep:'sleep', wake:'
                  mkt:'eat',    // 第 57 单：夜市那条日志（「在夜市买了份小吃」）归在 eat 类 ⇒ 摘原文就引它
                  fest:'fest',  // 第 62 单：放灯那条日志归在 fest 类
                  bday:'bday',  // 第 64 单：生日蛋糕那条日志归在 bday 类
-                 talk_go:'talk'}; // 第 73 单：夜谈那条日志单开一类 ⇒ 摘原文就引它
+                 talk_go:'talk',  // 第 73 单：夜谈那条日志单开一类 ⇒ 摘原文就引它
+                 gift:'gift'};    // 第 81 单：礼物那两句单开一类 ⇒ 摘原文引"带了…"那句
 
 function clipDayOf(t){ return PURE.dayOf(t-CLIP_CUT); }     // 剪辑日：窗口＝[D 日 04:00, D+1 日 04:00)
 function clipT0(cd){ return (cd-1)*1440+CLIP_CUT; }
@@ -2566,6 +2598,13 @@ function clipSample(w,sh){
       r.talkT=lt.t; r.talkTopic=(typeof lt.topic==='string')?lt.topic:'';
       r.talkTx0=(typeof lt.tx==='string')?lt.tx:'';
     }
+    // 第 81 单·生日礼物：同上（`giftYear` 已保证每人每年至多一条）
+    /* 变量名不能叫 `lg`——同段里 `lg` 已经给 `lastGoalOut` 用了（第一次写就撞了重名，`node --check` 当场抓住） */
+    const lgf=ag.lastGift;
+    if(lgf && typeof lgf==='object' && isFinite(lgf.t) && lgf.t>=t0 && lgf.t<t1 && r.giftT!==lgf.t){
+      r.giftT=lgf.t; r.giftTo=(typeof lgf.toName==='string')?lgf.toName:'';
+      r.giftTx0=(typeof lgf.tx==='string')?lgf.tx:'';
+    }
   }
 }
 
@@ -2591,6 +2630,7 @@ function clipMake(w,sh,ent,ag,sum,base){
   if(r.festT) push('fest_lamp',{spent:r.festSpent, tx:r.festTx0},r.festT);   // 第 62 单·放灯（每人每年至多一条；落笔抄录）
   if(r.bdayT) push('bday_cake',{spent:r.bdaySpent, tx:r.bdayTx0},r.bdayT);   // 第 64 单·生日蛋糕（每人每年至多一条；落笔抄录）
   if(r.talkT) push('talk_go',{topic:r.talkTopic, tx:r.talkTx0},r.talkT);     // 第 73 单·夜谈（每人每周至多一条；落笔抄录）
+  if(r.giftT) push('gift',{to:r.giftTo, tx:r.giftTx0},r.giftT);              // 第 81 单·生日礼物（每人每年至多一条；落笔抄录）
   // 甲/乙 · 处境（第 17 单 ag.sit 的预留去处：事件原文不喂 AI，本页是它唯一的现身处）
   if(r.sitK){
     const v={from:r.sitFrom||'那边', tx:r.sitTx};
@@ -2662,6 +2702,7 @@ function clipItemText(it){
     case 'fest_lamp':  return '江灯节 · 放了一盏灯：花了 ¥'+(v.spent||0)+'（一年一次）';
     case 'bday_cake':  return '生日 · 给自己买了块蛋糕：花了 ¥'+(v.spent||0)+'（一年一次）';
     case 'talk_go':    return '夜谈 · 去坐了一晚：聊「'+(v.topic||'')+'」';
+    case 'gift':       return '生日 · 给'+(v.to||'人')+'带了点东西';
     case 'sit_bad':   return '处境 · 逆：'+v.from+'那边——「'+v.tx+'」';
     case 'sit_good':  return '处境 · 顺：'+v.from+'那边——「'+v.tx+'」';
     case 'sit_flat':  return '处境 · 平：'+v.from+'那边——「'+v.tx+'」';
@@ -3068,6 +3109,7 @@ const Sim={makeWorld, step, sendMessage, sendCustomMessage, decide, MSGS, ANCHOR
   MISS_NOTE, missNoteOf,   // 第 76 单·居民的留言池（门禁按真值读：按周号取句、不摇 rng）
   NOTE, NOTE_LINES, noteStep,   // 第 77 单·别的时候也开口（门禁按真值读：每天 21:00、一天一句）
   BIRTHDAYS, BDAY, bdayInDays, thisYearBdayAt, bdayAt, inBirthday,   // 第 64 单·住户生日（门禁按真值读同一份日历）
+  GIFT,   // 第 81 单·生日礼物（门禁按真值读：窗口与价钱一处定义）
   CATCHUP_MIN_PER_MIN, CATCHUP_MAX_DAYS, REFLECT_MIN, SMS_NOREPLY,
   catchUpPlan, catchUp, reflectFallback, clipTopDay,
   DIARY_FB, DIARY_FB_RECENT, CHAT_FB_OPEN, CHAT_FB_REPLY, pickV, pickFresh, diaryFallback,   // 第 27 单·兜底文案扩池

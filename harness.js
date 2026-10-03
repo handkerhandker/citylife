@@ -4358,6 +4358,66 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   }
 }
 
+// ═══ 第 81 单·生日礼物（住户之间：把道贺从"一句话"变成"带点东西"）══════════════
+/* 被验的是生产源码与真值：
+     ① 结构：`GIFT` 表（15:00–21:00／¥8）＋ 分支里三条口径——**同屋当面**、**每人每年至多一次**（`ag.giftYear`）、
+        **花自己的钱**；两条日志（送的人"带了…"／收的人"收下了…"）；剪辑项 `gift` 四处齐（权重／乙级／摘原文类目／模板）；
+     ② 行为（构造）：生日当天把四人都摁在客厅、都空闲 ⇒ 另外三人**各送一次**（3 条送礼 ＋ 3 条收礼）、每人 **−¥8**；
+        同年继续跑不再重复；非生日（把日子挪开）⇒ 0 条；
+     ③ 反向自查：把 `GIFT.open` 调到不可能的时刻 ⇒ 0 条 ⇒ 判据不是恒绿。 */
+{
+  const fs=require('fs'), path=require('path');
+  const src=fs.readFileSync(path.resolve(__dirname,'city-life-framework.html'),'utf8');
+  ok(/const GIFT=\{ cost:8, open:15\*60, close:21\*60/.test(src),
+     '第 81 单·结构：`GIFT` 表在位（15:00–21:00／¥8）');
+  ok(/roomOf\(o\.anchor\)===roomOf\(ag\.anchor\)/.test(src)&&/ag\.giftYear!==年/.test(src)
+     &&/ag\.money-=GIFT\.cost/.test(src),
+     '第 81 单·结构：三条口径齐——同屋当面／每人每年至多一次／花自己的钱');
+  ok(/logAct\(w,ag,'给'\+寿星\.name\.replace|logAct\(w,ag,句/.test(src)&&/logAct\(w,寿星,'收下了'/.test(src),
+     '第 81 单·结构：两条日志（送的人"带了…"／收的人"收下了…"）');
+  ok(/gift:1\.2/.test(src)&&/gift:'b'/.test(src)&&/gift:'gift'/.test(src)&&/case 'gift'/.test(src),
+     '第 81 单·结构：剪辑项 `gift` 四处齐（权重 1.2／乙级／摘原文类目／模板文案）');
+  // 行为：生日当天、四人同在客厅
+  const 跑=(关窗)=>{
+    const 原开=Sim.GIFT.open, 原闭=Sim.GIFT.close;
+    if(关窗){ Sim.GIFT.open=0; Sim.GIFT.close=0; }
+    let 出=null;
+    try{
+      const w=Sim.makeWorld(20260803), 寿星=w.agents[0];
+      const 本=Sim.thisYearBdayAt(w, 寿星);
+      w.t=本+6*60+50;
+      const 钱={}; for(const a of w.agents) 钱[a.id]=a.money;
+      let 已=w.lidSeq; const 送=[], 收=[];
+      for(let i=0;i<30;i++){
+        for(const a of w.agents){ a.anchor='home_table'; a.activity={type:'idle'}; a.busyUntil=0; }
+        Sim.step(w,10);
+        for(const e of w.log){
+          if(e.lid<=已) continue; 已=e.lid;
+          const t=String(e.text||'');
+          if(t.indexOf('带了')===0) 送.push(e.agent);
+          if(t.indexOf('收下了')===0) 收.push(e.agent);
+        }
+      }
+      出={送, 收, 花费:w.agents.map(a=>({id:a.id, spent:钱[a.id]-a.money}))};
+    } finally { Sim.GIFT.open=原开; Sim.GIFT.close=原闭; }
+    return 出;
+  };
+  const 健=跑(false);
+  ok(健.送.length===3&&健.收.length===3&&健.送.indexOf('a1')<0,
+     '第 81 单·行为：生日当天另外三人各送一次（送礼 '+JSON.stringify(健.送)+'／收礼 '+健.收.length+' 条），'
+     +'寿星本人不在送礼名单里');
+  {
+    const 三人=健.花费.filter(x=>x.id!=='a1');
+    ok(三人.every(x=>x.spent>=8),'第 81 单·行为：送礼的人各花了自己的钱（'+JSON.stringify(三人)+'；寿星那 12 是他自己买蛋糕）');
+  }
+  {
+    const 病=跑(true);
+    ok(病.送.length===0&&病.收.length===0,
+       '第 81 单·反向自查·拦得住：把 `GIFT` 的窗口关掉 ⇒ 送礼 '+病.送.length+' 条、收礼 '+病.收.length
+       +' 条 ⇒ 上面那条判据不是恒绿');
+  }
+}
+
 // ═══ 第 33 单·天色昼夜（把「现在几点」画到画面上）═════════════════════════════
 /* 被验的是生产源码原文：SKYTINT-START…SKYTINT-END 整块抠出来，在一个只记账不作画的假 ctx 上跑
    （照第 31 单 iconLab、第 32 单 chipLab 先例）。四条闸：
@@ -5101,7 +5161,7 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   ok(恒绿===0,'第 66 单·闸二：`ok` 第一参数写死 true 的**读数型假断言**为 0 条（实测 '+恒绿+'；读数一律走 `读数()`）');
   // 闸三 · 反向自查登记（防整条被删）
   const 登记=['第 48 单','第 49 单','第 51 单','第 52 单','第 53 单','第 54 单','第 56 单','第 57 单',
-              '第 58 单','第 59 单','第 62 单','第 63 单','第 64 单','第 65 单','第 67 单','第 70 单','第 71 单','第 72 单','第 73 单','第 74 单','第 75 单','第 76 单','第 77 单','第 79 单','第 80 单',
+              '第 58 单','第 59 单','第 62 单','第 63 单','第 64 单','第 65 单','第 67 单','第 70 单','第 71 单','第 72 单','第 73 单','第 74 单','第 75 单','第 76 单','第 77 单','第 79 单','第 80 单','第 81 单',
               '闸四','闸五','闸十','闸十一','闸十二'];
   const 实有=[...new Set((自源.match(/(第 \d+ 单|闸[一二三四五六七八九十]+)·反向自查/g)||[])
                             .map(x=>x.replace('·反向自查','')))];
