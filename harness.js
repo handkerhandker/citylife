@@ -4462,6 +4462,29 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   }
 }
 
+// ═══ 第 83 单·工具登记表（诊断工具也要有人管）══════════════════════════════════
+/* 被验的是仓库里的登记表与实有工具：
+     ① **每一支工具都在登记表里**（新加一支不登记 ⇒ 本条判红）；
+     ② 登记表里不许有幽灵（登记了但文件不在）；
+     ③ **档 1（快档）里不许混进要浏览器的工具**——按源码里有没有 `playwright` 判定，
+        这样"随手跑的是十几秒的快档"这条性质由构造保证，而不是靠人记得。 */
+{
+  const path=require('path');
+  const 表=require(path.resolve(__dirname,'tools/smoke/registry.cjs'));
+  const 实有=表.扫工具(), 登记=表.清单.map(x=>x.路径);
+  const 漏=实有.filter(x=>登记.indexOf(x)<0), 幽灵=登记.filter(x=>实有.indexOf(x)<0);
+  ok(漏.length===0&&幽灵.length===0,
+     '第 83 单·登记表齐：实有 '+实有.length+' 支／登记 '+登记.length+' 支'
+     +'（漏登记：'+(漏.join('／')||'无')+'；幽灵：'+(幽灵.join('／')||'无')+'）');
+  const fs=require('fs');
+  const 混=表.清单.filter(x=>x.档===1&&/playwright/.test(fs.readFileSync(path.resolve(__dirname,x.路径),'utf8')));
+  ok(混.length===0,'第 83 单·档 1 纯净：快档里没有要浏览器的工具（'+(混.map(x=>x.路径).join('／')||'全干净')+'）');
+  ok(表.清单.some(x=>x.档===1)&&表.清单.some(x=>x.档===2)&&表.清单.some(x=>x.档===0),
+     '第 83 单·三档都在：快档 '+表.清单.filter(x=>x.档===1).length
+     +' 支／要浏览器 '+表.清单.filter(x=>x.档===2).length
+     +' 支／要人给参数 '+表.清单.filter(x=>x.档===0).length+' 支');
+}
+
 // ═══ 第 33 单·天色昼夜（把「现在几点」画到画面上）═════════════════════════════
 /* 被验的是生产源码原文：SKYTINT-START…SKYTINT-END 整块抠出来，在一个只记账不作画的假 ctx 上跑
    （照第 31 单 iconLab、第 32 单 chipLab 先例）。四条闸：
