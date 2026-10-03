@@ -442,7 +442,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v95</span>
+<span class="num dim" id="set-build">v96</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -2304,6 +2304,31 @@ function 记心级(ag, id, lv){
   const r=relRec(ag, id);
   r.heart=Math.max(r.heart|0, lv|0);
 }
+/* ---------- 第 106 单·关系状态机 B 档①「老友会主动登门」（方案见 `docs/规划/关系状态机三期方案_B档_v1.md`）----------
+   出处（方案里复核过，2026-10-03 HTTP 200）：Nookipedia·Villager「**When visiting a house**, villagers can be seen
+   exercising, cleaning, or singing.」——串门在同类作品里就是一行日常行为。
+   落成（**比方案更省的一版**）：不另开一趟"专程去看他"（那要多走一段路、班次节律会跟着漂——第 104 单试过、
+   门禁当场拒收），而是**搭傍晚散步那一趟**：散步本来就要出门，若有个老友**在别的屋子、醒着、又没在上班**，
+   就把目的地从公园／江边改成他那儿（`setActivity` 的时长与摇签次序**一字未动** ⇒ 只换落点与两行字）。
+   门槛读 `REL_TIERS[3].lo`（＝「老友」，**同一张档位表**）；两边都得过线（关系是半张表）。 */
+function 老友去处(w, ag){
+  const 线=(REL_TIERS[3]&&REL_TIERS[3].lo)||35;
+  const 我屋=roomOf(ag.anchor);
+  /* 一周至多串一次门（照 `missWeek`／`talkWeek` 的"每人每周至多一条"先例）：
+     不加这一道，实测**每晚的散步都会改成串门**（1.45–1.50 次/天）——江边就没人走了（第 38／39 单那些
+     路灯与江风的观感、第 97 单那批雨里散步的独白都会跟着落空）。一周一次，才叫"串门"。 */
+  const 周号=Math.floor(w.t/(7*1440));
+  if(ag.visitWeek===周号) return null;
+  for(const o of (w.agents||[])){
+    if(!o||o===ag) continue;
+    if(relGet(ag,o.id)<线 || relGet(o,ag.id)<线) continue;     // 两边都到「老友」才算
+    if(roomOf(o.anchor)===我屋) continue;                       // 已经同屋 ⇒ 用不着"去"
+    if(!醒着(o)) continue;                                      // 睡着／小憩 ⇒ 不打扰
+    if(o.activity&&o.activity.type==='work') continue;          // 上班 ⇒ 不打扰
+    return o;
+  }
+  return null;
+}
 function decide(w, ag){
   const mod=PURE.minuteOfDay(w.t);
   const R=rhyOf(ag);          // 第 22 单·逐人作息人格（由既有特质逐条相加，见 RHY 段）
@@ -2674,8 +2699,14 @@ function decide(w, ag){
   }
   const eveClear=(周末?WEEKEND_OUT.eveStroll:0.3)+goalKnob(ag,'out');   // 晴天那一档（原值 0.3／0.45 原样保留）
   if(mod>=18.5*60 && mod<21*60 && w.rng()<(raining?(周末?RAIN_RULES.eveWeekend:RAIN_RULES.eveWorkday):eveClear)){
-    const spot=w.rng()<0.5?'park_bench':'river_walk';
-    setActivity(w,ag,spot,'stroll','散步',tempoDur(w,ag,40),天气词(w,STROLL_THOUGHTS,RAIN_STROLL_THOUGHTS,ag,'lo'),'出门散步');
+    /* 第 106 单·B 档①：照旧先摇那一下（**次序与次数一字不动**），只是把落点换给老友。
+       摇签不动 ⇒ 时长/后续决策逐拍不变，唯一变的是"他往哪儿走、日志写哪句"。 */
+    const 掷=w.rng()<0.5?'park_bench':'river_walk';
+    const 友=老友去处(w,ag);
+    const spot=友?友.anchor:掷;
+    if(友) ag.visitWeek=Math.floor(w.t/(7*1440));      // 记一笔"这周已经串过了"（照 missWeek／talkWeek 先例）
+    setActivity(w,ag,spot,'stroll',友?'串门':'散步',tempoDur(w,ag,40),
+      天气词(w,STROLL_THOUGHTS,RAIN_STROLL_THOUGHTS,ag,'lo'),友?('去看看'+友.name):'出门散步');
     return;
   }
   const spot=w.rng()<0.5?'home_table':'home_tv';
@@ -2773,6 +2804,7 @@ const CLIP_LOGCAT=[
   ['gift',  ['带了', '收下了']],    // 第 81 单·生日礼物（两句都取**固定前缀**；列在这里既管覆盖率也管摘原文）
   ['gift',  ['回了']],              // 第 87 单·回礼那句也归这一类（前缀固定；不改上面的表是怕动到既有断言）
   ['gift',  ['去找']],              // 第 95 单·"去找‹寿星›"那句也归这一类（前缀固定）——他去送东西的路上
+  ['visit', ['去看看']],             // 第 106 单·B 档①"去看看‹老友›"（前缀固定；**不进 CLIP_FREQ_CATS**，不搅频次读数）
   ['sleep', ['回卧室睡觉']],
   ['money', ['交了房租']],
   // 第 52／53 单：目标事件（定下／做到／没做成／**前提破裂**）与周记忆——只归类，不单独出卡。
@@ -2783,7 +2815,7 @@ const CLIP_LOGCAT=[
   ['rel',   ['关系：']],             // 第 88 单·关系涨档／冷线两句（前缀固定"关系："，一处管两句话）
   ['heart', ['交心：']],             // 第 91 单·交心那两条日志（前缀固定"交心："，两人各一条都归这类）
 ];
-const CLIP_CATNAME={eat:'吃饭', work:'上班', nap:'小憩', stroll:'散步', sleep:'睡觉', chat:'闲聊', goal:'目标', fest:'放灯', bday:'生日', talk:'夜谈', miss:'惦记', rel:'关系', heart:'交心'};
+const CLIP_CATNAME={eat:'吃饭', work:'上班', nap:'小憩', stroll:'散步', sleep:'睡觉', chat:'闲聊', goal:'目标', fest:'放灯', bday:'生日', talk:'夜谈', miss:'惦记', rel:'关系', heart:'交心', visit:'串门'};
 // 丙级只数这几类。刻意不含 chat：闲聊次数已由甲级 social_burst 按同一个数出活，
 // 两级同时命中会在同一张卡上把同一句话印两遍（实测 D10 「闲聊 4 次，平常 2 次」印了两行）。
 // 也不含 idle：在家待着 logText 恒为 null、不上墙，本层「只数上了墙的事」故无从计数。
