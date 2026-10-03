@@ -470,7 +470,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v120</span>
+<span class="num dim" id="set-build">v121</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -6823,6 +6823,14 @@ function draw(now){
 }
 // 画布：拖动=平移镜头，点按=选中小人
 let drag=null;
+/* 第 145 单·触屏点选的"幽灵点击"：触摸点按（pointerup 那一下）如果弹出角色卡，
+   浏览器随后还会合成一次 click——它按**点击时刻**做命中测试，落点已被刚弹出的卡片层盖住，
+   于是这次 click 会把卡当"点背景"当场关掉（触屏探针实测：卡 open→'dlg-backdrop' click→关）。
+   治法：触摸路径打开卡时记一个时间戳，**捕获段**吞掉 450ms 内的下一次 click（只吞 touch 路径点起来的，桌面零影响）。 */
+let 吞点击=0;
+document.addEventListener('click',e=>{
+  if(吞点击 && performance.now()-吞点击<450){ 吞点击=0; e.stopPropagation(); e.preventDefault(); }
+}, true);
 cv.addEventListener('pointerdown',e=>{
   drag={x:e.clientX,y:e.clientY,moved:false};
   try{ cv.setPointerCapture(e.pointerId); }catch(_){}
@@ -6866,6 +6874,7 @@ cv.addEventListener('pointerup',e=>{
   if(best && bd<Math.max(18, state.view.s*0.9)){
     state.selected=best.id; state.cam.manual=false;
     renderTopbar(); openAgentDialog(best.id);
+    if(e.pointerType==='touch') 吞点击=performance.now();   // 第 145 单：吞掉紧随而来的合成 click
   }
 });
 cv.addEventListener('pointercancel',()=>{ drag=null; });
