@@ -3739,10 +3739,11 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   }
 }
 
-// ═══ 第 67 单·关系一期（只做"看得见"，零新增世界状态）══════════════════════════
+// ═══ 第 67 单·关系一期（只做"看得见"，零新增世界状态）＋ 第 88 单·二期 A 档改口径 ═══
 /* 被验的是生产源码与真值：
-     ① 角色卡与角色详情各有一行「常聊」，两处都调**同一个** `relText`（一处定义）；
+     ① 角色卡与角色详情各有一行「关系」，两处都调**同一个** `relText`（一处定义）；
      ② 口径取自既有账 `w.stats.pair`：空账照实说"还没跟谁聊过"；多对时取**最大**那对；
+        **第 88 单改**：挑人仍按那一对，但印出来的是「和 X · 档位（关系值）」——档位从 `ag.rel` 读；
      ③ 只读不写：真跑 30 天 → 逐人调一遍 `relText` → 世界序列化逐字节不变；
      ④ 反向自查：把那对账改一改（让次高的反超）⇒ 文案必须跟着换 ⇒ 不是写死的。 */
 {
@@ -3751,20 +3752,30 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   const FN=(src.match(/function relText\(w, ag\)\{[\s\S]*?\n\}/)||[''])[0];
   ok(FN.length>0&&(src.match(/function relText\(/g)||[]).length===1,
      '第 67 单·结构：`relText` 一处定义（抽到的函数体 '+FN.length+' 字符）');
-  ok(/<div class="kv"><span>常聊<\/span><span class="rr-rel"><\/span><\/div>/.test(src)
+  /* 第 88 单改：标签由「常聊」改「关系」——这一行现在印的是**关系值**，不再只是"聊过多少次" */
+  ok(/<div class="kv"><span>关系<\/span><span class="rr-rel"><\/span><\/div>/.test(src)
      &&/rEl\.textContent=relText\(state\.world, ag\)/.test(src)
      &&/relText\(state\.world, ag\)\)\+'（累计 '/.test(src),
      '第 67 单·结构：角色卡骨架／角色卡刷新／角色详情**三处**都接上了这一行（同一处取词）');
   ok(!/state\.world\s*=|\.rng\(|fetch\(|XMLHttpRequest/.test(FN),
      '第 67 单·结构：`relText` 只读不写（不赋值世界、不掷骰子、不出网）');
-  const rel=new Function('return '+FN)();
+  /* 第 88 单改：`relText` 现在要读关系值，故把两个**只读**助手从真身上递进去
+     （仍然只抽这一个函数体——它自己不许另抄一份档位表）。 */
+  const rel=new Function('relGet','relTierName','return '+FN)(Sim.relGet, Sim.relTierName);
   // 取值：空账 / 单对 / 多对（含并列）
   {
-    const mk=pairs=>({stats:{pair:pairs}, agents:[{id:'a1',name:'顾云帆'},{id:'a2',name:'沈小满'},{id:'a3',name:'陆知秋'},{id:'a4',name:'白一鸣'}]});
+    const mk=(pairs,relv)=>({stats:{pair:pairs}, agents:[
+      {id:'a1',name:'顾云帆', rel:relv?{a2:{v:relv,day:1}}:{}},
+      {id:'a2',name:'沈小满', rel:{}}, {id:'a3',name:'陆知秋', rel:{}}, {id:'a4',name:'白一鸣', rel:{}}]});
     ok(rel(mk({}),{id:'a1'})==='还没跟谁聊过','第 67 单·空账照实说：还没有人来往时说「还没跟谁聊过」');
-    ok(rel(mk({'a1+a2':7}),{id:'a1'})==='和 沈小满 聊过 7 次','第 67 单·单对：一对一时报「和 X 聊过 N 次」');
+    const W1=mk({'a1+a2':7},28);                      // 关系值挂在**人身上**，故这一条要把那个真身递进去
+    ok(rel(W1,W1.agents[0])==='和 沈小满 · 熟（28）',
+       '第 88 单·单对：一对一时报「和 X · 档位（关系值）」（实测 '+rel(W1,W1.agents[0])+'）');
+    const W0=mk({'a1+a2':7});
+    ok(rel(W0,W0.agents[0])==='和 沈小满 · 生疏（0）',
+       '第 88 单·旧档／还没长出关系表：一律当 0 ⇒ 生疏（0），不报错、不写坏档');
     const w2=mk({'a1+a3':5,'a1+a2':9,'a2+a4':12});
-    ok(rel(w2,{id:'a1'})==='和 沈小满 聊过 9 次',
+    ok(rel(w2,{id:'a1'}).indexOf('沈小满')>=0,
        '第 67 单·多对取最大：a1 身上 9 次 > 5 次 ⇒ 报沈小满（实测 ' +rel(w2,{id:'a1'})+'）');
     ok(rel(mk({'a2+a3':12}),{id:'a1'})==='还没跟谁聊过','第 67 单·只认自己的那几对：别人的 12 次不算在 a1 头上');
   }
@@ -3785,7 +3796,7 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
     for(const ag of w3.agents) rel(w3, ag);
     const 后=Sim.serialize(w3,null);
     ok(前===后,'第 67 单·只读不写（运行侧）：30 天的世界逐人取词一遍，序列化逐字节不变');
-    ok(w3.agents.every(ag=>/^和 .+ 聊过 \d+ 次$|^还没跟谁聊过$/.test(rel(w3, ag))),
+    ok(w3.agents.every(ag=>/^和 .+ · .+（\d+）$|^还没跟谁聊过$/.test(rel(w3, ag))),
        '第 67 单·真世界里四种人都取得到词：'+w3.agents.map(ag=>ag.name+'→'+rel(w3, ag)).join('；'));
   }
 }
@@ -4673,6 +4684,119 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   }
 }
 
+// ═══ 第 88 单·关系状态机 A 档（会涨会落的关系值；不改变任何行为）══════════════════
+/* 被验的是生产源码与真值：
+     ① 结构：`REL` 表与五档表 `REL_TIERS` 各一处定义；两句日志前缀固定"关系："；闲聊那一支真的调了 `relMeet`；
+     ② 档位：0/9/10/19/20/34/35/49/50/60 十个边界点逐个对得上；越界与坏值一律归一到 0–60；
+     ③ 涨（构造）：生日那天的问候**只在说话人那一侧**记 +3、寿星那一侧记 +1（"半张表"的方向差从这一天长出来）；
+        平日两边同步（每天各自至多 +1）；
+     ④ 落（构造）：连着 3 天没说话不动、第 4 天起每天 −1、第 5 天留一条冷线、**落到本档下限就停**；
+     ⑤ 不夺走（构造）：同一颗种子 30 天，把关系那四个旋钮全拧到 0 再跑一遍 ⇒ 逐拍（活动／锚点／钱／饥饿／体力）
+        逐字段相同 ⇒ 关系只动自己那一个数，没碰钱／饭／上班／睡觉；
+     ⑥ 反向自查：把 `REL.coldAfter` 抬到不可能 ⇒ 同一构造下一天也不掉 ⇒ 判据不是恒绿。 */
+{
+  const fs=require('fs'), path=require('path');
+  const src=fs.readFileSync(path.resolve(__dirname,'city-life-framework.html'),'utf8');
+  ok(/const REL=\{ cap:60, bump:1, bdayBump:3, coldAfter:3, coldLose:1, coldLine:5 \}/.test(src)
+     &&(src.match(/const REL_TIERS=\[/g)||[]).length===1,
+     '第 88 单·结构：`REL` 表与五档表各一处定义（上限 60／每天 +1／生日 +3／连着 3 天起掉／第 5 天冷线）');
+  ok(/const 句='关系：和'\+mate\.name\+'处成了「'/.test(src)
+     &&/const 句='关系：好几天没和'\+o\.name/.test(src)
+     &&/relMeet\(w, ag, mate, 寿星\)/.test(src),
+     '第 88 单·结构：涨档与冷线两句日志前缀固定"关系："（归类表按前缀匹配），闲聊那一支真的接了 `relMeet`');
+  // ② 档位表（含越界与坏值归一）
+  {
+    const 边界=[[0,'生疏'],[9,'生疏'],[10,'点头之交'],[19,'点头之交'],[20,'熟'],[34,'熟'],
+                [35,'老友'],[49,'老友'],[50,'家人一样'],[60,'家人一样']];
+    const 错=边界.filter(p=>Sim.relTierName(p[0])!==p[1]).map(p=>p[0]+'→'+Sim.relTierName(p[0]));
+    ok(错.length===0&&Sim.relV(-5)===0&&Sim.relV(999)===60&&Sim.relV(NaN)===0&&Sim.relV('x')===0,
+       '第 88 单·档位表：十个边界点逐个对得上（错 '+错.length+' 处'+(错.length?('：'+错.join('／')):'')
+       +'）；越界与坏值一律归一到 0–60（旧档缺字段＝0，不判坏档）');
+  }
+  // ③ 涨：生日那天两边涨得不一样（说话人 +3／寿星 +1），平日两边同步
+  {
+    const w=Sim.makeWorld(20260803), 寿星=w.agents[1], 客=w.agents[0];
+    /* 生日当天 20:00（**下班之后**：17:00 那一档会被"上班"那一支先截走，第一版就栽在这儿）、
+       四人摁在同一间屋且空闲 ⇒ 头一句必然是问候（第 65 单那一支，不掷骰子）。 */
+    w.t=Sim.thisYearBdayAt(w,寿星)+11*60;
+    const 摆位=()=>{ for(const a of w.agents){ a.anchor='home_table'; a.activity={type:'idle'}; a.busyUntil=0;
+      a.hunger=30; a.energy=80; } };
+    摆位(); const 已=w.lidSeq; Sim.decide(w,客);
+    let 问候=0; for(const e of w.log){ if(e.lid<=已) continue; if(e.type==='chat'&&e.with===寿星.id) 问候++; }
+    const 客看=Sim.relGet(客,寿星.id), 寿星看=Sim.relGet(寿星,客.id);
+    ok(问候===1&&客看===Sim.REL.bdayBump&&寿星看===Sim.REL.bump,
+       '第 88 单·涨（生日）：当真问候了一场（'+问候+' 场）⇒ 说话人那一侧 '+客看+'（应＝'+Sim.REL.bdayBump
+       +'）、寿星那一侧 '+寿星看+'（应＝'+Sim.REL.bump+'）——"半张表"的方向差正是从这一天长出来的');
+    摆位(); 客.flags['cw_'+寿星.id]=-1e9; 寿星.flags['cw_'+客.id]=-1e9; Sim.decide(w,客);   // 同一天再聊一场
+    ok(Sim.relGet(客,寿星.id)===客看&&Sim.relGet(寿星,客.id)===寿星看,
+       '第 88 单·涨（同日去重）：同一天又聊了一场，两边都还是 '+客看+'／'+寿星看+' ⇒ 一天各至多涨一次（动森口径）');
+  }
+  {
+    const w=Sim.makeWorld(20260803);                          // 平日：两边同步（这三天里没有人生日）
+    for(let i=0;i<2*144;i++) Sim.step(w,10);
+    let 差=0, 越=0;
+    for(const a of w.agents) for(const b of w.agents){
+      if(a===b) continue;
+      const x=Sim.relGet(a,b.id), y=Sim.relGet(b,a.id);
+      if(x!==y) 差++;
+      if(x>2) 越++;
+    }
+    ok(差===0&&越===0,'第 88 单·涨（平日）：两天里每对关系两边数值相同（差 '+差+' 对）、每人每天至多 +1（越 '+越+' 个方向）');
+  }
+  // ④ 落：连着 3 天不动 → 第 4 天起 −1 → 第 5 天冷线 → 落到本档下限（熟＝20）就停
+  {
+    const 跨=(w,k)=>{                                        // 跨到第 k 天 00:00（把四人摁住，不让 decide 插手）
+      w.t=k*1440-10; for(const a of w.agents) a.busyUntil=w.t+1e9; Sim.step(w,10); };
+    const 跑=(关回落)=>{
+      const 原=Sim.REL.coldAfter;
+      if(关回落) Sim.REL.coldAfter=1e9;
+      const w=Sim.makeWorld(20260803), a1=w.agents[0], a2=w.agents[1];
+      a1.rel={a2:{v:25, day:PURE.dayOf(w.t)}};               // 从「熟」（20–34）起步
+      const 读=[]; for(let k=1;k<=10;k++){ 跨(w,k); 读.push(Sim.relGet(a1,a2.id)); }
+      const 冷=a1.lastCold&&/^关系：好几天没和/.test(String(a1.lastCold.tx||''));
+      Sim.REL.coldAfter=原;
+      return {w,a1,读,冷};
+    };
+    const 健=跑(false);
+    const 落=健.读;                                          // 落[0]＝第 2 天 00:00 起
+    ok(落[0]===25&&落[1]===25&&落[2]===25&&落[3]===24,
+       '第 88 单·落：连着 3 天没说话不动（'+落.slice(0,3).join('/')+'）、第 4 天开始 −1（'+落[3]+'）');
+    ok(落[4]===23&&健.冷,
+       '第 88 单·落：第 5 天再 −1（'+落[4]+'）并留下冷线（'+((健.a1.lastCold||{}).tx||'无')+'）');
+    ok(落[5]===22&&落[6]===21&&落.slice(7).every(v=>v===20)&&Math.min.apply(null,落)===20,
+       '第 88 单·落：掉到**本档下限**就停（熟＝20）——从第 5 天起 23→22→21→20 然后钉住（读数 '
+       +落.slice(4).join('/')+'；越界或变负都算红）');
+    const 病=跑(true);
+    ok(病.读.every(v=>v===25),
+       '第 88 单·反向自查·拦得住：把 `REL.coldAfter` 抬到不可能之后，同一构造十天也不掉（读数 '
+       +病.读.join('/')+'）⇒ 「长期不联系就掉」不是恒绿');
+  }
+  // ⑤ 不夺走：关系四个旋钮全拧到 0 ⇒ 逐拍行为逐字段相同（钱／饭／上班／睡觉一概不碰）
+  {
+    const 跑=(关)=>{
+      const 原=[Sim.REL.bump,Sim.REL.bdayBump,Sim.REL.coldLose,Sim.REL.coldLine];
+      if(关){ Sim.REL.bump=0; Sim.REL.bdayBump=0; Sim.REL.coldLose=0; Sim.REL.coldLine=0; }
+      const w=Sim.makeWorld(20260803), 迹=[];
+      for(let i=0;i<30*144;i++){
+        Sim.step(w,10);
+        for(const a of w.agents) 迹.push(a.activity.type+'|'+a.anchor+'|'+Math.round(a.money)+'|'
+          +Math.round(a.hunger*100)+'|'+Math.round(a.energy*100)+'|'+Math.round(a.busyUntil));
+      }
+      Sim.REL.bump=原[0]; Sim.REL.bdayBump=原[1]; Sim.REL.coldLose=原[2]; Sim.REL.coldLine=原[3];
+      return {w,迹};
+    };
+    const 开=跑(false), 关=跑(true);
+    let 首差=-1; for(let i=0;i<开.迹.length;i++) if(开.迹[i]!==关.迹[i]){ 首差=i; break; }
+    ok(首差<0,'第 88 单·不夺走：同一颗种子 30 天、'+开.迹.length+' 个逐拍采样点（活动／锚点／钱／饥饿／体力／忙到）'
+       +'在"关系开着"与"关系全关"两版之间逐字段相同 ⇒ 关系只动自己那一个数'
+       +(首差<0?'':('（首个不同点 #'+首差+'：'+开.迹[首差]+' ≠ '+关.迹[首差]+'）')));
+    const 有=(w,n)=>{ let c=0; for(const e of w.log) if(String(e.text||'').indexOf('关系：')===0) c++; return c; };
+    ok(有(开.w)>0&&有(关.w)===0,
+       '第 88 单·判据不是空转：同一颗种子下，关系开着时有 '+有(开.w)+' 条「关系：…」日志、全关时 '+有(关.w)
+       +' 条 ⇒ 这一层真的在长，不是没跑');
+  }
+}
+
 // ═══ 第 33 单·天色昼夜（把「现在几点」画到画面上）═════════════════════════════
 /* 被验的是生产源码原文：SKYTINT-START…SKYTINT-END 整块抠出来，在一个只记账不作画的假 ctx 上跑
    （照第 31 单 iconLab、第 32 单 chipLab 先例）。四条闸：
@@ -5416,7 +5540,7 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   ok(恒绿===0,'第 66 单·闸二：`ok` 第一参数写死 true 的**读数型假断言**为 0 条（实测 '+恒绿+'；读数一律走 `读数()`）');
   // 闸三 · 反向自查登记（防整条被删）
   const 登记=['第 48 单','第 49 单','第 51 单','第 52 单','第 53 单','第 54 单','第 56 单','第 57 单',
-              '第 58 单','第 59 单','第 62 单','第 63 单','第 64 单','第 65 单','第 67 单','第 70 单','第 71 单','第 72 单','第 73 单','第 74 单','第 75 单','第 76 单','第 77 单','第 79 单','第 80 单','第 81 单','第 84 单','第 85 单','第 87 单',
+              '第 58 单','第 59 单','第 62 单','第 63 单','第 64 单','第 65 单','第 67 单','第 70 单','第 71 单','第 72 单','第 73 单','第 74 单','第 75 单','第 76 单','第 77 单','第 79 单','第 80 单','第 81 单','第 84 单','第 85 单','第 87 单','第 88 单',
               '闸四','闸五','闸十','闸十一','闸十二'];
   const 实有=[...new Set((自源.match(/(第 \d+ 单|闸[一二三四五六七八九十]+)·反向自查/g)||[])
                             .map(x=>x.replace('·反向自查','')))];

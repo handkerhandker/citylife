@@ -440,7 +440,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v82</span>
+<span class="num dim" id="set-build">v83</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -1215,7 +1215,7 @@ function makeAgents(){
      hunger:40, energy:75, money:380, workKind:'write'},
   ].map(a=>Object.assign(a,{
     anchor:a.bed, activity:{type:'idle',label:'刚醒'}, busyUntil:0, lastMutterT:0,
-    inbox:[], flags:{}, relNotes:0, personalLog:[],
+    inbox:[], flags:{}, relNotes:0, rel:{}, personalLog:[],
     // 第 22 单·睡眠记账（注意 rest.bed 是「几点躺下」的时刻，与 a.bed 那个床位锚名无关）。
     // 开城即 08:00、四人 activity 都是「刚醒」，故 wake 初值取 8*60 与之对齐。
     rest:{bed:0, wake:8*60, dur:0, nap:0},
@@ -1608,6 +1608,7 @@ function weekTick(w,ag){
   if(typeof k.班!=='number'||!isFinite(k.班)) k.班=0;
   if(typeof k.出!=='number'||!isFinite(k.出)) k.出=0;
   if(typeof k.信!=='number'||!isFinite(k.信)) k.信=0;
+  if(!k.聊谁||typeof k.聊谁!=='object'||Array.isArray(k.聊谁)) k.聊谁={};   // 第 88 单·本周逐人聊天次数
   const 工作=(ag.activity&&ag.activity.type==='work');
   if(工作&&!k.wasWork){ const d=PURE.dayOf(w.t); if(!k.workDays[d]){ k.workDays[d]=1; k.班++; } }
   k.wasWork=工作;
@@ -1621,11 +1622,15 @@ function weekTick(w,ag){
    到点结算时先 `weekSnapshot(ag)`，再把这份快照递给 `weekMemory` 与 `goalAssign`。 */
 function weekSnapshot(ag){
   const k=(ag.week&&typeof ag.week==='object')?ag.week:{};
+  const 谁=(k.聊谁&&typeof k.聊谁==='object'&&!Array.isArray(k.聊谁))?k.聊谁:{};
+  let 最聊='', 最聊次=0;
+  for(const id in 谁){ const c=谁[id]|0; if(c>最聊次){ 最聊次=c; 最聊=id; } }   // 第 88 单·本周跟谁说得最多
   return { 信:k.信|0,
            smsId:(typeof k.smsId==='string')?k.smsId:'',
            smsLabel:(typeof k.smsLabel==='string')?k.smsLabel:'',
            结局:(typeof k.结局==='string')?k.结局:'',
            班:k.班|0, 出:k.出|0,
+           谁:最聊, 谁次:最聊次,
            聊:Math.max(0,(ag.relNotes|0)-((typeof k.relBase==='number')?k.relBase:(ag.relNotes|0))) };
 }
 /* 第 53 单·周记忆压缩（零 AI）：把上一周**数得出来的东西**压成一句话，留给角色卡与日志墙。
@@ -1634,12 +1639,15 @@ function weekSnapshot(ag){
 function weekMemory(w,ag,snap){
   const s=snap||weekSnapshot(ag);
   const 聊=s.聊||0, 信=s.信|0, 最近=s.smsLabel||'', 结局=s.结局||'';
+  // 第 88 单：把"这周跟谁说得最多"也压进那一句（只报第一名，取不到就整段不出现）
+  const 谁名=(s.谁 && Array.isArray(w&&w.agents))?((w.agents.find(a=>a.id===s.谁)||{}).name||''):'';
   const 句='上了 '+(s.班|0)+' 天班、和人聊了 '+聊+' 次、出门 '+(s.出|0)+' 次'
+    +(谁名?('（其中和'+谁名+'说了 '+(s.谁次|0)+' 回）'):'')
     +(信?('；你发来 '+信+' 条短信（最近一条「'+最近+'」）'):'；你一条短信也没发')
     +(结局?('；那件想做的事，'+结局):'');
   ag.mem={ t:w.t, text:句, 班:s.班|0, 聊, 出:s.出|0, 信, 结局 };
   logAct(w,ag,'上周的日子记一笔：'+句, null);
-  ag.week={ relBase:(ag.relNotes|0), workDays:{}, 班:0, 出:0, 信:0, smsLabel:'', smsId:'', 结局:'', wasWork:false, wasStroll:false };
+  ag.week={ relBase:(ag.relNotes|0), workDays:{}, 班:0, 出:0, 信:0, smsLabel:'', smsId:'', 结局:'', wasWork:false, wasStroll:false, 聊谁:{} };
   return ag.mem;
 }
 // 每拍一次：周结算（记忆＋派活）→ 记账 → 达成／到期／前提破裂。畸形目标就地丢弃（绝不判坏档、绝不抛错）。
@@ -2082,6 +2090,92 @@ function bdayAt(w, ag){
 // 今天是不是他的生日
 function inBirthday(w, ag){ return bdayInDays(w, ag)===0; }
 /*BIRTHDAY-END*/
+/* ---------- 第 88 单·关系状态机 A 档（会涨会落的关系值；**不改变任何行为**）----------
+   出处（2026-10-03 实测可访问，逐字摘见 `docs/规划/借鉴调研-2026-10-03.md` 第四节）：
+     · 星露谷 wiki·Friendship：「**Each day, not talking to a villager will slightly decrease their friendship**」
+       ＋ 回落档位表（−2/天，到 8／10 hearts 停）——长期不联系会掉，但**掉到某个档就停**；
+     · 动森 Nookipedia·Friendship：「**+1 point — speaking to the villager for the first time each day**」
+       ——**每天第一次**说话才算（防刷）；
+     · 萌娘百科·星露谷物语：好感度**会被别处判断读**（谁救你由好感度决定）。
+   口径（照第 68 单方案 3.1–3.4，决策者未另改；方案本体的"世界指纹必变"那句预判**已被实测推翻**，见交付件）：
+     · 数据形状 `ag.rel={ 对方id:{v,day} }`——只存**他视角**的半张表（A 觉得熟，B 未必）；
+       `day` ＝ 最后一次当面说话的日号；旧档缺字段**就地补 0**（照 `goalOf`／`rhyRest` 那套，不判坏档）；
+     · 涨：每天第一次当面说话 **+1**；生日那天那句问候 **+3**（同一天再聊不加）；
+     · 落：连续 **3 天**没说话 ⇒ 第 4 天起每天 **−1**，**落到本档下限就停**（下限 0，不出现负关系）；
+     · 上限 **60**；这个值**只用来显示与上卡**，不参与任何 `decide()` 取舍（进行为是方案里的 B 档，另出方案）。
+   **不夺走**：关系回落只动这一个数——不扣钱、不扣饭、不影响上班与睡觉（第 22／46／49 单那条红线）。 */
+const REL={ cap:60, bump:1, bdayBump:3, coldAfter:3, coldLose:1, coldLine:5 };
+const REL_TIERS=[
+  {name:'生疏',     lo:0},
+  {name:'点头之交', lo:10},
+  {name:'熟',       lo:20},
+  {name:'老友',     lo:35},
+  {name:'家人一样', lo:50},
+];
+// 值一律先归一到 0–cap：坏值当 0，绝不把 NaN 传出去（旧档／被篡改档都走这一条路）
+function relV(x){ return isFinite(x)?PURE.clamp(Math.round(x),0,REL.cap):0; }
+// 档位＝够得着的最高那一档（边界写死在 REL_TIERS 里，一处定义）
+function relTier(x){ const v=relV(x); let t=REL_TIERS[0]; for(const z of REL_TIERS) if(v>=z.lo) t=z; return t; }
+function relTierName(x){ return relTier(x).name; }
+// 取（不建）某人对某人的关系值：缺字段一律当 0
+function relGet(ag, id){
+  const R=ag&&ag.rel, r=(R&&typeof R==='object'&&!Array.isArray(R))?R[id]:null;
+  return (r&&typeof r==='object'&&isFinite(r.v))?relV(r.v):0;
+}
+// 取或建记录——只在真发生"说话"时才建，不给全城凭空长表
+function relRec(ag, id){
+  if(!ag.rel||typeof ag.rel!=='object'||Array.isArray(ag.rel)) ag.rel={};
+  let r=ag.rel[id];
+  if(!r||typeof r!=='object'||Array.isArray(r)) r=ag.rel[id]={v:0, day:0};
+  if(!isFinite(r.v)) r.v=0;
+  if(!isFinite(r.day)) r.day=0;
+  return r;
+}
+/* 涨到新档：留一条日志（前缀固定"关系："，归类表按前缀匹配）＋ 事件锚（剪辑层据此上卡）。
+   日志走 act——只进日志墙，**不算"有戏"**（有戏只看 chat／player），故不影响 `lastSpark` 与下雨时机。 */
+function 关系涨档(w, ag, mate, r){
+  const 句='关系：和'+mate.name+'处成了「'+relTierName(r.v)+'」';
+  ag.lastRel={ t:w.t, to:mate.name, tier:relTierName(r.v), v:relV(r.v), tx:句 };
+  logAct(w, ag, 句, '相处久了，不知不觉就近了。');
+}
+// 一个方向记一笔（一天一次，动森口径：当天第一次才算）
+function relBumpOne(w, ag, mate, 涨){
+  const d=PURE.dayOf(w.t);
+  const r=relRec(ag, mate.id);
+  if(r.day===d) return;
+  const 旧底=relTier(r.v).lo;
+  r.v=relV(r.v+涨); r.day=d;
+  if(relTier(r.v).lo>旧底) 关系涨档(w, ag, mate, r);
+}
+/* 当面说过一次话：两边各记一笔。
+   `warm`（＝那句是生日问候）**只加在说话人→寿星这一半**——照方案 3.2 那张表：
+   「生日那天**对他说了**祝福 +3」讲的是**说的人**这一侧；寿星那一侧当天照常 +1。
+   这也正是"半张表"的意义所在：平时两边同步涨落，**方向差从生日那天长出来**。 */
+function relMeet(w, a, b, warm){
+  if(!a||!b||!a.id||!b.id||a===b) return;
+  relBumpOne(w, a, b, warm?REL.bdayBump:REL.bump);
+  relBumpOne(w, b, a, REL.bump);
+}
+// 每天 00:00：长期不联系就掉（连着 3 天没说话 ⇒ 第 4 天起每天 −1，落到本档下限停；第 5 天留一条冷线）
+function relStep(w){
+  const d=PURE.dayOf(w.t);
+  for(const ag of w.agents){
+    const R=ag.rel; if(!R||typeof R!=='object'||Array.isArray(R)) continue;
+    for(const id in R){
+      const r=R[id]; if(!r||typeof r!=='object'||!isFinite(r.v)||!isFinite(r.day)) continue;
+      const 隔=d-r.day;
+      if(隔<=REL.coldAfter) continue;
+      const 底=relTier(r.v).lo;
+      if(r.v>底) r.v=Math.max(底, relV(r.v)-REL.coldLose);
+      if(隔===REL.coldLine){
+        const o=(w.agents||[]).find(x=>x.id===id); if(!o) continue;
+        const 句='关系：好几天没和'+o.name+'说上话了';
+        ag.lastCold={ t:w.t, to:o.name, tx:句 };
+        logAct(w, ag, 句, '各忙各的，日子一长就有点生。');
+      }
+    }
+  }
+}
 function decide(w, ag){
   const mod=PURE.minuteOfDay(w.t);
   const R=rhyOf(ag);          // 第 22 单·逐人作息人格（由既有特质逐条相加，见 RHY 段）
@@ -2254,6 +2348,12 @@ function decide(w, ag){
     const S=w.stats; (S.act[ag.id]=S.act[ag.id]||{})['chat']=(S.act[ag.id]['chat']||0)+1; (S.act[mate.id]=S.act[mate.id]||{})['chat']=(S.act[mate.id]['chat']||0)+1;
     const pk=[ag.id,mate.id].sort().join('+'); w.stats.pair[pk]=(w.stats.pair[pk]||0)+1;
     ag.relNotes++; mate.relNotes++;
+    /* 第 88 单·关系状态机 A 档：当面说过一次话 ⇒ 两边各记一笔（一天一次；生日那天的问候 +3）。
+       只写 `ag.rel` 与一条 act 日志，**不掷骰子、不改任何取舍** —— 世界行为逐拍不变。 */
+    relMeet(w, ag, mate, 寿星);
+    { const wk=ag.week; if(wk&&typeof wk==='object'){                 // 第 88 单·周记忆：本周跟谁说了几回
+        if(!wk.聊谁||typeof wk.聊谁!=='object') wk.聊谁={};
+        wk.聊谁[mate.id]=(wk.聊谁[mate.id]|0)+1; } }
     // 第 18 单·病症三：话题由代码派定并写进日志条目，AI 挂点（enhanceChat）照此拼提示词。
     // 恰好消耗 1 次 rng——本条会位移 rng 流、sim30 指纹必变，任务书已授权并要求复报新旧值。
     const topic=pickTopic(w);
@@ -2454,6 +2554,8 @@ const CLIP_W={
   bday_cake:2.6,                                  // 第 64 单·生日蛋糕（甲级：一年一次的个人日，与江灯节同档——"值得当天的卡"）
   talk_go:1.0,                                    // 第 73 单·去了一趟夜谈角（乙级弱信号，与夜市 `mkt_go` 同档）
   gift:1.2,                                       // 第 81 单·给寿星带了点东西（乙级上档：它是"两个人之间的事"）
+  rel_up:1.6,                                     // 第 88 单·关系升到新档（甲级：不是每天都有的事，值得当天的卡）
+  rel_cold:0.8,                                   // 第 88 单·连着五天没说话（乙级弱信号：日子里的凉意，不是"事"）
   sit_bad:3.0, sit_first:1.5, sit_good:1.4, sit_flat:0.6, sit_none:1.0,
   money_broke:2.6, money_debt:0.8, money_swing:1.8, money_flatpay:2.4,
   social_mute:2.2, social_all:2.4, social_burst:1.2,
@@ -2461,7 +2563,8 @@ const CLIP_W={
   hunger_nomeal:2.6, hunger_peak:2.0, hunger_high:1.5, worn_out:2.2, worn_low:1.6,
   freq:0.2,
 };
-const CLIP_TIER={sit_flat:'b', sit_none:'b', money_debt:'b', freq:'c', mkt_go:'b', talk_go:'b', gift:'b'};   // 未列者一律甲级
+const CLIP_TIER={sit_flat:'b', sit_none:'b', money_debt:'b', freq:'c', mkt_go:'b', talk_go:'b', gift:'b',
+                 rel_cold:'b'};   // 第 88 单·冷线归乙级；未列者一律甲级（rel_up 走甲级）
 // 日志正文 → 类目。取的是 decide() 实际写出的字串（harness 有覆盖率断言：30 天里
 // 每条 act 条目都必须归到某一类，谁改了 logText 那条断言即红）。
 const CLIP_LOGCAT=[
@@ -2483,8 +2586,9 @@ const CLIP_LOGCAT=[
   ['goal',  ['这周想的事','上周的日子记一笔','本来想做的事']],
   ['fest',  ['在江边放了一盏灯']],   // 第 62 单·江灯节放灯（世界级播报另在 BACK_SUM 里登记）
   ['bday',  ['给自己买了块蛋糕']],   // 第 64 单·生日蛋糕（个人日志，不需要新桶；覆盖率闸照查）
+  ['rel',   ['关系：']],             // 第 88 单·关系涨档／冷线两句（前缀固定"关系："，一处管两句话）
 ];
-const CLIP_CATNAME={eat:'吃饭', work:'上班', nap:'小憩', stroll:'散步', sleep:'睡觉', chat:'闲聊', goal:'目标', fest:'放灯', bday:'生日', talk:'夜谈', miss:'惦记'};
+const CLIP_CATNAME={eat:'吃饭', work:'上班', nap:'小憩', stroll:'散步', sleep:'睡觉', chat:'闲聊', goal:'目标', fest:'放灯', bday:'生日', talk:'夜谈', miss:'惦记', rel:'关系'};
 // 丙级只数这几类。刻意不含 chat：闲聊次数已由甲级 social_burst 按同一个数出活，
 // 两级同时命中会在同一张卡上把同一句话印两遍（实测 D10 「闲聊 4 次，平常 2 次」印了两行）。
 // 也不含 idle：在家待着 logText 恒为 null、不上墙，本层「只数上了墙的事」故无从计数。
@@ -2494,7 +2598,8 @@ const CLIP_QCAT={sit:'work', money:'money', social:'chat', sleep:'sleep', wake:'
                  fest:'fest',  // 第 62 单：放灯那条日志归在 fest 类
                  bday:'bday',  // 第 64 单：生日蛋糕那条日志归在 bday 类
                  talk_go:'talk',  // 第 73 单：夜谈那条日志单开一类 ⇒ 摘原文就引它
-                 gift:'gift'};    // 第 81 单：礼物那两句单开一类 ⇒ 摘原文引"带了…"那句
+                 gift:'gift',     // 第 81 单：礼物那两句单开一类 ⇒ 摘原文引"带了…"那句
+                 rel_up:'rel', rel_cold:'rel'};   // 第 88 单：关系两句同归一"关系"类 ⇒ 摘原文引那条日志
 
 function clipDayOf(t){ return PURE.dayOf(t-CLIP_CUT); }     // 剪辑日：窗口＝[D 日 04:00, D+1 日 04:00)
 function clipT0(cd){ return (cd-1)*1440+CLIP_CUT; }
@@ -2631,6 +2736,20 @@ function clipSample(w,sh){
       r.giftT=lgf.t; r.giftTo=(typeof lgf.toName==='string')?lgf.toName:'';
       r.giftTx0=(typeof lgf.tx==='string')?lgf.tx:'';
     }
+    // 第 88 单·关系升档：与上面同一套事件通道（`REL_TIERS` 保证只有"跨过档位下限"那一次会记）
+    const lr=ag.lastRel;
+    if(lr && typeof lr==='object' && isFinite(lr.t) && lr.t>=t0 && lr.t<t1 && r.relUpT!==lr.t){
+      r.relUpT=lr.t; r.relUpTo=(typeof lr.to==='string')?lr.to:'';
+      r.relUpTier=(typeof lr.tier==='string')?lr.tier:'';
+      r.relUpV=isFinite(lr.v)?Math.round(lr.v):0;
+      r.relUpTx0=(typeof lr.tx==='string')?lr.tx:'';
+    }
+    // 第 88 单·关系冷线：连着五天没说话（每人每条关系一条只留一次，`隔===REL.coldLine` 保证）
+    const lc=ag.lastCold;
+    if(lc && typeof lc==='object' && isFinite(lc.t) && lc.t>=t0 && lc.t<t1 && r.relColdT!==lc.t){
+      r.relColdT=lc.t; r.relColdTo=(typeof lc.to==='string')?lc.to:'';
+      r.relColdTx0=(typeof lc.tx==='string')?lc.tx:'';
+    }
   }
 }
 
@@ -2657,6 +2776,8 @@ function clipMake(w,sh,ent,ag,sum,base){
   if(r.bdayT) push('bday_cake',{spent:r.bdaySpent, tx:r.bdayTx0},r.bdayT);   // 第 64 单·生日蛋糕（每人每年至多一条；落笔抄录）
   if(r.talkT) push('talk_go',{topic:r.talkTopic, tx:r.talkTx0},r.talkT);     // 第 73 单·夜谈（每人每周至多一条；落笔抄录）
   if(r.giftT) push('gift',{to:r.giftTo, tx:r.giftTx0},r.giftT);              // 第 81 单·生日礼物（每人每年至多一条；落笔抄录）
+  if(r.relUpT)   push('rel_up',  {to:r.relUpTo, tier:r.relUpTier, v:r.relUpV, tx:r.relUpTx0}, r.relUpT);   // 第 88 单·关系升档
+  if(r.relColdT) push('rel_cold',{to:r.relColdTo, tx:r.relColdTx0}, r.relColdT);                            // 第 88 单·关系冷线
   // 甲/乙 · 处境（第 17 单 ag.sit 的预留去处：事件原文不喂 AI，本页是它唯一的现身处）
   if(r.sitK){
     const v={from:r.sitFrom||'那边', tx:r.sitTx};
@@ -2729,6 +2850,8 @@ function clipItemText(it){
     case 'bday_cake':  return '生日 · 给自己买了块蛋糕：花了 ¥'+(v.spent||0)+'（一年一次）';
     case 'talk_go':    return '夜谈 · 去坐了一晚：聊「'+(v.topic||'')+'」';
     case 'gift':       return '生日 · 给'+(v.to||'人')+'带了点东西';
+    case 'rel_up':     return '关系 · 升到「'+(v.tier||'新档')+'」：和'+(v.to||'人')+'（'+(v.v|0)+'）';
+    case 'rel_cold':   return '关系 · 冷下来了：好几天没和'+(v.to||'人')+'说上话';
     case 'sit_bad':   return '处境 · 逆：'+v.from+'那边——「'+v.tx+'」';
     case 'sit_good':  return '处境 · 顺：'+v.from+'那边——「'+v.tx+'」';
     case 'sit_flat':  return '处境 · 平：'+v.from+'那边——「'+v.tx+'」';
@@ -2910,6 +3033,7 @@ function advance10(w){
   if(mod===0){
     w.credits=3; w.sentToday=[];
     logSys(w,'新的一天。短信额度已重置（✉×3）。');
+    relStep(w);       // 第 88 单·关系回落（每天 00:00 一次；连着 3 天没说话才掉，落到本档下限停）
   }
   const day=PURE.dayOf(w.t);
   if(mod===8*60 && day%30===2 && w.rentPaidDay!==day){       // 每月 2 号交租
@@ -3136,6 +3260,7 @@ const Sim={makeWorld, step, sendMessage, sendCustomMessage, decide, MSGS, ANCHOR
   NOTE, NOTE_LINES, noteStep,   // 第 77 单·别的时候也开口（门禁按真值读：每天 21:00、一天一句）
   BIRTHDAYS, BDAY, bdayInDays, thisYearBdayAt, bdayAt, inBirthday,   // 第 64 单·住户生日（门禁按真值读同一份日历）
   GIFT,   // 第 81 单·生日礼物（门禁按真值读：窗口与价钱一处定义）
+  REL, REL_TIERS, relV, relTier, relTierName, relGet,   // 第 88 单·关系状态机 A 档（门禁按真值读：档位表一处定义）
   CATCHUP_MIN_PER_MIN, CATCHUP_MAX_DAYS, REFLECT_MIN, SMS_NOREPLY,
   catchUpPlan, catchUp, reflectFallback, clipTopDay,
   DIARY_FB, DIARY_FB_RECENT, CHAT_FB_OPEN, CHAT_FB_REPLY, pickV, pickFresh, diaryFallback,   // 第 27 单·兜底文案扩池
@@ -3651,16 +3776,15 @@ function memText(ag){
   const m=ag&&ag.mem;
   return (m&&typeof m.text==='string'&&m.text)?('上周：'+m.text):'（还没有记录）';
 }
-/* ---------- 第 67 单·关系一期（**只做"看得见"，零新增世界状态**）----------
+/* ---------- 第 67 单·关系一期（**只做"看得见"，零新增世界状态**）＋ 第 88 单·二期 A 档 ----------
    本作一直在记"谁跟谁说过话"——第 48 单起闲聊每场都往 `w.stats.pair`（键＝两个 id 排序后拼）
    记一笔，但**玩家一处都看不到**：想知道谁跟谁熟，只能去日志页一行行翻。
-   本单把它摆到台面上：角色卡与角色详情各加一行「常聊」——聊得最多的那个人、聊过多少次。
+   一期（第 67 单）把它摆到台面上：角色卡与角色详情各加一行——聊得最多的那个人。
+   二期 A 档（第 88 单）这一行改成读**关系值**：`和 X · 熟（28）`（挑人仍按"和谁聊得最多"，与一期同一个判据）。
 
    数据源就是既有那份账（`w.stats.pair`，**累计自开局**），故：
-     · **不新增任何世界状态**、不动 SIM 块、不掷骰子、不读出网；世界指纹与 SIM 块 md5 逐字节不变；
-     · 口径写在词里："**聊过 N 次**"（累计），不是"最近"——不拿旧账冒充新账。
-   为什么只做到这一步：真正的"关系状态机"（关系值随事涨落、进目标谓词、进剪辑判据）属**改结构**，
-   照改动分级要先出方案、等决策者点头；一期先把**已有的**数据变成看得见的东西，不抢那一步。 */
+     · 本函数**只读不写**、不掷骰子、不读出网（二期那个会涨会落的 `ag.rel` 在 SIM 块里长，见第 88 单段）；
+     · 挑人判据仍是"和谁聊得最多"（一期口径），括号里那个数才是关系值——两个数不混着说。 */
 function relText(w, ag){
   const st=(w&&w.stats&&w.stats.pair)||{}; let bestId='', n=0;
   for(const k in st){
@@ -3670,7 +3794,12 @@ function relText(w, ag){
     n=c; bestId=(ids[0]===ag.id?ids[1]:ids[0]);
   }
   const mate=bestId ? (w.agents||[]).find(a=>a.id===bestId) : null;
-  return (n>0&&mate) ? ('和 '+mate.name+' 聊过 '+n+' 次') : '还没跟谁聊过';
+  if(!(n>0&&mate)) return '还没跟谁聊过';
+  /* 第 88 单·关系二期（A 档）：一期那句"聊过 N 次"换成**档位 ＋ 关系值**——
+     聊过多少次是"说了多少话"（原始账，角色详情那行"（累计 N 次来往）"里还留着），
+     档位才是"近不近"。括号里那个数就是 `ag.rel` 的值（0–60）；旧档还没长出这张表时一律当 0。 */
+  const v=relGet(ag, mate.id);
+  return '和 '+mate.name+' · '+relTierName(v)+'（'+v+'）';
 }
 /* ---------- 第 79 单·云港日历（把"接下来会发生什么"摆出来）----------
    出处（2026-10-03 实测可访问）：星露谷 wiki·Festivals／Birthdays——村民的生日与节日都挂在**日历**上，
@@ -3719,7 +3848,7 @@ function buildRoles(){
     +'<div class="kv"><span>担忧</span><span class="rr-fear"></span></div>'
     +'<div class="kv"><span>目标</span><span class="rr-goal"></span></div>'
     +'<div class="kv"><span>上周</span><span class="rr-mem"></span></div>'
-    +'<div class="kv"><span>常聊</span><span class="rr-rel"></span></div>'
+    +'<div class="kv"><span>关系</span><span class="rr-rel"></span></div>'
     +'<div class="kv"><span>正在</span><span class="rr-act"></span></div>'
     +'<div class="row" style="margin-top:.4rem"><span class="faint" style="font-size:.72rem">饱食</span><span class="bar"><i class="rr-h"></i></span></div>'
     +'<div class="row" style="margin-top:.25rem"><span class="faint" style="font-size:.72rem">体力</span><span class="bar"><i class="rr-e" style="background:var(--blue)"></i></span></div>'
