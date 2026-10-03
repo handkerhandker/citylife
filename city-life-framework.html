@@ -440,7 +440,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v90</span>
+<span class="num dim" id="set-build">v91</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -1938,6 +1938,9 @@ function missStep(w){
       ag.noteDay=PURE.dayOf(w.t);      // 第 77 单：与"别的时候也开口"共用"一天最多一句"的额度
       pushLog(w,{type:'player',sms:'note',agent:ag.id,name:ag.name,
         text:'给你留了一句：'+话, thought:''});
+      /* 第 98 单·留了话就**等你回**（第 76／77 单登记的那条"他只会留话，不会等你回"）：记一笔等待，
+         短信页会显示"在等你回话"，你回一句就消（回复里带一句专属的话）；两天没回就作废（不叨叨）。 */
+      ag.waiting={ t:w.t, line:话 };
     }
   }
 }
@@ -1945,6 +1948,9 @@ function missStep(w){
 function noteStep(w){
   if(PURE.minuteOfDay(w.t)!==NOTE.at) return;
   const d=PURE.dayOf(w.t), 年=d-((d-1)%FESTIVAL.yearDays);
+  /* 第 98 单·等太久就不等了：**每天 21:00 扫一遍**，两天没回音 ⇒ 撤掉"在等你回话"那行
+     （只动 `ag.waiting` 一个数，不写日志、不叨叨；落在这里是因为这一支本来每天都会跑）。 */
+  for(const x of w.agents) if(x.waiting && isFinite(x.waiting.t) && w.t-x.waiting.t>2*1440) delete x.waiting;
   for(const ag of w.agents){
     if(ag.noteDay===d) continue;                       // 一天最多一句（惦记那句若已留过，这里跳过）
     let 话='';
@@ -1961,6 +1967,7 @@ function noteStep(w){
     if(!话) continue;
     ag.noteDay=d;
     pushLog(w,{type:'player',sms:'note',agent:ag.id,name:ag.name,text:'给你留了一句：'+话,thought:''});
+    ag.waiting={ t:w.t, line:话 };      // 第 98 单：同上——新的这句顶掉旧的那笔等待
   }
 }
 /*MISS-END*/
@@ -2300,11 +2307,16 @@ function decide(w, ag){
   // 0. 读短信（最高优先：玩家输入进入 TA 的世界）
   if(ag.inbox.length){
     const m=ag.inbox.shift();
+    /* 第 98 单·他留了话在等你回：这一条短信就是"回话"——回复里补一句专属的话，然后把等待撤掉。
+       只改 `thought`（不改条目数、不改 type），故"有戏"与下雨时机一个字节不动。 */
+    const 等他=!!(ag.waiting&&isFinite(ag.waiting.t));
+    if(等他) delete ag.waiting;
     pushLog(w,{type:'player',sms:'read',agent:ag.id,name:ag.name,msg:m.id,msgLabel:m.label,
       text:'读到了你的短信「'+m.label+'」',
       /* 第 64 单：同一份心意，**生日当天的分量不一样**（星露谷"生日 ×8"那条口径的本作映射）——
          平时发「生日快乐」是一句普通回应，生日当天发就是专属暖话。 */
-      thought:(m.id==='birthday' ? (inBirthday(w,ag)?REACT.birthdayToday:REACT.birthday) : (REACT[m.id]||REACT.custom))});
+      thought:(m.id==='birthday' ? (inBirthday(w,ag)?REACT.birthdayToday:REACT.birthday) : (REACT[m.id]||REACT.custom))
+        +(等他?'（等了两天，总算等到了。）':'')});
     if(m.id==='late') ag.flags.earlyWork=true;
     if(m.id==='sleep') ag.flags.sleepEarly=true;
     if(m.id==='eat' && ag.hunger>40) ag.flags.wantEat=true;
@@ -4125,8 +4137,13 @@ function phoneHistory(w, id, 上限){
 }
 function phoneHistoryHTML(w, id){
   const 条=phoneHistory(w, id, 8);
-  if(!条.length) return '<li class="faint ph-empty">还没有往来。发一条试试——TA 看到后会在这里回你（同时写进日志）。TA 在忙或在睡时，要等有空才看手机。</li>';
-  return 条.map(e=>'<li><span class="lt num">'+PURE.fmtStamp(e.t)+'</span>'+esc(e.text)
+  /* 第 98 单·"他留了话，在等你回一句"：等过两天就不再显示（`ag.waiting` 由 noteStep／missStep 维护）。
+     这一行是**跟着那个人当前的状态**走的，不是历史条目——所以他回了话/等过期，它就没了。 */
+  const ag=(w.agents||[]).find(a=>a.id===id);
+  const 等=(ag&&ag.waiting&&isFinite(ag.waiting.t)&&(w.t-ag.waiting.t)<=2*1440)
+    ? '<li class="faint ph-wait">TA 留了话，在等你回一句。</li>' : '';
+  if(!条.length) return 等+'<li class="faint ph-empty">还没有往来。发一条试试——TA 看到后会在这里回你（同时写进日志）。TA 在忙或在睡时，要等有空才看手机。</li>';
+  return 等+条.map(e=>'<li><span class="lt num">'+PURE.fmtStamp(e.t)+'</span>'+esc(e.text)
     +(e.thought?' <span class="lth">— '+esc(e.thought)+'</span>':'')+'</li>').join('');
 }
 function renderPhone(){

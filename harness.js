@@ -4933,6 +4933,71 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   }
 }
 
+// ═══ 第 98 单·居民会等你回话（第 76／77 单登记的"他只会留话，不会等你回"）══════════
+/* 被验的是生产源码与真值：
+     ① 结构：留话那两处（惦记／别的时候也开口）都记一笔 `ag.waiting`；`noteStep` 每天扫一次过期；
+        读信那一支把等待撤掉并补一句专属的 thought；往来记录里那一行只在**还在等**时出现；
+     ② 行为（构造）：留了话 ⇒ 玩家回一条 ⇒ 回复里带"等到了"、等待清空；**没留话时不许有那句**（不是恒加）；
+     ③ 过期：等 1 天还在、等满 2 天之后撤掉（不叨叨）；
+     ④ 渲染（抽 `phoneHistoryHTML` 源码喂桩跑）：还在等 ⇒ 有那行；没在等／过期 ⇒ 没有。 */
+{
+  const fs=require('fs'), path=require('path');
+  const src=fs.readFileSync(path.resolve(__dirname,'city-life-framework.html'),'utf8');
+  ok((src.match(/ag\.waiting=\{ t:w\.t, line:话 \};/g)||[]).length===2
+     &&/for\(const x of w\.agents\) if\(x\.waiting && isFinite\(x\.waiting\.t\) && w\.t-x\.waiting\.t>2\*1440\) delete x\.waiting;/.test(src)
+     &&/const 等他=!!\(ag\.waiting&&isFinite\(ag\.waiting\.t\)\);/.test(src)
+     &&/\(等他\?'（等了两天，总算等到了。）':''\)/.test(src),
+     '第 98 单·结构：留话两处都记等待、`noteStep` 每天扫过期、读信那一支撤等待并补一句专属 thought');
+  ok(/ph-wait">TA 留了话，在等你回一句。/.test(src)&&/\(w\.t-ag\.waiting\.t\)<=2\*1440/.test(src),
+     '第 98 单·结构：往来记录里那行"在等你回话"**只在还在等的时候**出现（过期即消失）');
+  {
+    const 跑=(留话)=>{
+      const w=Sim.makeWorld(20260803), a=w.agents[0];
+      w.t=20*1440+21*60;
+      if(留话) a.waiting={ t:w.t-3600, line:'今晚的灯不错。' };
+      Sim.sendMessage(w, a.id, 'cheer');
+      const 已=w.lidSeq; Sim.decide(w,a);
+      let 条=null; for(const e of w.log){ if(e.lid>已 && e.sms==='read'){ 条=e; break; } }
+      return {thought:String((条&&条.thought)||''), 还在:!!a.waiting};
+    };
+    const 有=跑(true), 无=跑(false);
+    ok(有.thought.indexOf('等到了')>0&&!有.还在,
+       '第 98 单·行为：他留了话在等 ⇒ 你回一条，回复里带"等到了"、等待清空（实测「'+有.thought+'」）');
+    ok(无.thought.indexOf('等到了')<0,
+       '第 98 单·反向自查·拦得住：**没留话**时同一构造回复里没有那句（实测「'+无.thought+'」）'
+       +'⇒ "等到了"不是恒加的一句话');
+  }
+  {
+    const 试=(等分钟)=>{
+      const w=Sim.makeWorld(20260803), a=w.agents[0];
+      w.t=5*1440+21*60-10; a.waiting={ t:w.t-等分钟 };
+      Sim.step(w,10);                 // 走到 21:00（noteStep 那一支）
+      return !!a.waiting;
+    };
+    ok(试(60)&&试(1440)&&!试(2*1440+10),
+       '第 98 单·过期：等 1 小时还在、等 1 天还在、**过两天就撤**（三个读数 '+[试(60),试(1440),试(2*1440+10)]
+       .map(b=>b?'在':'撤').join('／')+'）');
+  }
+  {
+    /* 渲染侧：`phoneHistoryHTML` 在 DOM 段（node 里没有 document），照第 67 单 `relText` 那套
+       **抽源码 + 喂桩**跑一遍；桩只补 esc／PURE.fmtStamp 两个它用到的外部名字。 */
+    const FN=(src.match(/function phoneHistoryHTML\(w, id\)\{[\s\S]*?\n\}/)||[''])[0];
+    const FN2=(src.match(/function phoneHistory\(w, id, 上限\)\{[\s\S]*?\n\}/)||[''])[0];
+    const 取史=FN2?new Function('return '+FN2)():null;
+    const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+    const PURE={ fmtStamp:t=>'D'+Math.floor(t/1440)+' 00:00' };
+    const fn=(FN&&取史&&new Function('esc','PURE','phoneHistory','return '+FN)(esc, PURE, 取史))||null;
+    const w=Sim.makeWorld(20260803), a=w.agents[0];
+    w.t=20*1440+21*60;
+    const 现在=fn?fn(w,a.id):'', 等=fn?(a.waiting={t:w.t-360}, fn(w,a.id)):'',   // 6 小时前留的话 ⇒ 还在等
+          过期=fn?(a.waiting={t:w.t-3*1440}, fn(w,a.id)):'';
+    ok(!!fn&&现在.indexOf('ph-wait')<0&&等.indexOf('ph-wait')>0&&过期.indexOf('ph-wait')<0,
+       '第 98 单·渲染：往来记录那行（"TA 留了话，在等你回一句。"）只在他**还在等**时出现'
+       +'（没等 '+现在.indexOf('ph-wait')+'／在等 '+等.indexOf('ph-wait')+'／过期 '+过期.indexOf('ph-wait')
+       +'，-1 表示没有）');
+  }
+}
+
 // ═══ 第 97 单·雨天的独白（在外的人会聊天气）══════════════════════════════════
 /* 出处（**本单复核：2026-10-03 实测 HTTP 200**，逐字摘）：Nookipedia·Weather
    「**Villagers who are outside when rain is falling carry umbrellas and might also comment on the weather.**」
@@ -6064,7 +6129,7 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   ok(恒绿===0,'第 66 单·闸二：`ok` 第一参数写死 true 的**读数型假断言**为 0 条（实测 '+恒绿+'；读数一律走 `读数()`）');
   // 闸三 · 反向自查登记（防整条被删）
   const 登记=['第 48 单','第 49 单','第 51 单','第 52 单','第 53 单','第 54 单','第 56 单','第 57 单',
-              '第 58 单','第 59 单','第 62 单','第 63 单','第 64 单','第 65 单','第 67 单','第 70 单','第 71 单','第 72 单','第 73 单','第 74 单','第 75 单','第 76 单','第 77 单','第 79 单','第 80 单','第 81 单','第 84 单','第 85 单','第 87 单','第 88 单','第 90 单','第 91 单','第 92 单','第 93 单','第 94 单','第 95 单','第 96 单','第 97 单',
+              '第 58 单','第 59 单','第 62 单','第 63 单','第 64 单','第 65 单','第 67 单','第 70 单','第 71 单','第 72 单','第 73 单','第 74 单','第 75 单','第 76 单','第 77 单','第 79 单','第 80 单','第 81 单','第 84 单','第 85 单','第 87 单','第 88 单','第 90 单','第 91 单','第 92 单','第 93 单','第 94 单','第 95 单','第 96 单','第 97 单','第 98 单',
               '闸四','闸五','闸十','闸十一','闸十二'];
   const 实有=[...new Set((自源.match(/(第 \d+ 单|闸[一二三四五六七八九十]+)·反向自查/g)||[])
                             .map(x=>x.replace('·反向自查','')))];
