@@ -1404,6 +1404,76 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
         '第 48 单·源码侧：每场闲聊仍是「一次开口 ＋ 一次接话」两次抽签 ⇒ rng 流不动（世界指纹据此应逐字节不变）');
     }
   }
+
+  /* ═══ 第 49 单 · 雨回流进行为（决策者裁定 B）：同小时分层的行为普查 ＋ 反向自查 ═══
+     病根（第 37 单取证）：雨是纯壁纸——按钟点分层后，同一小时内雨晴的「上工」差 ≤5.6 个百分点、方向来回换。
+     治法：只把"出去玩"那三支的概率换成 `RAIN_RULES` 的值（上班／吃饭／回家一字不改，不夺走收入也夺走不了饭点）。
+     判据必须**同小时分层**：雨只落在 9–21 时，拿全天平均比会得出假结论（第 37 单第四章的教训）。 */
+  {
+    // 逐拍记账：**按钟点分桶**（雨只落在 9–21 时，不分层就必然得出假结论——第 37 单第四章的教训）
+    function 天气普查(seeds,days){
+      const r={雨拍:0,晴拍:0,按时:{}};
+      for(const seed of seeds){
+        const w=Sim.makeWorld(seed);
+        for(let i=0;i<days*144;i++){
+          Sim.step(w,10);
+          const h=Math.floor(PURE.minuteOfDay(w.t)/60), 雨=!!(w.weather&&w.weather.rain);
+          for(const ag of w.agents){
+            const t=(ag.activity&&ag.activity.type)||'';
+            const b=r.按时[h]||(r.按时[h]={雨拍:0,晴拍:0,雨散步:0,晴散步:0,雨上工:0,晴上工:0});
+            if(雨){ r.雨拍++; b.雨拍++; if(t==='stroll') b.雨散步++; if(t==='work') b.雨上工++; }
+            else  { r.晴拍++; b.晴拍++; if(t==='stroll') b.晴散步++; if(t==='work') b.晴上工++; }
+          }
+        }
+      }
+      return r;
+    }
+    const 傍晚=(r)=>{ let a=0,b=0,c=0,d=0;
+      for(let h=18;h<=20;h++){ const x=r.按时[h]; if(!x) continue; a+=x.雨拍; b+=x.雨散步; c+=x.晴拍; d+=x.晴散步; }
+      return {雨: b/Math.max(1,a), 晴: d/Math.max(1,c), 雨n:a, 晴n:c}; };
+    const 普=天气普查([20260803,424242,777],30);
+    const 傍=傍晚(普);
+    ok(傍.雨 < 傍.晴*0.5,
+      '第 49 单·行为侧：**雨天 18–20 时散步率 '+((傍.雨*100).toFixed(2))+'% ＜ 晴天 '+((傍.晴*100).toFixed(2))+'% 的一半**'
+      +'（判据 <0.5 倍，实测 '+((傍.雨/Math.max(1e-9,傍.晴))).toFixed(2)+' 倍；n 雨 '+傍.雨n+' / 晴 '+傍.晴n+'）');
+    // 「不夺走」：上班那几支一个字没改 ⇒ 上工占比只能有**分层后的小差**（未控时段那个 +30 个百分点是
+    // 「雨只落 9–21 时」的时段混淆，不是行为差——第 37 单已经量过一次，故这里必须按小时配对）
+    {
+      const 差=[];
+      for(let h=9;h<=17;h++){
+        const b=普.按时[h];
+        if(!b||b.雨拍<40||b.晴拍<40) continue;
+        差.push(Math.abs(b.雨上工/b.雨拍-b.晴上工/b.晴拍));
+      }
+      const 均=差.reduce((a,b)=>a+b,0)/Math.max(1,差.length), 最大=Math.max(0,...差);
+      ok(差.length>=6&&均<0.04&&最大<0.09,
+        '第 49 单·**不夺走**：按钟点配对的上班占比差 均值 '+(均*100).toFixed(2)+' 点／最大 '+(最大*100).toFixed(2)
+        +' 点（判据 均值<4 且 最大<9；共 '+差.length+' 个钟点）——上班那几支一个字没改，雨只动"出去玩"');
+    }
+    // 反向自查：把 RAIN_RULES 掰回晴天值（＝雨又变成壁纸）⇒ 上面那条判据必须当场判红
+    {
+      const 原=Object.assign({},Sim.RAIN_RULES);
+      Sim.RAIN_RULES.market=0.5; Sim.RAIN_RULES.dayOut=Sim.WEEKEND_OUT.dayOut;
+      Sim.RAIN_RULES.eveWeekend=Sim.WEEKEND_OUT.eveStroll; Sim.RAIN_RULES.eveWorkday=0.3;
+      const 病=天气普查([20260803,424242,777],30), 病傍=傍晚(病);
+      Object.assign(Sim.RAIN_RULES,原);
+      ok(!(病傍.雨 < 病傍.晴*0.5),
+        '第 49 单·反向自查·拦得住：把 RAIN_RULES 掰回晴天值之后，雨天散步率回到 '+((病傍.雨*100).toFixed(2))+'%（晴天 '
+        +((病傍.晴*100).toFixed(2))+'%，比值 '+(病傍.雨/Math.max(1e-9,病傍.晴)).toFixed(2)+'）⇒ 这条判据不是恒绿');
+    }
+    // 源码侧：恰好三处按雨天换阈值（多一处就是第二套雨规矩），且 RAIN_RULES 只在 decide 的"出去玩"段出现
+    {
+      const 源=require('fs').readFileSync(require('path').join(__dirname,'city-life-framework.html'),'utf8');
+      const 换=源.match(/raining\?RAIN_RULES\./g)||[];
+      ok(换.length===3,'第 49 单·源码侧：decide() 里恰好 3 处按雨天换阈值（实测 '+换.length+' 处）');
+      ok(/const RAIN_RULES=\{/.test(源),'第 49 单·源码侧：RAIN_RULES 表在位（改雨天只改这一张表）');
+      ok(['market','dayOut','eveWeekend','eveWorkday','indoorLabel'].every(k=>k in Sim.RAIN_RULES),
+        '第 49 单·源码侧：RAIN_RULES 五个键齐（四档概率 ＋ 一个雨天在家说法）');
+      ok(Sim.RAIN_RULES.market<0.5&&Sim.RAIN_RULES.dayOut<Sim.WEEKEND_OUT.dayOut
+        &&Sim.RAIN_RULES.eveWeekend<Sim.WEEKEND_OUT.eveStroll&&Sim.RAIN_RULES.eveWorkday<0.3,
+        '第 49 单·源码侧：雨天三档都低于晴天那一档（从两张表现读，不在闸里抄数字）');
+    }
+  }
   // —— 正向审计带出来的一处：关页把在途 AI 调用带走的那些条目，重开时照「AI 挂掉那条路」收尾 ——
   {
     const fn=grab(/function settleOrphanLLM\(w\)\{[\s\S]*?\n\}/,'settleOrphanLLM');
@@ -3026,12 +3096,17 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   ok(/const WEEKEND_OUT=\{/.test(X) && /dayOut:\s*[\d.]+/.test(X)
      && /daySpots:\s*\[[^\]]+\]/.test(X) && /eveStroll:\s*[\d.]+/.test(X),
      '闸十二·源码侧：WEEKEND_OUT 三个键齐（dayOut／daySpots／eveStroll），与 WEEK_RULES 同一常量区');
-  ok(/周末 && !sunday && mod>=10\*60 && mod<17\*60 && w\.rng\(\)<WEEKEND_OUT\.dayOut/.test(src),
-     '闸十二·源码侧：周六白天那一支带 `!sunday` —— 周日让给「周日街市」，两支不叠加');
+  // 第 49 单改：这两条原先**写死了晴天那一种写法**，雨天层一接进来就假红（第 46 单「闸自己硬编码旧模型」的老账又犯一次）。
+  // 现在只断言**结构**：分支条件里必须有 `!sunday`；分支体里必须同时出现晴天档与雨天档（两张表各读各的，谁也不许被抄成常量）。
+  const 枝=re=>((src.match(re)||[''])[0]);
+  const 周六枝=枝(/if\(周末 && !sunday && mod>=10\*60[\s\S]{0,220}?\)\{/);
+  ok(/!sunday/.test(周六枝)&&/WEEKEND_OUT\.dayOut/.test(周六枝)&&/RAIN_RULES\.dayOut/.test(周六枝),
+     '闸十二·源码侧：周六白天那一支带 `!sunday`（周日让给「周日街市」），且晴/雨两档分别读 WEEKEND_OUT.dayOut 与 RAIN_RULES.dayOut');
   const nSpots=(src.match(/WEEKEND_OUT\.daySpots/g)||[]).length;
   ok(nSpots===2,'闸十二·构造成立：`daySpots` 全站只出现 2 次（定义处 1 ＋ 取用 1）——多一处就是第二套去处表');
-  ok(/w\.rng\(\)<\(周末\?WEEKEND_OUT\.eveStroll:0\.3\)/.test(src),
-     '闸十二·源码侧：傍晚散步按周末上调（工作日 0.3 不动）');
+  const 晚枝=枝(/if\(mod>=18\.5\*60 && mod<21\*60[\s\S]{0,260}?\)\{/);
+  ok(/WEEKEND_OUT\.eveStroll/.test(src)&&/RAIN_RULES\.eveWeekend/.test(晚枝)&&/RAIN_RULES\.eveWorkday/.test(晚枝),
+     '闸十二·源码侧：傍晚散步按周末上调（工作日 0.3 不动）＋雨天两档另走 RAIN_RULES（改后仍是一处判定）');
   // 行为侧：真跑 56 天，按星期分桶比「在外」占比（与 world-audit 同口径：不在家且不在岗）
   const 在宅=a=>/^(home_|bed)/.test(a||''), 在岗=a=>/^(desk|store_)/.test(a||'');
   const 桶={};   // 'sat' / 'wd'

@@ -428,7 +428,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v50</span>
+<span class="num dim" id="set-build">v51</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -1286,6 +1286,28 @@ const WEEKEND_OUT={
   eveStroll: 0.45,                                // 傍晚（18:30–21:00）出门散步的概率（工作日 0.3）
 };
 /*WEEK-END*/
+/*RAIN-START*/
+/* ---------- 第 49 单·雨回流进行为（决策者裁定 B）----------
+   取证（第 37 单，3 种子 × 56 天，实测于 v47）：**雨是纯壁纸**——按钟点分层后，同一小时内
+   雨晴的「上工占比」相差 ≤5.6 个百分点、方向来回换（未控时段那一版会得出「下雨显著改变行为」
+   的假结论，因为雨只落在 9–21 时；口径见第 37 单交付件第四章）。
+   出处（2026-10-03 实测可访问）：星露谷 wiki「Daily weather affects the types of fish that can be
+   caught, as well as villager dialogues and behavior.」／「In the first year, most villagers will stay
+   indoors all day」（https://stardewvalleywiki.com/Weather ）；萌娘百科「如果下雨，农作物是不需要浇水的。」
+   （https://zh.moegirl.org.cn/星露谷物语 ）；环世界 wiki「Rain will put out any outdoor fires on the map.」
+   （https://rimworldwiki.com/wiki/Weather ）。三处的共同口径：**天气要落在世界里，不能只落在画面上**。
+
+   治法口径（**只动"出去玩"那三支**，上班／吃饭／回家一概不碰——不夺走收入，也不夺走饭点）：
+   雨天时，把三支"出门"的概率换成下表的值；其余分支一个字不改。
+   **不新增任何 rng 调用**：每一支照旧只掷它自己那一次，换的只是比较用的阈值。 */
+const RAIN_RULES={
+  market:    0.25,   // 周日街市（10:00–17:00）：晴天 0.5  → 雨天 0.25
+  dayOut:    0.15,   // 周六白天出门逛逛：晴天 WEEKEND_OUT.dayOut(0.35) → 雨天 0.15
+  eveWeekend:0.15,   // 周末傍晚散步：晴天 WEEKEND_OUT.eveStroll(0.45) → 雨天 0.15
+  eveWorkday:0.10,   // 工作日傍晚散步：晴天 0.3 → 雨天 0.10
+  indoorLabel:'在家听雨',   // 雨天在家那一段换个说法（角色页／角色卡上看得见；晴天仍是「在家待着」）
+};
+/*RAIN-END*/
 function decide(w, ag){
   const mod=PURE.minuteOfDay(w.t);
   const R=rhyOf(ag);          // 第 22 单·逐人作息人格（由既有特质逐条相加，见 RHY 段）
@@ -1441,25 +1463,29 @@ function decide(w, ag){
   // 6. 周日街市 / 周六出门逛逛 / 傍晚散步 / 在家待着
   const wd=PURE.weekday(w.t);
   const sunday=wd===6, 周末=wd>=5;
-  if(sunday && mod>=10*60 && mod<17*60 && w.rng()<0.5){
+  // 第 49 单·雨回流进行为：**只把"出去玩"这三支的概率换成 RAIN_RULES 里的值**，
+  // 上班／吃饭／回家那几支一个字不改（不夺走收入、也不夺走饭点）；每支仍只掷一次 rng。
+  const raining=!!(w.weather&&w.weather.rain);
+  if(sunday && mod>=10*60 && mod<17*60 && w.rng()<(raining?RAIN_RULES.market:0.5)){
     setActivity(w,ag,'market','stroll','逛街市',tempoDur(w,ag,40),'人挤人，但热闹是真热闹。','去周日街市逛逛');
     return;
   }
   // 第 46 单后半：**周六**白天也出门（工作日到不了这一支：白天在上班或在家的那一支之前就返回了，
   // 而这里的 `dayOut` 在工作日为 0）。去处从 `WEEKEND_OUT.daySpots` 三选一，**独立掷一次**。
-  if(周末 && !sunday && mod>=10*60 && mod<17*60 && w.rng()<WEEKEND_OUT.dayOut){
+  if(周末 && !sunday && mod>=10*60 && mod<17*60 && w.rng()<(raining?RAIN_RULES.dayOut:WEEKEND_OUT.dayOut)){
     const spots=WEEKEND_OUT.daySpots;                 // 表只有这一处取用（门禁按出现次数钉住）
     const spot=spots[Math.floor(w.rng()*spots.length)%spots.length];
     setActivity(w,ag,spot,'stroll','出门逛逛',tempoDur(w,ag,40),pickV(w,STROLL_THOUGHTS,ag,'lo'),'周末出门逛逛');
     return;
   }
-  if(mod>=18.5*60 && mod<21*60 && w.rng()<(周末?WEEKEND_OUT.eveStroll:0.3)){
+  const eveClear=周末?WEEKEND_OUT.eveStroll:0.3;       // 晴天那一档（周末白天那一支的 0.3/0.45 原样保留）
+  if(mod>=18.5*60 && mod<21*60 && w.rng()<(raining?(周末?RAIN_RULES.eveWeekend:RAIN_RULES.eveWorkday):eveClear)){
     const spot=w.rng()<0.5?'park_bench':'river_walk';
     setActivity(w,ag,spot,'stroll','散步',tempoDur(w,ag,40),pickV(w,STROLL_THOUGHTS,ag,'lo'),'出门散步');
     return;
   }
   const spot=w.rng()<0.5?'home_table':'home_tv';
-  setActivity(w,ag,spot,'idle','在家待着',tempoDur(w,ag,30),pickV(w,IDLE_THOUGHTS,ag,'li'),null);
+  setActivity(w,ag,spot,'idle',(raining?RAIN_RULES.indoorLabel:'在家待着'),tempoDur(w,ag,30),pickV(w,IDLE_THOUGHTS,ag,'li'),null);
 }
 
 /*CLIP-START*/
@@ -2087,6 +2113,7 @@ const Sim={makeWorld, step, sendMessage, sendCustomMessage, decide, MSGS, ANCHOR
   RHY_HUNGER_FLOOR, RHY_ENERGY_FLOOR, RHY_LUNCH_AFTER, rhyOf, rhyRest, rhyEatAt, rhyNapAt, rhyWakeAt,
   rhyBedClock, rhyDur, rhyPressed,
   WEEK_RULES, workWindow, WEEKEND_OUT,   // 第 46 单·星期进入世界（门禁调同一份算法，不另写一套）
+  RAIN_RULES,   // 第 49 单·雨回流进行为（门禁按真值断言，不另抄一份概率）
   CATCHUP_MIN_PER_MIN, CATCHUP_MAX_DAYS, REFLECT_MIN, SMS_NOREPLY,
   catchUpPlan, catchUp, reflectFallback, clipTopDay,
   DIARY_FB, DIARY_FB_RECENT, CHAT_FB_OPEN, CHAT_FB_REPLY, pickV, pickFresh, diaryFallback,   // 第 27 单·兜底文案扩池

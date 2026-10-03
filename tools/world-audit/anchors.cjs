@@ -21,13 +21,14 @@ const 在家 = a => /^(home_|bed)/.test(a);
 const 在岗 = a => /^(desk|store_)/.test(a);
 
 const 桶 = {};
-const 新桶 = () => ({ 拍: 0, 人拍: 0, work: 0, idle: 0, sleep: 0, 离家: 0, 在岗: 0, 在外: 0, 起床: [] });
+const 新桶 = () => ({ 拍: 0, 人拍: 0, work: 0, idle: 0, sleep: 0, 离家: 0, 在岗: 0, 在外: 0, stroll: 0, 起床: [] });
 const 记 = (k, t, a, v) => {
   const b = 桶[k] || (桶[k] = 新桶());
   b.拍++; b.人拍++;
   if (t === 'work') b.work++;
   if (t === 'idle') b.idle++;
   if (t === 'sleep') b.sleep++;
+  if (t === 'stroll') b.stroll++;            // 第 49 单：雨天该往下掉的就是这一项（散步／逛街／出门逛逛同属 stroll）
   if (!在家(a)) b.离家++;
   if (在岗(a)) b.在岗++;
   if (!在家(a) && !在岗(a)) b.在外++;
@@ -119,6 +120,33 @@ for (const [k, 名] of [['clear', '晴    '], ['rain', '雨    ']]) {
   const 雨钟 = []; for (let h = 0; h < 24; h++) if (桶['h' + h + 'rain']) 雨钟.push({ h, n: 桶['h' + h + 'rain'].人拍 });
   雨钟.sort((x, y) => y.n - x.n);
   console.log('下雨拍数最集中的钟点：' + 雨钟.slice(0, 6).map(x => x.h + '时(' + x.n + ')').join('　'));
+
+  /* 第 49 单·雨回流进行为的判据读数：**同小时分层**的「在外」与「散步（stroll）」占比。
+     为什么必须分层：雨只落在 9–21 时，拿全天平均比必然得出假结论（第 37 单第四章的教训）。 */
+  for (const [顶层名, 字段] of [['在外', '在外'], ['散步（stroll）', 'stroll']]) {
+    console.log('\n按钟点分层（同一小时内雨 vs 晴，' + 顶层名 + '占比）：');
+    console.log('钟点   雨天n    晴n     雨' + 顶层名.slice(0, 4).padEnd(8) + '晴' + 顶层名.slice(0, 4).padEnd(8) + '差(百分点)');
+    let 加雨拍 = 0, 加雨里 = 0, 加晴拍 = 0, 加晴里 = 0;
+    for (let h = 0; h < 24; h++) {
+      const R = 桶['h' + h + 'rain'], C = 桶['h' + h + 'clear'];
+      if (!R || !C || R.人拍 < 40 || C.人拍 < 40) continue;
+      const a1 = R[字段] / R.人拍, a2 = C[字段] / C.人拍;
+      console.log(String(h).padStart(2, '0') + '时   ' + String(R.人拍).padEnd(9) + String(C.人拍).padEnd(9)
+        + (a1 * 100).toFixed(1).padStart(6) + '%  ' + (a2 * 100).toFixed(1).padStart(7) + '%  '
+        + ((a1 - a2) * 100).toFixed(2).padStart(8));
+    }
+    // 18–21 时（傍晚那一支的窗口）单独汇总一个数：这是雨最该起作用的两三个小时
+    for (let h = 18; h <= 20; h++) {
+      const R = 桶['h' + h + 'rain'], C = 桶['h' + h + 'clear'];
+      if (!R || !C) continue;
+      加雨拍 += R.人拍; 加雨里 += R[字段]; 加晴拍 += C.人拍; 加晴里 += C[字段];
+    }
+    const 雨率 = 加雨里 / Math.max(1, 加雨拍), 晴率 = 加晴里 / Math.max(1, 加晴拍);
+    console.log('  **18–20 时合计**：雨 ' + (雨率 * 100).toFixed(2) + '%（n=' + 加雨拍 + '）／晴 '
+      + (晴率 * 100).toFixed(2) + '%（n=' + 加晴拍 + '）⇒ 雨比晴低 '
+      + ((晴率 - 雨率) * 100).toFixed(2) + ' 个百分点'
+      + (晴率 > 0 ? '（相对 −' + ((1 - 雨率 / 晴率) * 100).toFixed(0) + '%）' : ''));
+  }
 }
 
 console.log('\n═══ 问三 · 兜底闲聊：接话答不答得上 ═══');
