@@ -440,7 +440,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v91</span>
+<span class="num dim" id="set-build">v92</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -1338,7 +1338,10 @@ function setActivity(w,ag,anchorId,type,label,minutes,thought,logText,logType){
   const S=w.stats; (S.act[ag.id]=S.act[ag.id]||{})[type]=(S.act[ag.id][type]||0)+1; if(anchorId==='market') S.market++;
   const moving = ag.anchor!==anchorId;
   ag.anchor=anchorId;
-  ag.activity={type,label};
+  /* 第 99 单·"他此刻在想什么"要看得见：以前这句 `thought` **只在 logText 不为 null 时才用得上**，
+     而"在家待着"那一支的 logText 恒为 null ⇒ 那 16 条空闲独白（第 97 单又添了 8 条雨天的）**一条都没人读**。
+     现在把它挂在活动上（`ag.activity.think`），角色详情多一行「此刻」把它摆出来——不进日志墙、不占额度、不摇 rng。 */
+  ag.activity={type,label,think:(typeof thought==='string'&&thought)?thought:''};
   ag.busyUntil=w.t + minutes + (moving?10:0);   // 换地点附加 10 分钟路程
   if(logText!==null) logAct(w,ag, logText!==undefined?logText:label, thought, logType);
 }
@@ -4105,6 +4108,9 @@ function openAgentDialog(id){
     /* 第 67 单：这一行原先是"累计 N 次来往记在心里"——只有总数，看不出**跟谁**。
        现在把既有那份 `w.stats.pair` 账摆出来（谁、多少次），旧的总数保留在括号里。 */
     +'<div class="kv"><span>关系</span><span>'+esc(relText(state.world, ag))+'（累计 '+(ag.relNotes|0)+' 次来往）</span></div>'
+    /* 第 99 单·「此刻」：把活动里那半句独白（`ag.activity.think`）摆出来——空闲独白从此看得见。
+       没有独白的活动（走路、交心之类直接挂活动的）就不出这一行，不做样子。 */
+    +(ag.activity&&ag.activity.think?'<div class="kv"><span>此刻</span><span>「'+esc(ag.activity.think)+'」</span></div>':'')
     +'<div class="kv"><span>钱包</span><span class="num">¥'+Math.round(ag.money)+'</span></div>'
     +'<h2 class="sec">最近的 TA</h2><ul class="log-ul">'+recent+'</ul>'
     +'<div class="row" style="margin-top:.7rem;justify-content:flex-end">'

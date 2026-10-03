@@ -4933,6 +4933,57 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   }
 }
 
+// ═══ 第 99 单·"他此刻在想什么"看得见（那些独白以前没人读）════════════════════════
+/* 病根：`setActivity` 的 `thought` **只在 logText 不为 null 时才用得上**，而"在家待着"那一支
+   logText 恒为 null ⇒ `IDLE_THOUGHTS` 那 16 条（第 97 单又添了 8 条雨天的）**一条都没人读**
+   （第 13 单的注释里写着"其调用点 logText 恒为 null、独白不上墙，故允许池尽重置"——那是当时的口径）。
+   本单把它挂到活动上（`ag.activity.think`）并在**角色详情**加一行「此刻」——不进日志墙、不占额度、不摇 rng。
+   被验的是生产源码与真值：
+     ① 结构：`setActivity` 存 `think`；角色详情那一行**只在有 think 时**才出；
+     ② 行为（真跑 40 天）：空闲拍里 `think` 100% 来自空闲池（晴池或雨池），且**墙上不多一条**；
+     ③ 渲染（抽 `openAgentDialog` 源码喂桩）：有 think ⇒ 出「此刻」那一行；没有 ⇒ 不出。 */
+{
+  const fs=require('fs'), path=require('path');
+  const src=fs.readFileSync(path.resolve(__dirname,'city-life-framework.html'),'utf8');
+  ok(/ag\.activity=\{type,label,think:\(typeof thought==='string'&&thought\)\?thought:''\};/.test(src)
+     &&/ag\.activity&&ag\.activity\.think\?'<div class="kv"><span>此刻<\/span>/.test(src),
+     '第 99 单·结构：`setActivity` 把独白存进 `ag.activity.think`；角色详情那一行只在有 think 时出');
+  {
+    const w=Sim.makeWorld(20260803), a=w.agents[0];
+    let 带=0, 空=0, 池外=0, 墙前=w.log.length, 墙后=0;
+    for(let i=0;i<40*144;i++){
+      Sim.step(w,10);
+      if(a.activity.type!=='idle') continue;
+      const t=String(a.activity.think||'');
+      if(!t) 空++;
+      else if(Sim.IDLE_THOUGHTS.indexOf(t)>=0||Sim.RAIN_IDLE_THOUGHTS.indexOf(t)>=0) 带++;
+      else 池外++;
+    }
+    墙后=w.log.filter(e=>String(e.text||'')==='在家待着').length;
+    ok(带>0&&空===0&&池外===0&&墙后===0,
+       '第 99 单·行为（40 天真跑）：空闲拍带独白 '+带+' 次（没带 '+空+'／池外 '+池外+'），'
+       +'而日志墙上一条"在家待着"都没有（'+墙后+' 条）——看得见，但不刷屏');
+  }
+  {
+    const FN=(src.match(/function openAgentDialog\(id\)\{[\s\S]*?\n\}/)||[''])[0];
+    let 逮='';
+    const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+    const PURE={ fmtStamp:t=>'D? 00:00' };
+    const traitChips=()=>'', relText=()=>'和 X · 熟（30）', recentHTML=()=>'';
+    const w=Sim.makeWorld(20260803), a=w.agents[0];
+    const fn=FN?new Function('state','esc','PURE','traitChips','relText','openDialog','$',
+      'return '+FN
+    )({ world:{ agents:[a] } }, esc, PURE, traitChips, relText, html=>{ 逮=html; }, ()=>({ addEventListener(){} })):null;
+    a.activity={ type:'idle', label:'在家待着', think:'袜子配对，永远多出一只。' };
+    const 有=fn?(fn(a.id), 逮.indexOf('此刻')>0):false;
+    a.activity={ type:'sleep', label:'回卧室睡觉' };            // 没有 think 的活动
+    const 无=fn?(fn(a.id), 逮.indexOf('此刻')>0):true;
+    ok(!!fn&&有&&!无,
+       '第 99 单·反向自查·拦得住（渲染侧，抽源码喂桩）：有独白 ⇒ 出「此刻」那一行；没有独白（睡觉这种）⇒ 不出'
+       +'（实测 '+有+'／'+无+'）');
+  }
+}
+
 // ═══ 第 98 单·居民会等你回话（第 76／77 单登记的"他只会留话，不会等你回"）══════════
 /* 被验的是生产源码与真值：
      ① 结构：留话那两处（惦记／别的时候也开口）都记一笔 `ag.waiting`；`noteStep` 每天扫一次过期；
@@ -6129,7 +6180,7 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   ok(恒绿===0,'第 66 单·闸二：`ok` 第一参数写死 true 的**读数型假断言**为 0 条（实测 '+恒绿+'；读数一律走 `读数()`）');
   // 闸三 · 反向自查登记（防整条被删）
   const 登记=['第 48 单','第 49 单','第 51 单','第 52 单','第 53 单','第 54 单','第 56 单','第 57 单',
-              '第 58 单','第 59 单','第 62 单','第 63 单','第 64 单','第 65 单','第 67 单','第 70 单','第 71 单','第 72 单','第 73 单','第 74 单','第 75 单','第 76 单','第 77 单','第 79 单','第 80 单','第 81 单','第 84 单','第 85 单','第 87 单','第 88 单','第 90 单','第 91 单','第 92 单','第 93 单','第 94 单','第 95 单','第 96 单','第 97 单','第 98 单',
+              '第 58 单','第 59 单','第 62 单','第 63 单','第 64 单','第 65 单','第 67 单','第 70 单','第 71 单','第 72 单','第 73 单','第 74 单','第 75 单','第 76 单','第 77 单','第 79 单','第 80 单','第 81 单','第 84 单','第 85 单','第 87 单','第 88 单','第 90 单','第 91 单','第 92 单','第 93 单','第 94 单','第 95 单','第 96 单','第 97 单','第 98 单','第 99 单',
               '闸四','闸五','闸十','闸十一','闸十二'];
   const 实有=[...new Set((自源.match(/(第 \d+ 单|闸[一二三四五六七八九十]+)·反向自查/g)||[])
                             .map(x=>x.replace('·反向自查','')))];
