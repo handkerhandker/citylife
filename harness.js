@@ -4933,6 +4933,67 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   }
 }
 
+// ═══ 第 100 单·气泡二期（独白也上气泡）══════════════════════════════════════
+/* 一期（第 51 单）口径是"文本＝`activity.label`"；第 99 单把独白挂到 `ag.activity.think` 之后，
+   现场页还看不到它。本单给气泡加**第二行**：第一行仍是活动名（原样、仍压 `maxChars`），
+   第二行放独白（压 `thinkChars`、墨色暗一档）。**没有独白就还是一行**——不做样子。
+   被验的是生产源码与真值（照第 51 单那套"抠 BUBBLE 段 + 假 ctx"）：
+     ① 结构：`bubbleLines` 一处定义、`sayBubble` 走它；两行时盒高随行数长；
+     ② 行为：有独白 ⇒ 两行（第一行压 maxChars、第二行压 thinkChars）；没独白／独白等于活动名 ⇒ 一行；
+        畸形输入（数字、空白、超长）⇒ 不抛错；
+     ③ 反向自查：把"没有独白就一行"那道判据掰掉 ⇒ 同一构造立刻多出第二行 ⇒ 本条当场判红。 */
+{
+  const fs=require('fs'), path=require('path');
+  const src=fs.readFileSync(path.resolve(__dirname,'city-life-framework.html'),'utf8');
+  const BUBBLE_SRC=(src.match(/\/\*BUBBLE-START\*\/[\s\S]*?\/\*BUBBLE-END\*\//)||[''])[0];
+  ok(BUBBLE_SRC.indexOf('function bubbleLines(ag)')>0&&/const 行=bubbleLines\(ag\);/.test(BUBBLE_SRC),
+     '第 100 单·结构：`bubbleLines` 一处定义、`sayBubble` 走它（一行／两行由它说了算）');
+  const 台=(mut)=>{
+    const rec={text:[]};
+    const ctx={
+      set font(v){ ctx._f=String(v); }, get font(){ return ctx._f||''; },
+      fillStyle:'', strokeStyle:'', lineWidth:1, textAlign:'', textBaseline:'',
+      measureText(s){ return {width:[...String(s)].length*13}; },
+      beginPath(){}, moveTo(){}, lineTo(){}, quadraticCurveTo(){}, closePath(){},
+      fill(){}, stroke(){}, fillRect(){}, strokeRect(){}, save(){}, restore(){},
+      fillText(s,x,y){ rec.text.push({s:String(s),x,y,fill:ctx.fillStyle}); },
+    };
+    const state={selected:'a1'};
+    const labelBlockBoxes=[];
+    const code=(mut?mut(BUBBLE_SRC):BUBBLE_SRC)+'\nreturn {BUBBLE,bubbleText,bubbleLines,sayBubble,labelBlockBoxes};';
+    const M=new Function('ctx','state','labelBlockBoxes','Object','String','Math',code)(ctx,state,labelBlockBoxes,Object,String,Math);
+    return {M,rec,state,labelBlockBoxes};
+  };
+  const 人=(id,label,think)=>({id,activity:{type:'idle',label,think}});
+  {
+    const L=台();
+    ok(L.M.bubbleLines(人('a1','在家待着','袜子配对，永远多出一只。')).length===2
+       &&L.M.bubbleLines(人('a1','在家待着')).length===1
+       &&L.M.bubbleLines(人('a1','在家待着','在家待着')).length===1
+       &&L.M.bubbleLines(人('a1','在家待着','')).length===1,
+       '第 100 单·行为：有独白 ⇒ 两行；没独白／独白与活动名相同／独白是空白 ⇒ 一行（不做样子）');
+    const 长=L.M.bubbleLines(人('a1','一二三四五六七八九十一二三四五','一二三四五六七八九十一二三四五六七八九十一二三四五'));
+    const 畸形=[L.M.bubbleLines(null),L.M.bubbleLines({activity:{label:'上班',think:123}}),
+      L.M.bubbleLines({activity:{label:'上班',think:'   '}})].map(a=>a.length).join('/');
+    ok(长[0].slice(-1)==='…'&&长[1].slice(-1)==='…'&&畸形==='0/1/1',
+       '第 100 单·行为：两行各自压自己的字数上限（'+长[0]+' ／ '+长[1]+'）；畸形输入不抛错（'+畸形+'）');
+  }
+  {
+    const A=台(); A.M.sayBubble(100,200,人('a1','在家待着','袜子配对，永远多出一只。'));
+    const B=台(); B.M.sayBubble(100,200,人('a1','在家待着'));
+    const 两= A.rec.text.length===2&&A.rec.text[0].s==='在家待着'&&A.rec.text[1].s.indexOf('袜子配对')===0;
+    const 一= B.rec.text.length===1;
+    const 高够= A.M.BUBBLE.size*2+A.M.BUBBLE.lineGap+A.M.BUBBLE.padY*2 < (200-A.rec.text[0].y+A.rec.text[1].y);
+    ok(两&&一&&高够,'第 100 单·渲染（假 ctx）：有独白画出两行（第一行＝活动名、第二行＝独白），没独白只画一行；'
+       +'盒高随行数长（两行盒高 '+ (A.M.BUBBLE.size*2+A.M.BUBBLE.lineGap+A.M.BUBBLE.padY*2) +'px）');
+  }
+  {
+    const 病=台(s=>s.replace('if(!想 || 想===主) return [主];','if(false) return [主];'));
+    ok(病.M.bubbleLines(人('a1','在家待着')).length===2,
+       '第 100 单·反向自查·拦得住：把"没有独白就一行"那道判据掰掉 ⇒ 同一构造立刻多出第二行 ⇒ 本条当场判红');
+  }
+}
+
 // ═══ 第 99 单·"他此刻在想什么"看得见（那些独白以前没人读）════════════════════════
 /* 病根：`setActivity` 的 `thought` **只在 logText 不为 null 时才用得上**，而"在家待着"那一支
    logText 恒为 null ⇒ `IDLE_THOUGHTS` 那 16 条（第 97 单又添了 8 条雨天的）**一条都没人读**
@@ -6180,7 +6241,7 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   ok(恒绿===0,'第 66 单·闸二：`ok` 第一参数写死 true 的**读数型假断言**为 0 条（实测 '+恒绿+'；读数一律走 `读数()`）');
   // 闸三 · 反向自查登记（防整条被删）
   const 登记=['第 48 单','第 49 单','第 51 单','第 52 单','第 53 单','第 54 单','第 56 单','第 57 单',
-              '第 58 单','第 59 单','第 62 单','第 63 单','第 64 单','第 65 单','第 67 单','第 70 单','第 71 单','第 72 单','第 73 单','第 74 单','第 75 单','第 76 单','第 77 单','第 79 单','第 80 单','第 81 单','第 84 单','第 85 单','第 87 单','第 88 单','第 90 单','第 91 单','第 92 单','第 93 单','第 94 单','第 95 单','第 96 单','第 97 单','第 98 单','第 99 单',
+              '第 58 单','第 59 单','第 62 单','第 63 单','第 64 单','第 65 单','第 67 单','第 70 单','第 71 单','第 72 单','第 73 单','第 74 单','第 75 单','第 76 单','第 77 单','第 79 单','第 80 单','第 81 单','第 84 单','第 85 单','第 87 单','第 88 单','第 90 单','第 91 单','第 92 单','第 93 单','第 94 单','第 95 单','第 96 单','第 97 单','第 98 单','第 99 单','第 100 单',
               '闸四','闸五','闸十','闸十一','闸十二'];
   const 实有=[...new Set((自源.match(/(第 \d+ 单|闸[一二三四五六七八九十]+)·反向自查/g)||[])
                             .map(x=>x.replace('·反向自查','')))];

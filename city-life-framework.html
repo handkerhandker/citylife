@@ -440,7 +440,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v92</span>
+<span class="num dim" id="set-build">v93</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -5220,20 +5220,36 @@ function actChip(x, yBottom, ag){
      · Nookipedia：动森的 'thought' emotion——村民会停下、头顶显示表情。
    红线：纯渲染层——零 SIM 写入、零素材、零 rng、零新增存档字段。 */
 const BUBBLE={ size:10, font:'system-ui,sans-serif', padX:6, padY:4, gap:6, maxChars:12, tail:5,
-               fill:'rgba(14,17,26,.88)', ink:'#ece5d0', edge:'rgba(236,229,208,.35)' };
+               fill:'rgba(14,17,26,.88)', ink:'#ece5d0', edge:'rgba(236,229,208,.35)',
+               /* 第 100 单·气泡二期：第二行（独白）的上限与行距、以及暗一档的墨色 */
+               thinkChars:20, lineGap:2, ink2:'rgba(236,229,208,.72)' };
 // 文本：只认 activity.label；超长截断。纯函数——门禁直接喂畸形输入（null／数字／超长）测它。
 function bubbleText(ag){
   const raw=(ag && ag.activity && typeof ag.activity.label==='string') ? ag.activity.label.trim() : '';
   if(!raw) return '';
   return raw.length>BUBBLE.maxChars ? raw.slice(0,BUBBLE.maxChars)+'…' : raw;
 }
+/* ---------- 第 100 单·气泡二期：把独白也给气泡 ----------
+   一期（第 51 单）口径是"文本＝`activity.label`"；第 99 单把独白挂到 `ag.activity.think` 之后，
+   现场页还看不到它。本单给气泡加**第二行**：第一行仍是活动名（原样、仍压 `maxChars`），
+   第二行放独白（压 `thinkChars`，墨色暗一档）。**没有独白就还是一行**——不做样子。
+   纯函数（照 `bubbleText` 先例）：门禁直接喂畸形输入测它；零 rng、零 SIM 写入、零新增字段。 */
+function bubbleLines(ag){
+  const 主=bubbleText(ag);
+  if(!主) return [];
+  const 想=(ag && ag.activity && typeof ag.activity.think==='string') ? ag.activity.think.trim() : '';
+  if(!想 || 想===主) return [主];
+  return [主, 想.length>BUBBLE.thinkChars ? 想.slice(0,BUBBLE.thinkChars)+'…' : 想];
+}
 // yBottom＝上一层的下边缘（调用处传头顶指示器的盒顶）。返回本块气泡的盒顶；没画就原样返回。
 function sayBubble(x, yBottom, ag){
   if(!state.selected || !ag || ag.id!==state.selected) return yBottom;   // 一期：只有选中者说话
-  const t=bubbleText(ag);
-  if(!t) return yBottom;
+  const 行=bubbleLines(ag);
+  if(!行.length) return yBottom;
   ctx.font=BUBBLE.size+'px '+BUBBLE.font;
-  const w=ctx.measureText(t).width+BUBBLE.padX*2, h=BUBBLE.size+BUBBLE.padY*2;
+  let w=0; for(const t of 行) w=Math.max(w, ctx.measureText(t).width);
+  w+=BUBBLE.padX*2;
+  const h=行.length*BUBBLE.size+(行.length-1)*BUBBLE.lineGap+BUBBLE.padY*2;
   const top=yBottom-BUBBLE.gap-h, l=x-w/2, r=x+w/2, rr=4, bot=top+h;
   ctx.beginPath();
   ctx.moveTo(l+rr,top);
@@ -5245,9 +5261,11 @@ function sayBubble(x, yBottom, ag){
   ctx.closePath();
   ctx.fillStyle=BUBBLE.fill; ctx.fill();
   ctx.strokeStyle=BUBBLE.edge; ctx.lineWidth=1; ctx.stroke();
-  ctx.fillStyle=BUBBLE.ink;
   ctx.textAlign='center'; ctx.textBaseline='middle';
-  ctx.fillText(t, x, top+h/2);
+  for(let i=0;i<行.length;i++){
+    ctx.fillStyle=(i===0)?BUBBLE.ink:BUBBLE.ink2;
+    ctx.fillText(行[i], x, top+BUBBLE.padY+BUBBLE.size/2+i*(BUBBLE.size+BUBBLE.lineGap));
+  }
   labelBlockBoxes.push({l, r, t:top, b:bot+BUBBLE.tail});   // 第 42 单：房间名给人物让位
   return top;
 }
