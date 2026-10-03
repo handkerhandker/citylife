@@ -4108,6 +4108,68 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   }
 }
 
+// ═══ 第 76 单·居民主动开口（把"惦记"升级成"留句话给你"）════════════════════════
+/* 被验的是生产源码与真值：
+     ① 结构：`MISS_NOTE` 四类各 ≥2 条；`missNoteOf` 一处定义、**不摇 rng**（按周号取句）；
+        `missStep` 里落一条 `type:'player' && sms:'note'`（走的就是玩家那条往来通道）；
+        回城弹窗取材表里有 `note` 桶；
+     ② 行为：构造"一周没来信" ⇒ 四人各留一句（带各自的语气），且**短信页的往来记录收得到它**
+        （第 75 单那处过滤器按 `type==='player'` 取 ⇒ 通道是通的）；给某人发过信 ⇒ 他没有留言；
+     ③ 反向自查：把留言池清空 ⇒ 留言条数塌到 0（但"惦记"那条独白仍在）⇒ 判据不是恒绿。 */
+{
+  const fs=require('fs'), path=require('path');
+  const src=fs.readFileSync(path.resolve(__dirname,'city-life-framework.html'),'utf8');
+  const KINDS=['work','clerk','trade','write'];
+  ok(KINDS.every(k=>Array.isArray(Sim.MISS_NOTE[k])&&Sim.MISS_NOTE[k].length>=2
+     &&Sim.MISS_NOTE[k].every(s=>typeof s==='string'&&s.trim().length>0)),
+     '第 76 单·结构：留言池四类齐、每类 ≥2 条（'+KINDS.map(k=>k+':'+Sim.MISS_NOTE[k].length).join(' ')+'）');
+  {
+    const FN=(src.match(/function missNoteOf\(ag, 周号\)\{[\s\S]*?\n\}/)||[''])[0];
+    ok(FN.length>0&&(src.match(/function missNoteOf\(/g)||[]).length===1&&!/rng\(|Math\.random/.test(FN),
+       '第 76 单·结构：`missNoteOf` 一处定义、按周号取句（不摇 rng）');
+  }
+  ok(/sms:'note'/.test(src)&&/\{k:'note'/.test(src),
+     '第 76 单·结构：留言走 `sms:\'note\'` 那条往来通道，且取材表里有 `note` 桶');
+  // 行为：一周没来信 ⇒ 四人各留一句；短信页往来记录收得到
+  const 跑=()=>{
+    const w=Sim.makeWorld(20260803);
+    const 周日=Sim.thisWeekTalkAt(w)-2*60;
+    w.t=周日-4*1440;
+    Sim.sendMessage(w,'a2','cheer');               // 周三给 a2 发一条 ⇒ 他不该留话
+    let 已=w.lidSeq; const 留=[]; const 惦记=[];
+    for(let i=0;i<4*144+4;i++){
+      Sim.step(w,10);
+      for(const e of w.log){
+        if(e.lid<=已) continue; 已=e.lid;
+        if(e.type==='player'&&e.sms==='note') 留.push({id:e.agent, text:e.text});
+        if(String(e.text||'').indexOf('翻到上次的短信')===0) 惦记.push(e.agent);
+      }
+    }
+    return {w, 留, 惦记};
+  };
+  const 健=跑();
+  ok(健.留.length===3&&健.留.every(x=>x.id!=='a2')&&健.留.every(x=>String(x.text).indexOf('给你留了一句：')===0),
+     '第 76 单·行为：一周没来信 ⇒ 三个没收到信的人各留一句（实测 '+健.留.length+' 条：'
+     +健.留.map(x=>x.id).join('/')+'）；收过信的 a2 **没有留言**');
+  {
+    const A=(src.match(/function phoneHistory\(w, id, 上限\)\{[\s\S]*?\n\}/)||[''])[0];
+    const 历=new Function('return '+A)()(健.w,'a1',8);
+    ok(历.length>=1&&历.some(e=>e.sms==='note'&&String(e.text).indexOf('给你留了一句：')>=0),
+       '第 76 单·通道：短信页的往来记录**收得到**这条留言（a1 名下 '+历.length+' 条，'
+       +'例：'+String(历[0]&&历[0].text)+'）');
+  }
+  ok(健.惦记.length===3,'第 76 单·两件事分开：惦记那条独白仍是 3 条（'+JSON.stringify(健.惦记)+'），与留言各自独立');
+  // 反向自查：留言池清空 ⇒ 留言 0 条，但惦记仍在
+  {
+    const 原={}; for(const k of KINDS) 原[k]=Sim.MISS_NOTE[k].slice();
+    for(const k of KINDS) Sim.MISS_NOTE[k].length=0;
+    let 病=null; try{ 病=跑(); } finally { for(const k of KINDS){ Sim.MISS_NOTE[k].length=0; 原[k].forEach(s=>Sim.MISS_NOTE[k].push(s)); } }
+    ok(病.留.length===0&&病.惦记.length===3,
+       '第 76 单·反向自查·拦得住：把留言池清空 ⇒ 留言塌到 '+病.留.length+' 条、而惦记独白仍是 '
+       +病.惦记.length+' 条 ⇒ 「四人各留一句」这条判据不是恒绿，两件事确实各管各的');
+  }
+}
+
 // ═══ 第 33 单·天色昼夜（把「现在几点」画到画面上）═════════════════════════════
 /* 被验的是生产源码原文：SKYTINT-START…SKYTINT-END 整块抠出来，在一个只记账不作画的假 ctx 上跑
    （照第 31 单 iconLab、第 32 单 chipLab 先例）。四条闸：
@@ -4851,7 +4913,7 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   ok(恒绿===0,'第 66 单·闸二：`ok` 第一参数写死 true 的**读数型假断言**为 0 条（实测 '+恒绿+'；读数一律走 `读数()`）');
   // 闸三 · 反向自查登记（防整条被删）
   const 登记=['第 48 单','第 49 单','第 51 单','第 52 单','第 53 单','第 54 单','第 56 单','第 57 单',
-              '第 58 单','第 59 单','第 62 单','第 63 单','第 64 单','第 65 单','第 67 单','第 70 单','第 71 单','第 72 单','第 73 单','第 74 单','第 75 单',
+              '第 58 单','第 59 单','第 62 单','第 63 单','第 64 单','第 65 单','第 67 单','第 70 单','第 71 单','第 72 单','第 73 单','第 74 单','第 75 单','第 76 单',
               '闸四','闸五','闸十','闸十一','闸十二'];
   const 实有=[...new Set((自源.match(/(第 \d+ 单|闸[一二三四五六七八九十]+)·反向自查/g)||[])
                             .map(x=>x.replace('·反向自查','')))];
