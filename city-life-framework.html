@@ -440,7 +440,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v85</span>
+<span class="num dim" id="set-build">v86</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -2122,6 +2122,23 @@ function relGet(ag, id){
   const R=ag&&ag.rel, r=(R&&typeof R==='object'&&!Array.isArray(R))?R[id]:null;
   return (r&&typeof r==='object'&&isFinite(r.v))?relV(r.v):0;
 }
+/* ---------- 第 93 单·欠人情改成**一队**（治第 87 单登记的那条接受项）----------
+   第 87 单只记**最后一份**：生日那天被三个人各送一份，他回头只欠最后那位一份（另两份白收）。
+   本单改成一条一条排队：**先收的先还**、**一天最多还一份**、**过期的逐条作废**（不动别人那份）。
+   旧档兼容：`giftRecv` 原来是**单个对象**——一律当成"只有一条的队"（就地包成数组，存档标签不动）。 */
+function 欠账队(ag){
+  const q=(ag&&ag.giftRecv);
+  if(!q) return [];
+  if(Array.isArray(q)) return q.filter(x=>x&&typeof x==='object'&&isFinite(x.t));
+  if(typeof q==='object'&&isFinite(q.t)) return [q];          // 旧档：单个对象 ⇒ 当一条
+  return [];
+}
+function 记欠账(寿星, 送礼人, w){
+  if(!寿星||!送礼人) return;
+  const q=欠账队(寿星);
+  q.push({ t:w.t, from:送礼人.id, fromName:送礼人.name });
+  寿星.giftRecv=q;                                            // 写回数组（旧档那一条也一并归成数组）
+}
 // 取或建记录——只在真发生"说话"时才建，不给全城凭空长表
 function relRec(ag, id){
   if(!ag.rel||typeof ag.rel!=='object'||Array.isArray(ag.rel)) ag.rel={};
@@ -2464,22 +2481,28 @@ function decide(w, ag){
      放在夜市之前：一年一次 > 每周一次（与第 62／63／64 单同一条取舍）。只占空闲那一档。 */
   if(mod>=GIFT.open && mod<GIFT.close){
     const 年=PURE.dayOf(w.t)-((PURE.dayOf(w.t)-1)%FESTIVAL.yearDays);
-    /* 第 87 单·先回礼（欠着的人情优先于送新礼）：距收下 3–13 天、同屋、对方空闲 ⇒ 当面回一份 */
-    if(ag.giftRecv && typeof ag.giftRecv==='object' && isFinite(ag.giftRecv.t)){
-      const 隔=w.t-ag.giftRecv.t;
-      if(隔>=GIFT.backMax){ delete ag.giftRecv; }                       // 过了窗口作废，不无限期惦记
-      else if(隔>=GIFT.backMin){
-        const 收=w.agents.find(o=>o.id===ag.giftRecv.from);
+    /* 第 87 单·先回礼（欠着的人情优先于送新礼）：距收下 3–13 天、同屋、对方空闲 ⇒ 当面回一份。
+       第 93 单·一条一条排队：**先收的先还、一天最多还一份**，过期的**逐条**作废（不连累别人那份）。 */
+    const 队=欠账队(ag);
+    if(队.length){
+      const 留=队.filter(x=>w.t-x.t<GIFT.backMax);                    // 过期的逐条作废
+      const 头=留.find(x=>w.t-x.t>=GIFT.backMin);                     // 先收的先还
+      if(头){
+        const 收=w.agents.find(o=>o.id===头.from);
         if(收 && 收!==ag && roomOf(收.anchor)===roomOf(ag.anchor)
            && (收.activity.type==='idle'||收.activity.type==='stroll')){
-          const 欠=ag.giftRecv; delete ag.giftRecv;
+          const 剩=留.filter(x=>x!==头);
+          if(剩.length) ag.giftRecv=剩; else delete ag.giftRecv;
           ag.money-=GIFT.back;
-          const 句='回了'+GIFT.thing+'给'+欠.fromName;
-          ag.lastGift={ t:w.t, to:欠.from, toName:欠.fromName, spent:GIFT.back, tx:句+'（¥'+GIFT.back+'）' };
+          const 句='回了'+GIFT.thing+'给'+头.fromName;
+          ag.lastGift={ t:w.t, to:头.from, toName:头.fromName, spent:GIFT.back, tx:句+'（¥'+GIFT.back+'）' };
           logAct(w,ag,句,'上次人家带了东西来，总得还一份。');
           logAct(w,收,'收下了'+ag.name+'回的'+GIFT.thing,'（这人客气。）');
           return;
         }
+      }
+      if(留.length!==队.length){                                      // 只把"作废"这件事写回去
+        if(留.length) ag.giftRecv=留; else delete ag.giftRecv;
       }
     }
     if(ag.giftYear!==年){
@@ -2496,8 +2519,8 @@ function decide(w, ag){
           tx:句+'（¥'+GIFT.cost+'）' };
         logAct(w,ag,句,'生日快乐，就不多说了。');
         logAct(w,寿星,'收下了'+ag.name+'带来的'+GIFT.thing,'（放在桌上，看着挺高兴。）');
-        /* 第 87 单：把"欠着的人情"记在收礼人身上（一天里收到多份只记最后一份——见交付件接受项） */
-        if(寿星) 寿星.giftRecv={ t:w.t, from:ag.id, fromName:ag.name };
+        /* 第 87 单：把"欠着的人情"记在收礼人身上；第 93 单：改成**排队**（收几份就欠几份） */
+        记欠账(寿星, ag, w);
         return;
       }
     }

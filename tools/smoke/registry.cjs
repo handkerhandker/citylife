@@ -19,6 +19,7 @@ const 清单 = [
   { 路径: 'tools/fest-audit/probe.cjs',       档: 1, 参数: [],                        超时: 90000, 备注: '江灯节每人每晚一盏（与上一版并排跑那一晚）' },
   { 路径: 'tools/heart-audit/probe.cjs',      档: 1, 参数: ['--天=120'],               超时: 90000, 备注: '交心（长跑里真发生几场、会不会重复）' },
   { 路径: 'tools/long-run/probe.cjs',         档: 1, 参数: ['--天=200'],               超时: 120000, 备注: '新状态耐久性（长跑不变量＋存档往返）' },
+  { 路径: 'tools/gift-audit/probe.cjs',       档: 1, 参数: [],                        超时: 90000, 备注: '欠人情排队（与上一版并排跑生日那两周）' },
   { 路径: 'tools/offline-catchup/probe.cjs',  档: 1, 参数: [],    超时: 90000, 备注: '离线补算取证' },
   { 路径: 'tools/offline-catchup/pushprobe.cjs', 档: 1, 参数: [], 超时: 90000, 备注: '回城推送判据取证' },
   { 路径: 'tools/live-walkgate/audit.mjs',    档: 2, 参数: ['{OUT}/live-walkgate'], 超时: 120000, 备注: '真页面逐帧走位' },
