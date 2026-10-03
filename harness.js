@@ -1330,8 +1330,11 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
          判据一字没松：上句仍须出自**其中一张**真池，下句仍须出自「该类别」那一组。 */
       const 开池=Sim.CHAT_FB_OPEN[kindOf[e.agent]]||[], 表=Sim.CHAT_OPEN_KIND[kindOf[e.agent]]||[];
       const 生日池=Sim.CHAT_FB_OPEN_BDAY[kindOf[e.agent]]||[];
+      /* 第 72 单：第三张开口池（夜谈话题）——那几句是**带 `{题}` 的模板**，按条目自己的日子展开后再比。 */
+      const 题面=Sim.talkTopicOnDay(PURE.dayOf(e.t));
+      const ti=(Sim.TALK_OPEN[kindOf[e.agent]]||[]).findIndex((s,i)=>Sim.talkOpenLine(kindOf[e.agent],i,题面)===m[1]);
       const oi=开池.indexOf(m[1]), bi=生日池.indexOf(m[1]);
-      const kind=oi>=0?表[oi]:(bi>=0?'bday':null);
+      const kind=oi>=0?表[oi]:(bi>=0?'bday':(ti>=0?'talk':null));
       const 组=kind?((Sim.CHAT_FB_REPLY[kindOf[e.with]]||{})[kind]):null;
       if(!kind || !Array.isArray(组) || 组.indexOf(m[2])<0){ mis++; continue; }
       // 组间零共享由上面那条结构断言保证 ⇒ 这一句「同时落在别的组」本该不可能；真出现就是有两句同文，判红
@@ -1363,8 +1366,10 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
             const 开W=kindOf[e.agent], 接W=kindOf[e.with];
             const 开池=Sim.CHAT_FB_OPEN[开W]||[], 表=Sim.CHAT_OPEN_KIND[开W]||[];
             const 生日池=Sim.CHAT_FB_OPEN_BDAY[开W]||[];      // 第 65 单：第二张开口池（生日问候）
+            const 题面=Sim.talkTopicOnDay(PURE.dayOf(e.t));   // 第 72 单：第三张开口池（夜谈话题，带 `{题}` 模板）
+            const ti=(Sim.TALK_OPEN[开W]||[]).findIndex((s,i)=>Sim.talkOpenLine(开W,i,题面)===m[1]);
             const oi=开池.indexOf(m[1]), bi=生日池.indexOf(m[1]);
-            const kind=oi>=0?表[oi]:(bi>=0?'bday':null);
+            const kind=oi>=0?表[oi]:(bi>=0?'bday':(ti>=0?'talk':null));
             if(!kind){ r.归类失败++; continue; }
             r.场数++;
             const 接表=Sim.CHAT_FB_REPLY[接W]||{};
@@ -1416,7 +1421,10 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
          生日问候一接进来就假红——正是第 46／51／56／60 单那族"闸自己硬编码旧写法"。
          判据没变（非生日那一支**必须**走 chatKindOf＋chatReplyGroup 一处定义、不许就地翻表），
          只是从"整行逐字"改成"这一行里必须出现这两个调用"。 */
-      ok(/const grp=[^\n]*chatReplyGroup\(mate\.workKind,chatKindOf\(ag\.workKind,said\)\)/.test(源),
+      /* 第 72 单再改一次：这一条**又**被"整行"咬了一口——夜谈话题接进来之后 `const grp=`
+         与 `chatReplyGroup(...)` 落在了相邻两行。判据本身没变（平常那一支必须走这两个函数），
+         只是把"同一行"放宽成"这两处相邻出现"（照第 65 单那条同族教训：闸别咬版式）。 */
+      ok(/const grp=[\s\S]{0,240}?chatReplyGroup\(mate\.workKind,chatKindOf\(ag\.workKind,said\)\)/.test(源),
         '第 48 单·源码侧：接话取组走 chatKindOf＋chatReplyGroup（一处定义），不是就地翻表');
       ok(/const back=pickV\(w,grp\.arr,mate,grp\.key\);/.test(源),
         '第 48 单·源码侧：抽签吃的正是那一组的数组与带类别后缀的键（不同数组严禁共键）');
@@ -3874,6 +3882,72 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   }
 }
 
+// ═══ 第 72 单·题面带着台词走（夜谈时聊的就是那件事）════════════════════════════
+/* 被验的是生产源码与真值：
+     ① 结构：`TALK_OPEN` 四类齐、每类 ≥2 条、**每条都带 `{题}` 占位符**；替字口径只有一处（`talkOpenLine`）；
+        `CHAT_FB_REPLY[k].talk` 四类齐（第 48 单那条"接话池齐备"会一起盯）；`CHAT_KINDS` 里有 `talk`；
+     ② 行为：24 个周日夜（3 种子 × 8 周）普查——**夜谈角上**的对话每一场都带当天题面；**别处**的对话不带；
+     ③ 反向自查：把模板里的 `{题}` 去掉（写死）⇒ 同一普查里"带题面"的场次塌到 0。 */
+{
+  const fs=require('fs'), path=require('path');
+  const src=fs.readFileSync(path.resolve(__dirname,'city-life-framework.html'),'utf8');
+  const KINDS=['work','clerk','trade','write'];
+  ok(KINDS.every(k=>Array.isArray(Sim.TALK_OPEN[k])&&Sim.TALK_OPEN[k].length>=2
+     &&Sim.TALK_OPEN[k].every(s=>s.indexOf('{题}')>=0)),
+     '第 72 单·结构：话题开口池四类齐、每类 ≥2 条、条条带 `{题}` 占位符（'
+     +KINDS.map(k=>k+':'+Sim.TALK_OPEN[k].length).join(' ')+'）');
+  ok((src.match(/function talkOpenLine\(/g)||[]).length===1
+     &&(src.match(/\.replace\('\{题\}'/g)||[]).length===1,
+     '第 72 单·结构：替字口径**只有一处**（`talkOpenLine`；全站 `.replace(\'{题}\'` 恰 1 处）');
+  ok(KINDS.every(k=>Array.isArray((Sim.CHAT_FB_REPLY[k]||{}).talk)&&Sim.CHAT_FB_REPLY[k].talk.length>=3),
+     '第 72 单·结构：话题接话组四类齐、每类 ≥3 条（'+KINDS.map(k=>k+':'+(((Sim.CHAT_FB_REPLY[k]||{}).talk)||[]).length).join(' ')+'）');
+  ok(Sim.CHAT_KINDS.indexOf('talk')>=0&&(src.match(/function talkTopicOnDay\(/g)||[]).length===1,
+     '第 72 单·结构：`CHAT_KINDS` 里有 `talk`；`talkTopicOnDay` 一处定义（门禁按日志自己的日子复算题面）');
+  // 行为普查：24 个周日夜
+  const 普查=()=>{
+    let 角上=0, 角上带题=0, 别处=0, 别处带题=0; const 例=[];
+    for(const seed of [20260803,424242,777]){
+      for(let k=0;k<8;k++){
+        const w=Sim.makeWorld(seed);
+        w.t=Sim.thisWeekTalkAt(w)+k*7*1440-10;
+        const 题=Sim.talkTopicOf(w);
+        let 已=w.lidSeq;
+        for(let i=0;i<14;i++){
+          Sim.step(w,10);
+          for(const e of w.log){
+            if(e.lid<=已) continue; 已=e.lid;
+            if(e.type!=='chat') continue;
+            const a=w.agents.find(x=>x.id===e.agent), b=w.agents.find(x=>x.id===e.with);
+            if(!a||!b) continue;
+            const 在角=(a.anchor==='plaza_talk'&&b.anchor==='plaza_talk');
+            const 带题=String(e.thought||'').indexOf(题)>=0;
+            if(在角){ 角上++; if(带题){ 角上带题++; if(例.length<2) 例.push(e.thought); } }
+            else { 别处++; if(带题) 别处带题++; }
+          }
+        }
+      }
+    }
+    return {角上,角上带题,别处,别处带题,例};
+  };
+  const 健=普查();
+  ok(健.角上>=4&&健.角上带题===健.角上,
+     '第 72 单·行为：24 个周日夜里夜谈角上发生 '+健.角上+' 场对话，**每一场**都带当天题面'
+     +'（例：'+(健.例[0]||'—')+'）');
+  ok(健.别处>0&&健.别处带题===0,
+     '第 72 单·只在夜谈角：别处 '+健.别处+' 场对话里带题面的 '+健.别处带题+' 场（应为 0）——'
+     +'题面不会跟到公寓或公司里去');
+  // 反向自查：把 `{题}` 从模板里去掉（写死）⇒ 带题面的场次应当塌到 0
+  {
+    const 原={}; for(const k of KINDS) 原[k]=Sim.TALK_OPEN[k].slice();
+    for(const k of KINDS) for(let i=0;i<Sim.TALK_OPEN[k].length;i++) Sim.TALK_OPEN[k][i]=Sim.TALK_OPEN[k][i].split('{题}').join('');
+    const 病=普查();
+    for(const k of KINDS){ Sim.TALK_OPEN[k].length=0; 原[k].forEach(s=>Sim.TALK_OPEN[k].push(s)); }
+    ok(病.角上>0&&病.角上带题===0,
+       '第 72 单·反向自查·拦得住：把 `{题}` 占位符去掉之后，角上 '+病.角上+' 场对话里带题面的塌到 '
+       +病.角上带题+' 场 ⇒ 「每一场都带题面」不是恒绿');
+  }
+}
+
 // ═══ 第 33 单·天色昼夜（把「现在几点」画到画面上）═════════════════════════════
 /* 被验的是生产源码原文：SKYTINT-START…SKYTINT-END 整块抠出来，在一个只记账不作画的假 ctx 上跑
    （照第 31 单 iconLab、第 32 单 chipLab 先例）。四条闸：
@@ -4617,7 +4691,7 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   ok(恒绿===0,'第 66 单·闸二：`ok` 第一参数写死 true 的**读数型假断言**为 0 条（实测 '+恒绿+'；读数一律走 `读数()`）');
   // 闸三 · 反向自查登记（防整条被删）
   const 登记=['第 48 单','第 49 单','第 51 单','第 52 单','第 53 单','第 54 单','第 56 单','第 57 单',
-              '第 58 单','第 59 单','第 62 单','第 63 单','第 64 单','第 65 单','第 67 单','第 70 单','第 71 单',
+              '第 58 单','第 59 单','第 62 单','第 63 单','第 64 单','第 65 单','第 67 单','第 70 单','第 71 单','第 72 单',
               '闸四','闸五','闸十','闸十一','闸十二'];
   const 实有=[...new Set((自源.match(/(第 \d+ 单|闸[一二三四五六七八九十]+)·反向自查/g)||[])
                             .map(x=>x.replace('·反向自查','')))];

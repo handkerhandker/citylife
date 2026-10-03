@@ -428,7 +428,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v69</span>
+<span class="num dim" id="set-build">v70</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -855,7 +855,9 @@ const CHAT_FB_OPEN={
 // 而"地点类"合并成一类是因为它们的回应形状相同（去／不去／那地方怎么样）。
 // 第 65 单追加第七类 `bday`（生日问候的接话组）；它的开口句另在 `CHAT_FB_OPEN_BDAY` 里，
 // 不占 `CHAT_OPEN_KIND` 那张"按人挂"的表——因为生日问候是**按日子**选的，不是按人挂的。
-const CHAT_KINDS=['eat','busy','invite','vent','view','self','bday'];
+// 第 72 单再追加第八类 `talk`（夜谈话题的接话组）：开口句在 `TALK_OPEN` 里带 `{题}` 占位符，
+// 题面按日子换 ⇒ 同样不占"按人挂"的那张表。
+const CHAT_KINDS=['eat','busy','invite','vent','view','self','bday','talk'];
 const CHAT_OPEN_KIND={
   work: ['self','vent','view', 'eat','view','invite', 'vent','self','self','view'],
   clerk:['invite','busy','eat', 'invite','vent','self', 'self','vent','vent','invite'],
@@ -875,6 +877,8 @@ const CHAT_FB_REPLY={
           '我这边就是这样，慢一点也没什么。'],
     /* 第 65 单：过生日的是他时，别人怎么接他的话（照第 48 单"按开口类别取组"那套，新开 `bday` 一类） */
     bday:['谢了。蛋糕晚上买，你那份我记着。', '收到。今天不想加班，就这一句。', '谢了。这一岁接着混。', '生日就生日。蛋糕留到晚上，白天照常。'],
+    /* 第 72 单·夜谈话题的接话：**刻意写得接得住任何题面**（不点具体物件，照第 18 单话题粒度口径） */
+    talk:['没细想过。你这么一提，我倒有点想法。', '这事想起来挺绕。先说吃住，再说别的。', '行，那就聊这个。反正坐着也是坐着。'],
     self:['我也差不多。习惯改不了，先这样。', '我懂。人各有各的毛病，我也有。', '我这种人，一忙起来就不爱说话。',
           '我这人一到晚上反而精神，白天总差点意思。'],
   },
@@ -887,6 +891,7 @@ const CHAT_FB_REPLY={
     view:['你说得对，我听着也是这个理。', '这话我信。省一点是一点嘛。', '你这么一说，我心里也亮堂了点。',
           '有道理，我听你的。'],
     bday:['谢谢你！今天我早点收工，给自己买块蛋糕！', '谢谢！你这一句比红包还甜。', '谢谢你啦！晚上我请自己吃蛋糕，谁也别拦我。', '谢谢谢谢！我今天笑得有点多，你别介意。'],
+    talk:['这个我能说一晚上！', '我早就想说了——就是没人接话。', '这个我有例子，楼下那家我就见过。'],
     self:['我也差不多，见着人就想多说两句。', '我懂我懂，我这毛病也不小。', '我也是这脾气，见不得冷场。'],
   },
   // 陆知秋（交易员）——精算、话少、直
@@ -899,6 +904,7 @@ const CHAT_FB_REPLY={
           '账怎么算都不轻松，先这么过着。'],
     view:['有道理。我这边也是按这个算的。', '认同。省下来的那部分最稳。', '对。我的账也是这么记的。'],
     bday:['收到。谢谢，我会记着。', '谢谢。今天按计划走，晚上加一项：蛋糕。', '谢了。年龄不改结论，只改日程。', '谢谢。今天这一页翻得比平时轻。'],
+    talk:['可以谈。但前提得先摆清楚。', '这个话题有意思。风险在哪儿，我说两句。', '我记着几条，一条一条说。'],
     self:['我也一样。话少归话少，心里有数。', '都这样。一天说多少话，自己心里有数。', '我这边也差不多。一天下来没几句话说。', '我也差不多。安静惯了，人也懒了。'],
   },
   // 白一鸣（自由撰稿）——文艺、自省、慢性子
@@ -912,6 +918,7 @@ const CHAT_FB_REPLY={
     view:['说得对。我也是这么想的，只是没说出来。', '这话有分量。我记下了。', '我认同。粗看是小事，细想挺要紧。',
           '你说得在理。我这边也差不多是这个看法。', '我想了想，还真是这么回事。'],
     bday:['谢谢你。这一句我要记下来，今天写得动。', '谢谢。蛋糕买了，就着黄昏吃正好。', '多谢。被人记着生日，是件稀罕事。', '谢谢。这种日子适合写点柔软的句子。'],
+    talk:['写下来的话，这事能写成一整篇。', '这题目好。我只怕说起来比写起来长。', '有意思。我先听听你们怎么说。'],
     self:['我也差不多。人一闷久了，话都变少了。', '我懂。我这边也是一天不说几句话。', '我这人也是，常常一个人坐一下午。', '我懂。安静的毛病，一时半会儿改不了。'],
   },
 };
@@ -964,6 +971,12 @@ function 生日接话组(workKind){
   const g=(CHAT_FB_REPLY[workKind]||{}).bday;
   return (Array.isArray(g)&&g.length>0) ? {key:'cb2:'+workKind, arr:g}
                                        : chatReplyGroup(workKind,'bday');
+}
+// 夜谈话题的接话组（第 72 单）：与生日那组同形，key 另开号段
+function 话题接话组(workKind){
+  const g=(CHAT_FB_REPLY[workKind]||{}).talk;
+  return (Array.isArray(g)&&g.length>0) ? {key:'tk2:'+workKind, arr:g}
+                                        : chatReplyGroup(workKind,'talk');
 }
 // —— 第 18 单·病症三：闲聊话题由代码派定（不再交给模型自选）——
 // 缘由（决策者实证，v28 线上）：七段闲聊全部围着冰箱转——酸奶／蛋炒饭／冰箱贴／速冻饺子／
@@ -1768,8 +1781,29 @@ const TALK_TOPICS=['这周的雨','楼下那家便利店','阳台上晾的东西
 /* 今晚聊什么：按**日号**取（同一晚所有人、20:00 与 22:00 两处读到的都是同一句）。
    用哈希、**不摇 rng**（照第 52 单派活那条先例：确定性、可复现，且不位移事件流的抽签）。 */
 function talkTopicOf(w){
-  const d=Math.max(0,PURE.dayOf(w.t)-1);
+  return talkTopicOnDay(PURE.dayOf(w.t));
+}
+/* 第 72 单：同一个取题函数按**日号**暴露一遍——门禁普查要按日志条目自己的日子复算题面
+   （照 `PURE.fmtStamp` 那类"一处定义、两处调用"的口径；`talkTopicOf` 只是它的世界侧入口）。 */
+function talkTopicOnDay(day){
+  const d=Math.max(0,(isFinite(day)?day:1)-1);
   return TALK_TOPICS[((d*2654435761)>>>0)%TALK_TOPICS.length];
+}
+/* 第 72 单·夜谈三期：**让题面带着台词走**。前两单给夜谈定了时间、地点与"今晚聊什么"，
+   可四人坐下后说的话仍是平常那套（随机开口／接话）——题面只是贴在日志上的一行字。
+   本单补上：**在夜谈角、且两人都坐着的时候**，开口那一句从这张"话题池"里取，
+   句子里带 `{题}` 占位符，用当场换出来的题面填（同一晚、同一句模板 ⇒ 大家聊的就是同一件事）。
+   接话照第 48 单那套走新开的 `talk` 组——那几句刻意写得**接得住任何题面**（"没细想过""我有例子"）。 */
+const TALK_OPEN={
+  work: ['{题}。这事你们怎么看？', '说说{题}吧，我先听。'],
+  clerk:['哎，{题}——这个我有话说！', '坐着也是坐着，聊聊{题}呗？'],
+  trade:['{题}。按我的看法，得先摆清楚两件事。', '{题}这事，我有个算法。'],
+  write:['{题}。这题目我喜欢。', '不如说说{题}——比干坐着强。'],
+};
+// 把模板里的 `{题}` 换成当场题面（唯一一处替换口径）
+function talkOpenLine(workKind, i, 题面){
+  const arr=TALK_OPEN[workKind]||[]; const s=arr[((i%arr.length)+arr.length)%arr.length];
+  return (typeof s==='string') ? s.replace('{题}', 题面) : '';
 }
 // 本周日 20:00（这一刻已经过了 ⇒ 顺延到下周）——照第 56 单 `nightMktStartAt` 同一套
 function nightTalkStartAt(w){
@@ -2094,9 +2128,16 @@ function decide(w, ag){
        接话照旧按类别取组——`chatKindOf` 会把问候认成 `bday` 类。抽签次数与改前**一模一样**
        （仍是一次开口 ＋ 一次接话，各消耗 1 次 rng），变的是"从哪张池里抽"。 */
     const 寿星=inBirthday(w, mate);   // 上面那个条件已经放行过它一次，这里只取同一个判据
+    /* 第 72 单·夜谈话题：**两人都坐在夜谈角**时，开口那句换成带题面的模板句（题面按日号取）。
+       优先级照旧定死：**生日问候 > 夜谈话题 > 平常那套**（人对人的事优先于对话题的事）。 */
+    const 题面=(!寿星 && ag.anchor==='plaza_talk' && mate.anchor==='plaza_talk' && inTalk(w)) ? talkTopicOf(w) : null;
     const said = 寿星 ? pickV(w,CHAT_FB_OPEN_BDAY[ag.workKind],ag,'cb:'+ag.workKind)
-                      : pickV(w,CHAT_FB_OPEN[ag.workKind],ag,'co:'+ag.workKind);
-    const grp=寿星 ? 生日接话组(mate.workKind) : chatReplyGroup(mate.workKind,chatKindOf(ag.workKind,said));
+               : (题面 ? pickV(w,TALK_OPEN[ag.workKind].map((s,i)=>talkOpenLine(ag.workKind,i,题面)),ag,'tk:'+ag.workKind)
+                       : pickV(w,CHAT_FB_OPEN[ag.workKind],ag,'co:'+ag.workKind));
+    /* 三支接话组：生日 > 夜谈话题 > 平常。写法上让**平常那一支**留在 `const grp=` 这一行里——
+       第 48 单那条源码闸（"取组必须走 chatKindOf＋chatReplyGroup 一处定义"）照旧咬得住。 */
+    const grp=(寿星 ? 生日接话组(mate.workKind)
+              : (题面 ? 话题接话组(mate.workKind) : null)) || chatReplyGroup(mate.workKind,chatKindOf(ag.workKind,said));
     const back=pickV(w,grp.arr,mate,grp.key);
     ag.flags['cw_'+mate.id]=w.t; mate.flags['cw_'+ag.id]=w.t;
     ag.activity={type:'chat',label:'和'+mate.name+'聊天'}; ag.busyUntil=w.t+20;
@@ -2904,6 +2945,7 @@ const Sim={makeWorld, step, sendMessage, sendCustomMessage, decide, MSGS, ANCHOR
   FESTIVAL, festAt, thisYearFestAt, inFestival, festivalStep,   // 第 62 单·江灯节（门禁按真值读同一份日历）
   TALK, nightTalkStartAt, inTalk, thisWeekTalkAt, talkStep,   // 第 70 单·周日夜谈（门禁按真值读）
   TALK_TOPICS, talkTopicOf,   // 第 71 单·夜谈话题（门禁按真值读：话题按日号取、不摇 rng）
+  TALK_OPEN, talkOpenLine, talkTopicOnDay,   // 第 72 单·题面带着台词走（门禁按真值读：占位符一处替换）
   BIRTHDAYS, BDAY, bdayInDays, thisYearBdayAt, bdayAt, inBirthday,   // 第 64 单·住户生日（门禁按真值读同一份日历）
   CATCHUP_MIN_PER_MIN, CATCHUP_MAX_DAYS, REFLECT_MIN, SMS_NOREPLY,
   catchUpPlan, catchUp, reflectFallback, clipTopDay,
