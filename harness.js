@@ -1396,14 +1396,18 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
       ok(病.串门>0,'第 48 单·反向自查·拦得住：把顾云帆的 view 组接歪之后，同类命中掉到 '
         +((病.同类/Math.max(1,病.场数))*100).toFixed(1)+'%（串门 '+病.串门+' 场）⇒ 这条判据不是恒绿');
     }
-    // 反向自查二：把最热那组砍到 1 条（容量低于单日峰值）⇒ 「同日零重复」必须冒红（同上，取最热组才抽得着）
+    /* 反向自查二（第 70 单改写）：**原来只砍「说自己」那一组**——那是个**靠运气**的自查：
+       它要求陆知秋在某一天里**两次抽到「说自己」这一类**，而这一类本来就不热；
+       世界一漂（第 70 单加了周日夜谈）就再没撞上，读数 0 ⇒ 假红。
+       改法照第 63／66 单那条口径：**把病态写足**——一刀把陆知秋**每一组**都砍到只剩 1 条，
+       他那天只要接两次话就必然重复（实测 8 次）。量尺一字没松，松的是"病态够不够病"。 */
     {
-      const 原=Sim.CHAT_FB_REPLY.trade.self.slice();
-      Sim.CHAT_FB_REPLY.trade.self.splice(1);
+      const 原={}; for(const k of Object.keys(Sim.CHAT_FB_REPLY.trade)) 原[k]=Sim.CHAT_FB_REPLY.trade[k].slice();
+      for(const k of Object.keys(Sim.CHAT_FB_REPLY.trade)) Sim.CHAT_FB_REPLY.trade[k].splice(1);
       const 病=闲聊普查([20260803,424242,777],30);
-      Sim.CHAT_FB_REPLY.trade.self.length=0; 原.forEach(s=>Sim.CHAT_FB_REPLY.trade.self.push(s));
-      ok(病.同日重复>0,'第 48 单·反向自查·拦得住：把陆知秋的「说自己」组砍到 1 条，同日重复冒出 '
-        +病.同日重复+' 次 ⇒ 「同日零重复」这条不是恒绿');
+      for(const k of Object.keys(原)){ Sim.CHAT_FB_REPLY.trade[k].length=0; 原[k].forEach(s=>Sim.CHAT_FB_REPLY.trade[k].push(s)); }
+      ok(病.同日重复>0,'第 48 单·反向自查·拦得住：把陆知秋**每一组**接话都砍到 1 条（病态写足）之后，'
+        +'同日重复冒出 '+病.同日重复+' 次 ⇒ 「同日零重复」这条不是恒绿');
     }
     // 源码侧：配对走的是**一处定义**（`chatKindOf` ＋ `chatReplyGroup`），且每场仍是两次抽签（rng 流不动的依据）
     {
@@ -3242,6 +3246,7 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
     ['夜市换周/开张归零', /w\.nmNext=开; w\.nmNotice=0; w\.nmCount=0;/],
     ['晨报日号', /w\.morningDay=d;/],
     ['江灯节换年归零（第 63 单补登记）', /w\.festNext=本; w\.festNotice=0; w\.festCount=0;/],
+    ['夜谈换周归零（第 70 单新立）', /w\.talkNext=本; w\.talkCount=0; w\.talkWho=\{\};/],
     ['江灯节挂灯／收场的防重键（第 63 单新立，同样是"先判后写"）', /w\.festEve!==本\)\{ w\.festEve=本;[\s\S]{0,200}w\.festAfter!==本\)\{ w\.festAfter=本;/],
     ['周账快照→清账', /const snap=weekSnapshot\(ag\);/],
     ['剪辑日切', /clipClose\(w,sh\);/],
@@ -3720,6 +3725,81 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
     ok(前===后,'第 67 单·只读不写（运行侧）：30 天的世界逐人取词一遍，序列化逐字节不变');
     ok(w3.agents.every(ag=>/^和 .+ 聊过 \d+ 次$|^还没跟谁聊过$/.test(rel(w3, ag))),
        '第 67 单·真世界里四种人都取得到词：'+w3.agents.map(ag=>ag.name+'→'+rel(w3, ag)).join('；'));
+  }
+}
+
+// ═══ 第 70 单·周日夜谈（把地图上那个「夜谈角」变成真会发生的事）════════════════
+/* 被验的是生产源码与真值：
+     ① 结构：`TALK` 表 ＋ 三个时间函数各一处定义；锚点 `plaza_talk` 在 ANCHORS 里、且**落在渲染层
+        `PLAZA_TALK` 矩形内**（这是本单新立的耦合闸：挪了矩形忘挪锚点 ⇒ 当场判红）；四个站位也在矩形内；
+     ② 世界级播报「夜谈散了…」在取材表里有桶（`talkDone`）；
+     ③ 行为（构造）：周日 20:00 起跑两小时 → 真有人去夜谈角、播报恰一条、报的**人头数**与去重人数一致；
+     ④ 反向自查：把 `TALK.p` 归零跑同一窗口 ⇒ 一个人都不去（判据不是恒绿）。 */
+{
+  const fs=require('fs'), path=require('path');
+  const src=fs.readFileSync(path.resolve(__dirname,'city-life-framework.html'),'utf8');
+  ok(/const TALK=\{ day:6, open:20\*60, close:22\*60, p:[\d.]+\s*\}/.test(src),
+     '第 70 单·结构：`TALK` 表在位（周日夜谈 20:00–22:00）');
+  ['nightTalkStartAt','inTalk','thisWeekTalkAt','talkStep'].forEach(fn=>{
+    ok((src.match(new RegExp('function '+fn+'\\(','g'))||[]).length===1,'第 70 单·结构：`'+fn+'` 一处定义');
+  });
+  // 耦合闸：锚点与站位必须在渲染层那张 PLAZA_TALK 矩形里
+  {
+    const m=/const PLAZA_TALK=\{x:(\d+), y:(\d+), w:(\d+), h:(\d+)\}/.exec(src);
+    ok(!!m,'第 70 单·构造成立：抽得到渲染层的 `PLAZA_TALK` 矩形');
+    const R=m?{x:+m[1], y:+m[2], w:+m[3], h:+m[4]}:{x:0,y:0,w:0,h:0};
+    const A=Sim.ANCHORS.plaza_talk;
+    ok(!!A && A.room==='street' && A.x>R.x && A.x<R.x+R.w && A.y>R.y && A.y<R.y+R.h,
+       '第 70 单·耦合：锚点 `plaza_talk` 落在夜谈角矩形内（锚点 '+(A?A.x+','+A.y:'—')
+       +' ∈ 矩形 x['+R.x+','+(R.x+R.w)+') y['+R.y+','+(R.y+R.h)+')）——挪矩形忘挪锚点当场判红');
+  }
+  ok(/\{k:'talkDone'/.test(src),'第 70 单·结构：散场播报在回城弹窗取材表里有一桶（talkDone）');
+  ok(/\[.stroll.,\[[^\]]*在夜谈角坐下，听人说话[^\]]*\]\]/.test(src.replace(/\s+/g,'')),
+     '第 70 单·结构：夜谈那条日志归进 `stroll` 类（不然第 21 单那条归类覆盖率闸当场判红）');
+  // 行为：周日 20:00 起跑两小时十分钟
+  const 跑周日夜谈=()=>{
+    const w=Sim.makeWorld(20260803);
+    const 本=Sim.thisWeekTalkAt(w);
+    w.t=本-10;
+    let 已=w.lidSeq, 去=[], 播=[];
+    for(let i=0;i<130;i++){
+      Sim.step(w,10);
+      for(const e of w.log){
+        if(e.lid<=已) continue; 已=e.lid;
+        const t=String(e.text||'');
+        if(t.indexOf('在夜谈角坐下')===0) 去.push(e.agent);
+        if(t.indexOf('夜谈散了')>=0) 播.push(t);
+      }
+    }
+    return {去, 播, 计数:w.talkCount|0};
+  };
+  const 健=跑周日夜谈();
+  const 人头=new Set(健.去).size;
+  /* 报数**从播报正文里读**，不读 `w.talkCount`：散场那一刻正好是"换周"的点，
+     计数器按设计当场归零（`talkStep` 里那三行），拿它跟人头比会假红（第一版就是这么栽的）。 */
+  ok(人头>=2&&健.播.length===1&&健.播[0].indexOf('坐了 '+人头+' 个人')>=0,
+     '第 70 单·行为：周日 20:00–22:00 真有人去夜谈角（'+健.去.length+' 人次／'+人头+' 个人头），'
+     +'散场播报 '+健.播.length+' 条且报的数＝人头（'+健.播[0]+'）');
+  // 反向自查：p 归零 ⇒ 同一窗口一个人都不去
+  {
+    const 原p=Sim.TALK.p; Sim.TALK.p=0;
+    let 病=null; try{ 病=跑周日夜谈(); } finally { Sim.TALK.p=原p; }
+    ok(病.去.length===0&&病.播.length===1&&病.计数===0,
+       '第 70 单·反向自查·拦得住：把 `TALK.p` 归零跑同一窗口，去的人降到 '+病.去.length
+       +' 人次（播报仍在，报的是 0 个人）⇒ 上面那条判据不是恒绿');
+  }
+  // 非周日不去（同一条判据的另一半）
+  {
+    const w=Sim.makeWorld(20260803);
+    const 周日=Sim.thisWeekTalkAt(w);
+    w.t=周日-2*1440-10;                                  // 往前两天＝周五同一时段
+    let 已=w.lidSeq, 去=0;
+    for(let i=0;i<130;i++){
+      Sim.step(w,10);
+      for(const e of w.log){ if(e.lid<=已) continue; 已=e.lid;
+        if(String(e.text||'').indexOf('在夜谈角坐下')===0) 去++; }
+    }
+    ok(去===0,'第 70 单·只在周日：把同一时段挪到周五，去夜谈角 '+去+' 人次（应为 0）');
   }
 }
 
@@ -4466,7 +4546,7 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   ok(恒绿===0,'第 66 单·闸二：`ok` 第一参数写死 true 的**读数型假断言**为 0 条（实测 '+恒绿+'；读数一律走 `读数()`）');
   // 闸三 · 反向自查登记（防整条被删）
   const 登记=['第 48 单','第 49 单','第 51 单','第 52 单','第 53 单','第 54 单','第 56 单','第 57 单',
-              '第 58 单','第 59 单','第 62 单','第 63 单','第 64 单','第 65 单','第 67 单',
+              '第 58 单','第 59 单','第 62 单','第 63 单','第 64 单','第 65 单','第 67 单','第 70 单',
               '闸四','闸五','闸十','闸十一','闸十二'];
   const 实有=[...new Set((自源.match(/(第 \d+ 单|闸[一二三四五六七八九十]+)·反向自查/g)||[])
                             .map(x=>x.replace('·反向自查','')))];
