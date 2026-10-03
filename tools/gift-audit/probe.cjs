@@ -17,6 +17,7 @@ for (const a of process.argv.slice(2)) {
   if (m) 参数[m[1]] = m[2];
 }
 const 种子表 = String(参数['种子'] || '20260803,424242').split(',').map(s => parseInt(s, 10)).filter(isFinite);
+const 自然天 = Math.max(1, parseInt(参数['自然天'] || '400', 10) || 400);
 const 上一版 = 参数['before'] || '7738b36';        // 第 92 单那一版（v85）：本单动手前的最后一版
 const 今天 = new Date().toISOString().slice(0, 10);
 const 临时根 = 参数['临时'] || (fs.existsSync('F:\\临时') ? path.join('F:\\临时', 今天) : os.tmpdir());
@@ -66,9 +67,36 @@ function 跑一段({ Sim }, seed, 天 = 16) {
   return { 寿星: 寿星.name, 送礼, 回礼, 欠账: Array.isArray(寿星.giftRecv) ? 寿星.giftRecv.length : (寿星.giftRecv ? 1 : 0) };
 }
 
-console.log('对标版本：' + 上一版 + '（上一版） ↔ 当前工作区（这一版）');
-console.log('口径：同一颗种子、同一段日子（生日当天起 16 天，四人同屋且空闲）；数收到的礼与回出去的礼\n');
+/* 自然跑：不作任何构造，只逐拍数三样——
+   ① 送出去的礼（"带了…过去给…"）；② 回礼（"回了…"）；
+   ③ **真实机会**：生日窗口里"寿星醒着 ＋ 有一个**空闲**的邻居跟他同一间屋"的拍数
+      （只看"同屋有人"会把"同事在上班"那一大堆假机会算进来——实测办公室那几个生日正是这么被高估的）。 */
+function 自然跑({ Sim }, seed, 天 = 400) {
+  const w = Sim.makeWorld(seed);
+  const 屋 = a => { const x = Sim.ANCHORS[a.anchor]; return x ? x.room : 'street'; };
+  let 送礼 = 0, 回礼 = 0, 机会 = 0;
+  for (let i = 0; i < 天 * 144; i++) {
+    const 起点 = w.lidSeq;
+    Sim.step(w, 10);
+    const mod = ((w.t % 1440) + 1440) % 1440;
+    const 寿 = w.agents.find(a => Sim.inBirthday(w, a));
+    if (寿 && mod >= Sim.GIFT.open && mod < Sim.GIFT.close
+        && 寿.activity.type !== 'sleep' && 寿.activity.type !== 'nap') {
+      if (w.agents.some(a => a !== 寿 && 屋(a) === 屋(寿) && w.t >= a.busyUntil)) 机会++;
+    }
+    for (const e of w.log) {
+      if (!(e.lid > 起点)) continue;
+      const t = String(e.text || '');
+      if (t.indexOf('带了') === 0 && t.indexOf('过去给') > 0) 送礼++;
+      if (t.indexOf('回了') === 0) 回礼++;
+    }
+  }
+  return { 送礼, 回礼, 机会 };
+}
+
+console.log('对标版本：' + 上一版 + '（上一版） ↔ 当前工作区（这一版）\n');
 let 红 = 0;
+console.log('── 甲 · 构造：生日当天起 16 天，四人同屋且空闲（验"收几份还几份"）──────────────');
 for (const seed of 种子表) {
   const a = 跑一段(旧, seed), b = 跑一段(新, seed);
   const ok = b.回礼 >= b.送礼 && b.回礼 > a.回礼;
@@ -76,7 +104,14 @@ for (const seed of 种子表) {
   console.log((ok ? ' ok : ' : ' FAIL: ') + '[' + seed + '] ' + a.寿星 + ' 过生日：收到 ' + b.送礼 + ' 份礼 ｜ 旧版回 '
     + a.回礼 + ' 笔 → 新版回 ' + b.回礼 + ' 笔（队里还剩 ' + b.欠账 + ' 条）');
 }
-console.log('');
-console.log(红 ? ('✘ ' + 红 + ' 颗种子不对——"收几份还几份"没成立') :
-  ('✔ ' + 种子表.length + ' 颗种子：新版把收到的礼**一份一份**还了回去（旧版只还最后一份）'));
+console.log('\n── 乙 · 自然跑 ' + 自然天 + ' 天：礼物这条线到底会不会发生（不作任何构造）────────────');
+for (const seed of 种子表) {
+  const a = 自然跑(旧, seed, 自然天), b = 自然跑(新, seed, 自然天);
+  const ok = b.送礼 > a.送礼;
+  if (!ok) 红++;
+  console.log((ok ? ' ok : ' : ' FAIL: ') + '[' + seed + '] 送礼：旧版 ' + a.送礼 + ' 份 → 新版 ' + b.送礼
+    + ' 份（回礼 ' + a.回礼 + ' → ' + b.回礼 + '）｜ 新版**真实机会** ' + b.机会 + ' 拍');
+}
+console.log('\n' + (红 ? ('✘ ' + 红 + ' 项不对——这条线还没接好') :
+  ('✔ 构造：新版一份一份还；自然跑：新版把"生日礼物"从"几乎不发生"拉回会发生')));
 process.exit(红 ? 1 : 0);

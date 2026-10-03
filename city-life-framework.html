@@ -440,7 +440,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v86</span>
+<span class="num dim" id="set-build">v87</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -1358,7 +1358,13 @@ function workWindow(w, ag){
   if(ag.flags && ag.flags.earlyWork) start-=30;  // 玩家短信那一记：落在饭点之后（第 22 单口径）
   const end=(ag.workKind==='clerk'?19*60 : ag.workKind==='write'?17*60 : 18*60)
           + ((周末 && wr) ? wr.end : 0);
-  return {startBase, start, lunchS, lunchE, end};
+  /* 第 94 单·**生日那天早点收工**（提前 2 小时）：寿星那天要留得出"过生日那一段"——
+     蛋糕（15:00–22:00）、礼物（15:00–22:00）、邻居道贺，都要他**在家**才碰得上。
+     契机是实测（400 天 × 3 种子）：生日礼物一共只发生 **0–2 份**——店员／白领的班排到 19:00，
+     礼物的老窗口（15:00–21:00）几乎整段落在他的上班时间里，而"收发"两边还都得同屋且空闲。
+     ⚠ 这是**早退**不是"不上班"：饭点、工时与工资一个子儿没动，只把收工提前两小时。 */
+  const 收工=inBirthday(w, ag) ? Math.max(start+60, end-120) : end;
+  return {startBase, start, lunchS, lunchE, end:收工};
 }
 /* 周末的**去处**档（第 46 单后半）——只在「没别的事可做」那一段（`decide()` 第 8 段）起作用。
    与上班时段同属一张常量区：**改周末的样子只改这里**。
@@ -2069,7 +2075,15 @@ const BDAY={ cost:12, noticeDays:3, cake:'小块奶油蛋糕', open:15*60, close
 /* 第 87 单·回礼：收了人家的东西，隔几天回一份（礼数，也是"关系是双向的"那半边）。
    口径：收到之后**第 3–13 天**、同样在 15:00–21:00、**当面**（同屋）才回；回礼比原礼轻一点（−¥6）；
    一次一份（收到时记 `ag.giftRecv`，回完即清）；**过了 13 天没回上就作废**（不无限期惦记）。 */
-const GIFT={ cost:8, back:6, open:15*60, close:21*60, thing:'一小盒点心', backMin:3*1440, backMax:13*1440 };
+/* 第 94 单·礼物窗口跟着生日蛋糕走（15:00–**22:00**）：原来到 21:00 就关，
+   而店员（沈小满）的班常常排到 21:00 —— 她一整天在收银台，礼物窗口正好在她到家前关上，
+   于是"生日礼物"这条线在自然跑里几乎不发生（400 天 × 3 种子实测：一共 0–2 份）。
+   第 64 单那块生日蛋糕本来就是 15:00–22:00，两段并齐之后"生日那一段"才是完整的一段。 */
+const GIFT={ cost:8, back:6, open:15*60, close:22*60, thing:'一小盒点心', backMin:3*1440, backMax:13*1440 };
+/* 第 94 单·收礼人**醒着就行**（不必空闲）：礼物是"当面递到手上"，对方在上班／吃饭／聊天都收得下；
+   只有睡着／小憩时不该塞东西给他。原来要求 `idle|stroll`，于是寿星在店里上班的那个生日
+   一个人都收不到礼物——这正是这条线"实现了却不发生"的主因。 */
+function 醒着(a){ return !!(a&&a.activity&&a.activity.type!=='sleep'&&a.activity.type!=='nap'); }
 /* 还有几天过生日——**按日号差算，不看时刻**（第 62 单那个"时刻开窗把当天切在外面"的坑）：
    0 ＝ 今天。这是本段唯一一处日期判据，晨报、行为、短信三处都调它。 */
 function bdayInDays(w, ag){
@@ -2490,7 +2504,7 @@ function decide(w, ag){
       if(头){
         const 收=w.agents.find(o=>o.id===头.from);
         if(收 && 收!==ag && roomOf(收.anchor)===roomOf(ag.anchor)
-           && (收.activity.type==='idle'||收.activity.type==='stroll')){
+           && 醒着(收)){
           const 剩=留.filter(x=>x!==头);
           if(剩.length) ag.giftRecv=剩; else delete ag.giftRecv;
           ag.money-=GIFT.back;
@@ -2508,7 +2522,7 @@ function decide(w, ag){
     if(ag.giftYear!==年){
       const 寿星=w.agents.find(o=>o!==ag && inBirthday(w,o)
         && roomOf(o.anchor)===roomOf(ag.anchor)
-        && (o.activity.type==='idle'||o.activity.type==='stroll'));
+        && 醒着(o));
       if(寿星){
         ag.giftYear=年;
         ag.money-=GIFT.cost;

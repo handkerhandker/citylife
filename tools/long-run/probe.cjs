@@ -44,7 +44,15 @@ function 查一天(w, d, 坏) {
         else if (!(o.rel && o.rel[a.id] && o.rel[a.id].heart)) 坏.push('旗子单边@D' + d + ' ' + a.name + '↔' + o.name);
       }
     }
-    if (a.giftRecv && (!isFinite(a.giftRecv.t) || typeof a.giftRecv.from !== 'string')) 坏.push('giftRecv 坏@D' + d + ' ' + a.name);
+    /* 第 94 单改：欠账从**单个对象**改成**队列**（第 93 单），本条不变量原来按旧形状读 `giftRecv.t`
+       ——队列一来 `t` 就是 undefined，当场判红（第 92 单那支探针自己硬编码旧写法，被抓了个正着）。
+       现在两种形状都认：数组逐条查，单个对象也当一条查。 */
+    const 欠队 = Array.isArray(a.giftRecv) ? a.giftRecv : (a.giftRecv ? [a.giftRecv] : []);
+    for (const x of 欠队) {
+      if (!x || typeof x !== 'object' || !isFinite(x.t) || typeof x.from !== 'string' || typeof x.fromName !== 'string') {
+        坏.push('giftRecv 坏@D' + d + ' ' + a.name); break;
+      }
+    }
     if (a.festLampDay !== undefined && !isFinite(a.festLampDay)) 坏.push('festLampDay 坏@D' + d + ' ' + a.name);
   }
   if (w.log.length > 400) 坏.push('日志墙越界@D' + d + ' ' + w.log.length);
