@@ -428,7 +428,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v64</span>
+<span class="num dim" id="set-build">v65</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -568,6 +568,7 @@ const MSGS=[
   {id:'cheer',label:'加油！'},
   {id:'sleep',label:'早点睡'},
   {id:'market',label:'今晚去夜市'},   // 第 57 单：夜市那晚发这条 ⇒ 他当晚必去（一次用完即清）
+  {id:'birthday',label:'生日快乐'},   // 第 64 单：生日当天发 ⇒ 专属暖话（照星露谷"生日 ×8"那条口径）
 ];
 const REACT={
   eat:  '（看了眼短信）好好好，这就去解决一顿。',
@@ -575,6 +576,8 @@ const REACT={
   cheer:'嘿，被隔空打气了。行，再撑一会儿。',
   sleep:'（打了个哈欠）也是，今晚早点睡。',
   market:'行，那我今晚去广场转一圈。',
+  birthday:'（看了看这条祝福）谢啦，收到。',
+  birthdayToday:'（盯着"生日快乐"看了两秒）……今天还真是。谢了，朋友。',
   custom:'（看了看这条陌生短信，一时没说话。）',
 };
 // —— 第 13 单挑剔：共用池扩写（配合 pickV 全城一本账）。容量口径：上墙池容量须 ≥ 全城单日抽取峰值（实测见该单 PR）；
@@ -1717,6 +1720,13 @@ function morningFacts(w){
   // 第 63 单：前一天与后一天的晨报各提一句（气氛占住三天）
   if(PURE.dayOf(w.t)===PURE.dayOf(thisYearFestAt(w))-1) 条.push('明晚是'+FESTIVAL.name+'，江边开始挂灯了。');
   if(PURE.dayOf(w.t)===PURE.dayOf(thisYearFestAt(w))+1) 条.push('昨晚的'+FESTIVAL.name+'收了，江边还留着灯影。');
+  /* 第 64 单·住户生日：提前 3 天预告 ＋ 当天提一句（照动森"公告栏提前通知 ＋ 当天公告再提"）。
+     两句都走 `morning` 这一个桶——本单**不新增世界级播报**，故取材表不用动。 */
+  for(const ag of w.agents){
+    const 差=bdayInDays(w, ag);
+    if(差===0) 条.push('今天是'+ag.name+'的生日。');
+    else if(差===BDAY.noticeDays) 条.push('再过 '+差+' 天是'+ag.name+'的生日。');
+  }
   if(wd===4){ 条.push('今晚发薪。'); 条.push('今晚有夜市——19:00 广场，别错过。'); }
   if(wd===6) 条.push('今天是街市日，广场从早上就热闹。');
   return 条;
@@ -1786,6 +1796,53 @@ function festivalStep(w){
   }
 }
 /*FESTIVAL-END*/
+/*BIRTHDAY-START*/
+/* ---------- 第 64 单·住户生日（把"年"这把尺从城市推到人）----------
+   第 62／63 单把日历尺推到"年"，但那是**城市**的节日（全城同一晚去江边）。
+   本单补上**个人**那把：四个住户各有一个生日，一年一次，只关他自己。
+
+   调研出处（2026-10-03 实测可访问）：
+     · Nookipedia·Birthday：「a notice is posted on the bulletin board **eight days before**…
+       On the day itself, Tom Nook or Isabelle **mention it in the public announcement**」
+       ⇒ 提前几天预告 ＋ **当天在例行播报里提一句**（本作对应"晨报"，不另开世界级播报）
+     · 星露谷 wiki·Friendship：「friendship points are **multiplied on their birthday (×8)**」
+       ⇒ 同一份心意，**生日当天的分量不一样**（本作落在玩家短信的反应上）
+     · 萌娘百科·星露谷物语：季节条目里逐人列「生日：4 日（肯特）」⇒ 生日**挂在日历上、按人分配**
+
+   落成（零素材、零 AI）：
+     · 四人各一个生日，散在一年里（年内第 72／158／262／330 天；避开江灯节第 45 天）
+     · 晨报：**提前 3 天**提一句 ＋ **当天**提一句——都走既有 `morning` 一个桶，不新增世界级播报
+     · 生日当天，**他本人**在空闲时段给自己买块蛋糕（−¥12，一年一次）：日志原文抄进 `ag.lastBday`，
+       剪辑层出**甲级 1.6** 一张（每人每年至多一条）
+     · 玩家短信「生日快乐」：**生日当天**发 ⇒ 专属暖话；平时发 ⇒ 普通回应（照"×8"那条口径）
+   口径：只占**空闲时间**那一档；上班／吃饭／睡觉一概不碰；生日撞上周五夜市时**生日优先**（一年一次 > 每周一次）。 */
+const BIRTHDAYS={
+  a1:{ month:6,  dayOfMonth:8  },   // 顾云帆
+  a2:{ month:3,  dayOfMonth:12 },   // 沈小满
+  a3:{ month:11, dayOfMonth:30 },   // 陆知秋
+  a4:{ month:9,  dayOfMonth:22 },   // 白一鸣
+};
+const BDAY={ cost:12, noticeDays:3, cake:'小块奶油蛋糕', open:15*60, close:22*60 };
+/* 还有几天过生日——**按日号差算，不看时刻**（第 62 单那个"时刻开窗把当天切在外面"的坑）：
+   0 ＝ 今天。这是本段唯一一处日期判据，晨报、行为、短信三处都调它。 */
+function bdayInDays(w, ag){
+  const b=BIRTHDAYS[ag && ag.id]; if(!b) return NaN;
+  const 生日内=(b.month-1)*30+b.dayOfMonth-1;                    // 生日在年内的第几天（0 起）
+  const 年内=(PURE.dayOf(w.t)-1)%FESTIVAL.yearDays;              // 今天的年内序号
+  return (生日内-年内+FESTIVAL.yearDays)%FESTIVAL.yearDays;
+}
+// 本年的那个生日（当天 09:00 的世界时间戳；"今天已过也照样算得出来"——照第 62 单 `thisYearFestAt`）
+function thisYearBdayAt(w, ag){
+  return w.t-PURE.minuteOfDay(w.t)+9*60+bdayInDays(w, ag)*1440;
+}
+// 下一个生日（本年那个已过 ⇒ 排到明年）
+function bdayAt(w, ag){
+  const 本=thisYearBdayAt(w, ag);
+  return 本>w.t ? 本 : 本+FESTIVAL.yearDays*1440;
+}
+// 今天是不是他的生日
+function inBirthday(w, ag){ return bdayInDays(w, ag)===0; }
+/*BIRTHDAY-END*/
 function decide(w, ag){
   const mod=PURE.minuteOfDay(w.t);
   const R=rhyOf(ag);          // 第 22 单·逐人作息人格（由既有特质逐条相加，见 RHY 段）
@@ -1795,7 +1852,10 @@ function decide(w, ag){
   if(ag.inbox.length){
     const m=ag.inbox.shift();
     pushLog(w,{type:'player',sms:'read',agent:ag.id,name:ag.name,msg:m.id,msgLabel:m.label,
-      text:'读到了你的短信「'+m.label+'」',thought:REACT[m.id]||REACT.custom});
+      text:'读到了你的短信「'+m.label+'」',
+      /* 第 64 单：同一份心意，**生日当天的分量不一样**（星露谷"生日 ×8"那条口径的本作映射）——
+         平时发「生日快乐」是一句普通回应，生日当天发就是专属暖话。 */
+      thought:(m.id==='birthday' ? (inBirthday(w,ag)?REACT.birthdayToday:REACT.birthday) : (REACT[m.id]||REACT.custom))});
     if(m.id==='late') ag.flags.earlyWork=true;
     if(m.id==='sleep') ag.flags.sleepEarly=true;
     if(m.id==='eat' && ag.hunger>40) ag.flags.wantEat=true;
@@ -1977,6 +2037,20 @@ function decide(w, ag){
       '在江边放了一盏灯（¥'+FESTIVAL.cost+'）');
     return;
   }
+  /* 第 64 单·生日：当天**他本人**给自己买块蛋糕（一年一次，−¥12）。
+     只占空闲那一档，且限在 15:00–22:00（下班后那一段）；撞上周五夜市时**生日优先**——
+     与第 62／63 单同一条取舍（一年一次 > 每周一次）。**不掷骰子**：他的日子，必买（可计数、可复现）。 */
+  if(inBirthday(w, ag) && mod>=BDAY.open && mod<BDAY.close){
+    const 年=PURE.dayOf(w.t)-((PURE.dayOf(w.t)-1)%FESTIVAL.yearDays);   // 年号去重（照第 62 单 `festYear` 先例）
+    if(ag.bdayYear!==年){
+      ag.bdayYear=年;
+      ag.money-=BDAY.cost;
+      ag.lastBday={ t:w.t, spent:BDAY.cost, tx:'给自己买了块蛋糕（¥'+BDAY.cost+'）' };
+      setActivity(w,ag,'market','stroll','买蛋糕',tempoDur(w,ag,40),pickV(w,STROLL_THOUGHTS,ag,'lo'),
+        '给自己买了块蛋糕（¥'+BDAY.cost+'）');
+      return;
+    }
+  }
   const 夜市率=w.weather.rain?NIGHT_MKT.pRain:NIGHT_MKT.p;          // 第 57 单：雨天打对折
   if(inNightMkt(w) && (ag.flags.wantMkt || w.rng()<夜市率)){
     delete ag.flags.wantMkt;                                        // 第 57 单：玩家发了「今晚去夜市」⇒ 这一趟必去
@@ -2062,6 +2136,7 @@ const CLIP_W={
   goal_done:2.6, goal_miss:2.8, goal_broke:2.4,   // 第 54 单·目标（一周一件的惦记事出了结果，甲级区间内）
   mkt_go:1.0,                                     // 第 57 单·去了一趟夜市（乙级弱信号：好玩，但不是"不像平常的自己"）
   fest_lamp:2.6,                                  // 第 62 单·江灯节放灯（甲级：一年一次，值得当天的卡）
+  bday_cake:2.6,                                  // 第 64 单·生日蛋糕（甲级：一年一次的个人日，与江灯节同档——"值得当天的卡"）
   sit_bad:3.0, sit_first:1.5, sit_good:1.4, sit_flat:0.6, sit_none:1.0,
   money_broke:2.6, money_debt:0.8, money_swing:1.8, money_flatpay:2.4,
   social_mute:2.2, social_all:2.4, social_burst:1.2,
@@ -2083,15 +2158,17 @@ const CLIP_LOGCAT=[
   // 「本来想做的事，眼下做不成了」这一句第 53 单漏登过，第 56 单的世界位移把它顶进了日志窗口才被抓出来。
   ['goal',  ['这周想的事','上周的日子记一笔','本来想做的事']],
   ['fest',  ['在江边放了一盏灯']],   // 第 62 单·江灯节放灯（世界级播报另在 BACK_SUM 里登记）
+  ['bday',  ['给自己买了块蛋糕']],   // 第 64 单·生日蛋糕（个人日志，不需要新桶；覆盖率闸照查）
 ];
-const CLIP_CATNAME={eat:'吃饭', work:'上班', nap:'小憩', stroll:'散步', sleep:'睡觉', chat:'闲聊', goal:'目标', fest:'放灯'};
+const CLIP_CATNAME={eat:'吃饭', work:'上班', nap:'小憩', stroll:'散步', sleep:'睡觉', chat:'闲聊', goal:'目标', fest:'放灯', bday:'生日'};
 // 丙级只数这几类。刻意不含 chat：闲聊次数已由甲级 social_burst 按同一个数出活，
 // 两级同时命中会在同一张卡上把同一句话印两遍（实测 D10 「闲聊 4 次，平常 2 次」印了两行）。
 // 也不含 idle：在家待着 logText 恒为 null、不上墙，本层「只数上了墙的事」故无从计数。
 const CLIP_FREQ_CATS=['eat','work','nap','stroll'];
 const CLIP_QCAT={sit:'work', money:'money', social:'chat', sleep:'sleep', wake:'sleep', hunger:'eat', worn:'nap', freq:'', goal:'goal',
                  mkt:'eat',    // 第 57 单：夜市那条日志（「在夜市买了份小吃」）归在 eat 类 ⇒ 摘原文就引它
-                 fest:'fest'}; // 第 62 单：放灯那条日志归在 fest 类
+                 fest:'fest',  // 第 62 单：放灯那条日志归在 fest 类
+                 bday:'bday'}; // 第 64 单：生日蛋糕那条日志归在 bday 类
 
 function clipDayOf(t){ return PURE.dayOf(t-CLIP_CUT); }     // 剪辑日：窗口＝[D 日 04:00, D+1 日 04:00)
 function clipT0(cd){ return (cd-1)*1440+CLIP_CUT; }
@@ -2209,6 +2286,12 @@ function clipSample(w,sh){
       r.festT=lf.t; r.festSpent=lf.spent|0;
       r.festTx0=(typeof lf.tx==='string')?lf.tx:'';
     }
+    // 第 64 单·生日：同上（`bdayYear` 已保证每人每年至多一条）
+    const lb=ag.lastBday;
+    if(lb && typeof lb==='object' && isFinite(lb.t) && lb.t>=t0 && lb.t<t1 && r.bdayT!==lb.t){
+      r.bdayT=lb.t; r.bdaySpent=lb.spent|0;
+      r.bdayTx0=(typeof lb.tx==='string')?lb.tx:'';
+    }
   }
 }
 
@@ -2232,6 +2315,7 @@ function clipMake(w,sh,ent,ag,sum,base){
   if(r.goalK) push('goal_'+r.goalK,{label:r.goalTx, tx:r.goalTx0},r.goalT);
   if(r.mktT) push('mkt_go',{spent:r.mktSpent, tx:r.mktTx0},r.mktT);     // 第 57 单·去夜市（每人每周至多一条）
   if(r.festT) push('fest_lamp',{spent:r.festSpent, tx:r.festTx0},r.festT);   // 第 62 单·放灯（每人每年至多一条；落笔抄录）
+  if(r.bdayT) push('bday_cake',{spent:r.bdaySpent, tx:r.bdayTx0},r.bdayT);   // 第 64 单·生日蛋糕（每人每年至多一条；落笔抄录）
   // 甲/乙 · 处境（第 17 单 ag.sit 的预留去处：事件原文不喂 AI，本页是它唯一的现身处）
   if(r.sitK){
     const v={from:r.sitFrom||'那边', tx:r.sitTx};
@@ -2301,6 +2385,7 @@ function clipItemText(it){
     case 'goal_broke': return '目标 · 中途换了：「'+v.label+'」眼下做不成';
     case 'mkt_go':     return '夜市 · 去了一趟：买了份小吃，花了 ¥'+(v.spent||0);
     case 'fest_lamp':  return '江灯节 · 放了一盏灯：花了 ¥'+(v.spent||0)+'（一年一次）';
+    case 'bday_cake':  return '生日 · 给自己买了块蛋糕：花了 ¥'+(v.spent||0)+'（一年一次）';
     case 'sit_bad':   return '处境 · 逆：'+v.from+'那边——「'+v.tx+'」';
     case 'sit_good':  return '处境 · 顺：'+v.from+'那边——「'+v.tx+'」';
     case 'sit_flat':  return '处境 · 平：'+v.from+'那边——「'+v.tx+'」';
@@ -2697,6 +2782,7 @@ const Sim={makeWorld, step, sendMessage, sendCustomMessage, decide, MSGS, ANCHOR
   NIGHT_MKT, nightMktStartAt, thisWeekMktAt, inNightMkt, nightMktStep,   // 第 56／57 单·周五夜市（门禁按真值读）
   MORNING, morningFacts, morningStep,   // 第 58 单·云港晨报（门禁按真值读同一份日历）
   FESTIVAL, festAt, thisYearFestAt, inFestival, festivalStep,   // 第 62 单·江灯节（门禁按真值读同一份日历）
+  BIRTHDAYS, BDAY, bdayInDays, thisYearBdayAt, bdayAt, inBirthday,   // 第 64 单·住户生日（门禁按真值读同一份日历）
   CATCHUP_MIN_PER_MIN, CATCHUP_MAX_DAYS, REFLECT_MIN, SMS_NOREPLY,
   catchUpPlan, catchUp, reflectFallback, clipTopDay,
   DIARY_FB, DIARY_FB_RECENT, CHAT_FB_OPEN, CHAT_FB_REPLY, pickV, pickFresh, diaryFallback,   // 第 27 单·兜底文案扩池

@@ -1932,7 +1932,13 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
        （实测 1 条）⇒ 假红。改成**搜一个仍然安静的 20 分钟窗口**：断言一字未松
        （仍要求 total===0 且文案逐字相同），松的只是"哪一段"这个前置条件。 */
     let Q=null, LQ=null, sq=null;
-    for (const [d0,m0] of [[111,14*60],[111,10*60],[111,20*60],[111,6*60],[112,14*60],[110,14*60],[113,14*60]]) {
+    /* 第 64 单补：候选窗口表**再加七个**。缘由与第 46 单那次同源——"哪 20 分钟安静"随世界漂：
+       第 64 单给 D72／D158／D262／D330 加了生日行为，rng 流从 D72 起就与上一版不同，
+       原来那七个窗口现在全是 1–3 条（实测），于是"找一个安静窗口"这个前置条件整体落空。
+       断言本身一字未松（仍是 `total===0` ＋ 文案逐字），松的只是**候选范围**。
+       新增的七个是 2026-10-03 实测为 0 条的（见 `F:\临时\2026-10-03\` 那次扫描）。 */
+    for (const [d0,m0] of [[111,14*60],[111,10*60],[111,20*60],[111,6*60],[112,14*60],[110,14*60],[113,14*60],
+                           [111,2*60],[111,4*60],[111,22*60],[112,6*60],[112,10*60],[113,6*60],[120,14*60]]) {
       const S0=scene(d0, m0, 20/60);
       if(!S0.catchup) continue;
       const L0=backLab(S0.w); L0.M.openBackPopup(S0.catchup);
@@ -3429,6 +3435,114 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
     G.festOnly=原;
     ok(早派>0,'第 63 单·反向自查·拦得住：把 `festOnly` 抹掉之后，节前也派出了 '+早派
        +' 轮（生产原文应为 0）⇒ 「只在节日周进池」这条不是恒绿');
+  }
+}
+
+// ═══ 第 64 单·住户生日（把"年"这把尺从城市推到人）════════════════════════════
+/* 被验的是生产源码与真值：
+     ① 四个住户各有一个生日（年内第 72／158／262／330 天），日期只有一处算（`bdayInDays`）；
+     ② **晨报**：生日前 3 天一句 ＋ 当天一句（都走既有 `morning` 桶，本单不新增世界级播报）；
+     ③ 生日当天**他本人**在空闲时段给自己买块蛋糕（−¥12，一年一次）——日志原文抄进 `ag.lastBday`；
+     ④ 剪辑层有 `bday_cake` 这一项（甲级 2.6，与江灯节同档）；
+     ⑤ 玩家短信「生日快乐」：生日当天发＝专属暖话，平时发＝普通回应（星露谷"生日 ×8"那条口径的本作映射）。
+   反向自查：把 a1 的生日挪到十天后 ⇒ 同一条构造里晨报那句与"买蛋糕"都**必须消失**（证明判据不是恒绿）。 */
+{
+  const fs=require('fs'), path=require('path');
+  const src=fs.readFileSync(path.resolve(__dirname,'city-life-framework.html'),'utf8');
+  const BSRC=(src.match(/const BIRTHDAYS=\{[\s\S]*?\};/)||[''])[0];
+  ok(BSRC.length>0&&(BSRC.match(/month:\d+,\s+dayOfMonth:\d+/g)||[]).length===4,
+     '第 64 单·结构：`BIRTHDAYS` 有四个人的生日（四人各一条）');
+  ['bdayInDays','thisYearBdayAt','bdayAt','inBirthday'].forEach(fn=>{
+    ok((src.match(new RegExp('function '+fn+'\\(','g'))||[]).length===1,'第 64 单·结构：`'+fn+'` 一处定义');
+  });
+  ok(/\{id:'birthday',label:'生日快乐'\}/.test(src)&&/birthdayToday:/.test(src),
+     '第 64 单·结构：短信表加了「生日快乐」，且反应表分平时／当天两句');
+  ok(/bday_cake:2\.6/.test(src)&&/bday:'bday'/.test(src)&&/\['bday',\s*\['给自己买了块蛋糕'\]\]/.test(src)
+     &&/case 'bday_cake'/.test(src),
+     '第 64 单·结构：剪辑项 `bday_cake` 齐（权重／摘原文类目／日志归类／模板文案）');
+  // 构造：a1 生日当天 07:00 起跑两天（10 分钟一拍 ⇒ 正好踩到 08:10 的晨报；跨过 04:00 的剪辑日切）
+  /* 跑一天：`起点本` 不传＝按当前生日表算；传了就用它（反向自查要在"原来的生日那天"跑，见下）。 */
+  const 跑=(起点本)=>{
+    const w=Sim.makeWorld(20260803), a=w.agents[0];
+    const 本=isFinite(起点本)?起点本:Sim.thisYearBdayAt(w,a), 日=PURE.dayOf(本);
+    w.t=本-120;
+    let 已=w.lidSeq, 晨=[], 买=0;
+    for(let i=0;i<2*144;i++){
+      Sim.step(w,10);
+      for(const e of w.log){
+        if(e.lid<=已) continue; 已=e.lid;
+        const t=String(e.text||'');
+        if(t.indexOf('云港晨报')===0) 晨.push(t);
+        if(t.indexOf('给自己买了块蛋糕')===0&&e.agent==='a1') 买++;
+      }
+    }
+    const 卡=(w.clips||[]).filter(c=>c.d===日)
+      .map(c=>(c.items||[]).filter(it=>String(it.id).indexOf('bday')===0).map(it=>Sim.clipItemText(it))).flat();
+    return {本,日,晨,买,卡,lastBday:a.lastBday};
+  };
+  const 健=跑(NaN);
+  ok(健.日===1+((Sim.BIRTHDAYS.a1.month-1)*30+Sim.BIRTHDAYS.a1.dayOfMonth-1),
+     '第 64 单·日期算得对：a1 的生日落在年内第 '+健.日+' 天（月×30＋日 一处算）');
+  ok(健.晨.filter(t=>t.indexOf('今天是顾云帆的生日')>=0).length===1,
+     '第 64 单·当天晨报恰一句（实测 '+JSON.stringify(健.晨)+'）');
+  ok(健.买===1&&健.lastBday&&健.lastBday.spent===12,
+     '第 64 单·生日当天恰买一次蛋糕（买 '+健.买+' 次；`lastBday` 记的钱数 ¥'+(健.lastBday&&健.lastBday.spent)+'）');
+  ok(健.卡.length>=1,
+     '第 64 单·当天的剪辑卡里带生日项：'+JSON.stringify(健.卡)+'（实测 6 颗种子 × 4 人＝24 次生日里 17 次上卡；'
+     +'没上卡的那些天是"当天有别人更不像平常的自己"——一天一张卡、挑一个人，属既有规则）');
+  // 提前 3 天那一句
+  {
+    const w=Sim.makeWorld(20260803), a=w.agents[0], 本=Sim.thisYearBdayAt(w,a);
+    w.t=本-3*1440-120;
+    let 已=w.lidSeq, 晨=[];
+    for(let i=0;i<144;i++){
+      Sim.step(w,10);
+      for(const e of w.log){ if(e.lid<=已) continue; 已=e.lid;
+        if(String(e.text||'').indexOf('云港晨报')===0) 晨.push(String(e.text)); }
+    }
+    ok(晨.length>=1&&晨[0].indexOf('再过 3 天是顾云帆的生日')>=0,
+       '第 64 单·提前 3 天预告（实测 '+JSON.stringify(晨)+'）');
+  }
+  // 一年一次：连跑 400 天，每人各过一次生日
+  {
+    const w=Sim.makeWorld(20260803);
+    let 已=w.lidSeq; const 买={};
+    for(let i=0;i<400*144;i++){
+      Sim.step(w,10);
+      for(const e of w.log){ if(e.lid<=已) continue; 已=e.lid;
+        if(String(e.text||'').indexOf('给自己买了块蛋糕')===0) 买[e.agent]=(买[e.agent]||0)+1; }
+    }
+    ok(Object.keys(买).length===4&&Object.values(买).every(n=>n===1),
+       '第 64 单·**一年一次**：400 天里四人各买过一次（实测 '+JSON.stringify(买)+'）');
+  }
+  // 短信：生日当天 vs 平时
+  {
+    const 发=生=>{ const w=Sim.makeWorld(20260803), a=w.agents[0];
+      const 本=Sim.thisYearBdayAt(w,a);
+      w.t=(生?本-60:本-30*1440);
+      a.inbox.push({id:'birthday',label:'生日快乐'});
+      let 已=w.lidSeq, out=[];
+      for(let i=0;i<3;i++){
+        Sim.step(w,10);
+        for(const e of w.log){ if(e.lid<=已) continue; 已=e.lid;
+          if(e.type==='player') out.push(String(e.thought||'')); }
+      }
+      return out.join('｜'); };
+    const 当天=发(true), 平时=发(false);
+    ok(当天.indexOf('今天还真是')>=0&&平时.indexOf('今天还真是')<0&&平时.length>0,
+       '第 64 单·同一句祝福，生日当天分量不一样（当天：'+当天.slice(0,24)+'… ／ 平时：'+平时.slice(0,24)+'…）');
+  }
+  // 反向自查：把生日挪到十天后 ⇒ 同一套构造里三样（晨报那句／买蛋糕／卡上项）全都不该出现
+  {
+    const 原=Sim.BIRTHDAYS.a1;
+    const 挪={ month:原.month, dayOfMonth:((原.dayOfMonth-1+10)%30)+1 };
+    if(挪.dayOfMonth<原.dayOfMonth) 挪.month=原.month+1;      // 跨月那一档也照样挪
+    Sim.BIRTHDAYS.a1=挪;
+    let 病=null;
+    try{ 病=跑(健.本); } finally { Sim.BIRTHDAYS.a1=原; }
+    ok(病.晨.filter(t=>t.indexOf('今天是顾云帆的生日')>=0).length===0&&病.买===0,
+       '第 64 单·反向自查·拦得住：把 a1 的生日挪走（改成 ' +挪.month+' 月 '+挪.dayOfMonth+' 日）之后，'
+       +'**原来的那一天**晨报那句 0 条、买蛋糕 0 次 ⇒ 上面三条不是恒绿');
   }
 }
 
