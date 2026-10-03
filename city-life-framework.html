@@ -393,6 +393,10 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
         <button class="btn small" id="set-motion" data-fx>关</button>
       </div>
       <div class="set-row">
+        <span class="lbl">提示音<small>有新的回信／留言时轻响一声（首次点击后生效）</small></span>
+        <button class="btn small" id="set-sound" data-fx>开</button>
+      </div>
+      <div class="set-row">
         <span class="lbl">像素画风<small>样板间试点：公寓真瓷砖；素材未就位时自动回落</small></span>
         <button class="btn small" id="set-pix" data-fx>开</button>
         <span class="num dim" id="set-pix-stat">—</span>
@@ -442,7 +446,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v109</span>
+<span class="num dim" id="set-build">v110</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -3878,6 +3882,7 @@ const state={
      不进世界状态（`state.world` 一个字节不动），随存档信封走（见 `saveMeta`／引导读取那两处）。 */
   phSeen:(bootMeta && isFinite(bootMeta.phSeen))?(bootMeta.phSeen|0):0,
   screen:'live',
+  soundOn:true,            // 第 124 单·提示音（默认开；与"减少动效"同口径：只活在本次会话里）
   forcedLayout:'auto',
   logStick:true,
   llm:{on:true, calls:0, pending:0, status:'待机', lastErr:'', warned:false, channel:''},
@@ -4526,14 +4531,52 @@ function 未读条数(w, 水位){
   }
   return n;
 }
+/* ---------- 第 124 单·提示音（零素材：WebAudio 现场合成；默认开、设置里可关）----------
+   出处（2026-10-03 实测，逐字摘见交付件）：
+     · 星露谷 wiki·Music（HTTP 200）：整张原声＋"按季节/地点换曲"是这部作品的听觉底色；
+     · Nookipedia·Animal Crossing: New Horizons（HTTP 200）：「received two soundtrack CDs…
+       contains all of the game's tracks」；
+     · MDN·Web Audio 最佳实践（HTTP 200）：「Create or resume context from inside a user gesture」
+       ——浏览器自动播放策略：首次点击才建 AudioContext。
+   口径：只做**一条**反馈——"他给你回话／留话"（＝未读角标从无到有或变多）时轻响一声；
+   限频 ≥4 秒一次（8× 速度下不刷屏）；浏览器不给声就静默（绝不抛错、绝不挡主循环）；
+   第一次观察不算"新到"（开页/重载不吵）。 */
+let 音频=null, 上次提示=0;
+function 音频上下文(){
+  if(音频===null){
+    try{ 音频=new (window.AudioContext||window.webkitAudioContext)(); }catch(_){ 音频=false; }
+  }
+  if(音频 && 音频.state==='suspended'){ try{ 音频.resume(); }catch(_){} }
+  return 音频||null;
+}
+['pointerdown','keydown'].forEach(ev=>window.addEventListener(ev,()=>{ 音频上下文(); },{once:true}));   // 用户手势里建上下文
+function 提示音(){
+  if(!state.soundOn) return;
+  const ac=音频上下文(); if(!ac) return;
+  const now=(typeof performance!=='undefined'&&performance.now)?performance.now():Date.now();
+  if(now-上次提示<4000) return;                     // 限频：≥4 秒一次
+  try{
+    const t0=ac.currentTime; 上次提示=now;
+    const o=ac.createOscillator(), g=ac.createGain();
+    o.type='sine';
+    o.frequency.setValueAtTime(880,t0);
+    o.frequency.setValueAtTime(1318.5,t0+0.085);
+    g.gain.setValueAtTime(0.0001,t0);
+    g.gain.exponentialRampToValueAtTime(0.045,t0+0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001,t0+0.22);
+    o.connect(g); g.connect(ac.destination); o.start(t0); o.stop(t0+0.24);
+  }catch(_){}
+}
 let 上次未读=-1;
 function refreshUnread(){
   const dot=$('#tab-dot'); if(!dot) return;
   const n=未读条数(state.world, state.phSeen);
   if(n===上次未读) return;                      // 没变就不碰 DOM（每帧都会调它）
+  const 新到=(上次未读>=0 && n>上次未读);         // 第 124 单：第一次观察不算"新到"（开页不吵）
   上次未读=n;
   dot.hidden = n<=0;
   dot.textContent = n>9?'9+':String(n);
+  if(新到) 提示音();
 }
 function sendCustom(){
   const inp=$('#ph-input');
@@ -4588,6 +4631,11 @@ $('#set-motion').addEventListener('click',()=>{
   app.classList.toggle('reduce-motion', state.reduceMotion);
 });
 if(state.reduceMotion){ $('#set-motion').textContent='开'; app.classList.add('reduce-motion'); }
+$('#set-sound').addEventListener('click',()=>{                    // 第 124 单·提示音开关
+  state.soundOn=!state.soundOn;
+  $('#set-sound').textContent=state.soundOn?'开':'关';
+  if(state.soundOn) 音频上下文();   // 按钮这一下本身就是用户手势，顺手解锁音频
+});
 
 // 城市体检：读 w.stats 只读统计，口径与 sim30.js 一致（熵/基尼由 PURE 计算）
 function renderStats(){
