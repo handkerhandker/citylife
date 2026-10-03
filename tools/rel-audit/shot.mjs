@@ -53,42 +53,80 @@ await page.goto(`http://127.0.0.1:${PORT}/city-life-framework.html`, { waitUntil
 await page.waitForTimeout(1200);
 
 // 真跑 30 天（不塞假数据），跑完点回「角色」页让渲染层重新取词
+/* 第 115 单加：这 30 天里**每天给顾云帆发一条短信**（走生产 `Sim.sendMessage`，不是塞假数据）——
+   跑完他那张卡上「和你」应该长到「熟（30）」（一天 +1）。这是玩家篇①期的真跑取证。 */
 const 读数 = await page.evaluate((天) => {
   const P = window.__pv, w = P.state.world;
-  for (let i = 0; i < 天 * 144; i++) P.Sim.step(w, 10);
+  let 发信 = 0;
+  for (let d = 1; d <= 天; d++) {
+    for (let i = 0; i < 144; i++) P.Sim.step(w, 10);
+    if (P.Sim.sendMessage(w, 'a1', 'cheer')) 发信++;
+  }
   const 边 = [];
   for (const a of w.agents) for (const id in (a.rel || {})) {
     const o = w.agents.find(x => x.id === id);
     边.push(a.name + '→' + (o ? o.name : id) + ' v=' + a.rel[id].v + ' 档=' + P.Sim.relTierName(a.rel[id].v));
   }
+  const 你 = w.agents.map(a => a.name + '：' + P.Sim.relYouGet(a) + '（' + P.Sim.relTierName(P.Sim.relYouGet(a)) + '）');
   const 角色页签 = Array.from(document.querySelectorAll('#tabbar .tab')).find(b => b.dataset.tab === 'roles');
   if (角色页签) 角色页签.click();
-  return { 天数: 天, 边: 边 };
+  return { 天数: 天, 边: 边, 你: 你, 发信: 发信 };
 }, 天);
 await page.waitForTimeout(600);
 await page.screenshot({ path: path.join(OUT, '关系A档-角色页-桌面.png') });
 
 const 行 = await page.$$eval('.rr-rel', els => els.map(e => e.textContent));
+const 你行 = await page.$$eval('.rr-you', els => els.map(e => e.textContent));   // 第 115 单·「和你」
 if (行.length) {
   const 卡 = await page.$('.rr-rel');
   const 框 = 卡 ? await 卡.boundingBox() : null;
   if (框) await page.screenshot({ path: path.join(OUT, '关系A档-角色卡-桌面.png'),
-    clip: { x: Math.max(0, 框.x - 90), y: Math.max(0, 框.y - 60), width: 460, height: 150 } });
+    clip: { x: Math.max(0, 框.x - 90), y: Math.max(0, 框.y - 60), width: 460, height: 180 } });
 }
 // 打开第一张角色详情（那一行在详情里还带"（累计 N 次来往）"）
 const 详情 = await page.$$('text=详情');
 if (详情.length) { await 详情[0].click(); await page.waitForTimeout(400);
   await page.screenshot({ path: path.join(OUT, '关系A档-角色详情-桌面.png') }); }
+// 先关掉详情弹窗（不然它的遮罩会挡住下面短信页的点击）
+{
+  const 关 = await page.$('#dialog-root [data-close]');
+  if (关) { await 关.click(); await page.waitForTimeout(250); }
+  else { await page.keyboard.press('Escape'); await page.waitForTimeout(250); }
+}
+// 第 115 单：往来记录顶上那一行「你在他心里：…」
+let 你线 = '';
+{
+  await page.evaluate(() => {
+    const 短信页 = Array.from(document.querySelectorAll('#tabbar .tab')).find(b => b.dataset.tab === 'phone');
+    if (短信页) 短信页.click();
+  });
+  await page.waitForTimeout(300);
+  const 芯片 = await page.$('#ph-agents [data-to="a1"]');
+  if (芯片) { await 芯片.click(); await page.waitForTimeout(300); }
+  const el = await page.$('.ph-you');
+  你线 = el ? (await el.textContent()) : '';
+  await page.screenshot({ path: path.join(OUT, '玩家篇-往来记录-桌面.png') });
+}
 
 const 判据 = /^和 .+ · (生疏|点头之交|熟|老友|家人一样)（\d+）$/;
 const 好 = 行.filter(t => 判据.test(t)).length;
 console.log('跑了 ' + 读数.天数 + ' 天；关系表 ' + 读数.边.length + ' 条边：');
 for (const e of 读数.边) console.log('  ' + e);
 console.log('角色页那一行（' + 行.length + ' 张卡）：' + 行.map(t => '「' + t + '」').join(' '));
+console.log('第 115 单「和你」（' + 你行.length + ' 张卡）：' + 你行.map(t => '「' + t + '」').join(' ')
+  + '；账：' + 读数.你.join('／') + '（30 天里发了 ' + 读数.发信 + ' 条）');
+console.log('往来记录那一行：' + JSON.stringify(你线));
 console.log('网络类报错 ' + 网络类.length + ' 条（只印不算：favicon／没起本地中转站）；真 JS 异常 ' + 真异常.length + ' 条');
 if (真异常.length) console.log('  真异常前三条：' + 真异常.slice(0, 3).join(' / '));
+const 判你 = /^(还没说上过话|(生疏|点头之交|熟|老友|家人一样)（\d+）)$/;
+const 你好 = 你行.filter(t => 判你.test(t)).length, 你有值 = 你行.some(t => t !== '还没说上过话');
+const 线好 = /你在他心里：(生疏|点头之交|熟|老友|家人一样)（\d+）/.test(你线);
 console.log((好 === 行.length && 好 > 0) ? ('✔ ' + 好 + '/' + 行.length + ' 张卡都印出了「和 X · 档位（值）」') :
   ('✘ 只有 ' + 好 + '/' + 行.length + ' 张卡合判据 —— 页面那一行没长对'));
+console.log((你好 === 你行.length && 你行.length > 0 && 你有值 && 线好)
+  ? ('✔ 玩家篇①期：' + 你好 + '/' + 你行.length + ' 张卡都印出了「和你」，且**至少一张有值**；往来记录顶上那行也在')
+  : ('✘ 玩家篇①期：合规 ' + 你好 + '/' + 你行.length + '，有值=' + 你有值 + '，往来记录那行=' + 线好));
 console.log('图在：' + OUT);
 await browser.close(); srv.close();
-process.exit((好 === 行.length && 好 > 0 && 真异常.length === 0) ? 0 : 1);
+process.exit((好 === 行.length && 好 > 0 && 你好 === 你行.length && 你行.length > 0 && 你有值 && 线好
+  && 真异常.length === 0) ? 0 : 1);

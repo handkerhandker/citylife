@@ -4244,8 +4244,13 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   // 抽生产原文里的两个函数，在一个小台子上跑
   const A=(src.match(/function phoneHistory\(w, id, 上限\)\{[\s\S]*?\n\}/)||[''])[0];
   const B=(src.match(/function phoneHistoryHTML\(w, id\)\{[\s\S]*?\n\}/)||[''])[0];
-  ok(A.length>0&&B.length>0,'第 75 单·构造成立：两个函数都抽得到（'+A.length+' / '+B.length+' 字符）');
-  const 台=(a,b)=>new Function('PURE','esc','return (function(){'+a+'\n'+b+'\nreturn {phoneHistory,phoneHistoryHTML};})()')(PURE, s=>String(s));
+  /* 第 115 单：`phoneHistoryHTML` 顶上多了一行"你在他心里"，它要调 `relYouText`——
+     这一门"抠源码求值"的闸就把那段**一起抠进来**，并把它的两个依赖（`relYouGet`／`relTierName`）
+     从真 `Sim` 里传进来（同源：显示层读的就是同一份账、同一张档位表）。 */
+  const C=(src.match(/function relYouText\(ag\)\{[\s\S]*?\n\}/)||[''])[0];
+  ok(A.length>0&&B.length>0&&C.length>0,'第 75 单·构造成立：三个函数都抽得到（'+A.length+' / '+B.length+' / '+C.length+' 字符）');
+  const 台=(a,b)=>new Function('PURE','esc','relYouGet','relTierName',
+    'return (function(){'+C+'\n'+a+'\n'+b+'\nreturn {phoneHistory,phoneHistoryHTML};})()')(PURE, s=>String(s), Sim.relYouGet, Sim.relTierName);
   const 健=台(A,B);
   // 行为：给 a1 发一条，跑 12 拍
   const w=Sim.makeWorld(20260803);
@@ -5319,11 +5324,11 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
     let 逮='';
     const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
     const PURE={ fmtStamp:t=>'D? 00:00' };
-    const traitChips=()=>'', relText=()=>'和 X · 熟（30）', recentHTML=()=>'';
+    const traitChips=()=>'', relText=()=>'和 X · 熟（30）', relYouText=()=>'还没说上过话', recentHTML=()=>'';
     const w=Sim.makeWorld(20260803), a=w.agents[0];
-    const fn=FN?new Function('state','esc','PURE','traitChips','relText','openDialog','$',
+    const fn=FN?new Function('state','esc','PURE','traitChips','relText','relYouText','openDialog','$',
       'return '+FN
-    )({ world:{ agents:[a] } }, esc, PURE, traitChips, relText, html=>{ 逮=html; }, ()=>({ addEventListener(){} })):null;
+    )({ world:{ agents:[a] } }, esc, PURE, traitChips, relText, relYouText, html=>{ 逮=html; }, ()=>({ addEventListener(){} })):null;
     a.activity={ type:'idle', label:'在家待着', think:'袜子配对，永远多出一只。' };
     const 有=fn?(fn(a.id), 逮.indexOf('此刻')>0):false;
     a.activity={ type:'sleep', label:'回卧室睡觉' };            // 没有 think 的活动
@@ -5387,7 +5392,9 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
     const 取史=FN2?new Function('return '+FN2)():null;
     const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
     const PURE={ fmtStamp:t=>'D'+Math.floor(t/1440)+' 00:00' };
-    const fn=(FN&&取史&&new Function('esc','PURE','phoneHistory','return '+FN)(esc, PURE, 取史))||null;
+    // 第 115 单：这一行顶上多了"你在他心里"那一句 ⇒ 把 `relYouText` 的桩一起喂进来（只补它用到的外部名字）
+    const relYouText=()=>'还没说上过话';
+    const fn=(FN&&取史&&new Function('esc','PURE','phoneHistory','relYouText','return '+FN)(esc, PURE, 取史, relYouText))||null;
     const w=Sim.makeWorld(20260803), a=w.agents[0];
     w.t=20*1440+21*60;
     const 现在=fn?fn(w,a.id):'', 等=fn?(a.waiting={t:w.t-360}, fn(w,a.id)):'',   // 6 小时前留的话 ⇒ 还在等
@@ -6244,6 +6251,91 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   }
 }
 
+// ═══ 第 115 单·关系·玩家篇①期（你在他们心里的分量：只记＋看得见）═══════════════════
+/* 被验的是生产源码与真值（方案＝`docs/规划/关系状态机_玩家篇方案_v1.md`，第 114 单）：
+     ① 结构：`REL_YOU` 一处定义；`relYouBump(` 全站 3 次（定义 1 ＋ sendMessage／sendCustomMessage 各 1）；
+        `relYouStep(w)` 2 次（定义 1 ＋ 每天 00:00 那处 1）；显示侧 `relYouText` 4 次（定义 1 ＋
+        角色卡／角色详情／往来记录各 1）；两条新日志都归 `rel` 类（覆盖率闸的先例）；
+     ② 涨：发一条 +1；**同一天连发只加一次**；生日当天「生日快乐」**+3**（自写祝福含"生日快乐"同样 +3）；
+     ③ 落：连着 3 天没消息 ⇒ 第 4 天起每天 −1、**落到本档下限就停**；第 5 天留一条"关系："日志＋锚；
+     ④ 默认路径：从不发信 ⇒ 30 天里没有一个人长出 `relYou`（不给全城凭空长表——它是"只在你发声时才存在"的账）；
+     ⑤ 反向自查：把 `REL_YOU.bump` 抹成 0 ⇒「发信会涨」判红；把 `coldLose` 抹成 0 ⇒「断联会凉」判红（跑完复原）。 */
+{
+  const fs=require('fs'), path=require('path');
+  const src=fs.readFileSync(path.resolve(__dirname,'city-life-framework.html'),'utf8');
+  ok(/const REL_YOU=\{ bump:1, bdayBump:3, coldAfter:3, coldLose:1, coldLine:5 \};/.test(src)
+     &&(src.match(/relYouBump\(/g)||[]).length===3
+     &&(src.match(/relYouStep\(w\)/g)||[]).length===2
+     &&(src.match(/relYouText\(/g)||[]).length===4,
+     '第 115 单·结构：`REL_YOU` 一处定义；`relYouBump(` 3 次（定义＋两处发信口）；`relYouStep(w)` 2 次；'
+     +'`relYouText` 4 次（定义＋角色卡＋角色详情＋往来记录）');
+  ok(Sim.clipCat({type:'act',text:'关系：和你处成了「熟」'})==='rel'
+     &&Sim.clipCat({type:'act',text:'关系：好几天没收到你的消息了'})==='rel',
+     '第 115 单·结构：两条新日志都归 `rel` 类（沿用"关系："前缀——覆盖率闸照旧管得住）');
+  const 发=(w,id,msg)=>{ w.credits=99; return Sim.sendMessage(w,id,msg); };
+  const 跑天=(w,n)=>{ for(let i=0;i<n*144;i++) Sim.step(w,10); };
+  // ── 涨 ────────────────────────────────────────────────────────────────
+  {
+    const w=Sim.makeWorld(20260803);
+    发(w,'a1','eat');
+    const 一=Sim.relYouGet(w.agents[0]);
+    发(w,'a1','cheer'); 发(w,'a1','cheer');
+    ok(一===1&&Sim.relYouGet(w.agents[0])===1,'第 115 单·涨：发一条 +1、**同一天连发只加一次**（实测 '
+       +一+' → '+Sim.relYouGet(w.agents[0])+'）');
+    跑天(w,1); 发(w,'a1','cheer');
+    ok(Sim.relYouGet(w.agents[0])===2,'第 115 单·涨：次日再发 +1（1 → '+Sim.relYouGet(w.agents[0])+'）');
+    const w2=Sim.makeWorld(20260803), b=w2.agents[0];
+    w2.t=Sim.thisYearBdayAt(w2,b)+60;
+    发(w2,'a1','birthday');
+    ok(Sim.relYouGet(b)===3,'第 115 单·涨：生日当天「生日快乐」＝ +3（实测 '+Sim.relYouGet(b)+'）');
+    const w3=Sim.makeWorld(20260803), c=w3.agents[1];
+    w3.t=Sim.thisYearBdayAt(w3,c)+60;
+    w3.credits=99; Sim.sendCustomMessage(w3,'a2','生日快乐呀');
+    ok(Sim.relYouGet(c)===3,'第 115 单·涨：**自写**祝福里带"生日快乐"、又赶上他生日 ＝ +3（实测 '+Sim.relYouGet(c)+'）');
+  }
+  // ── 落（含"落到底就停"）＋ 冷线 ────────────────────────────────────────
+  {
+    const w=Sim.makeWorld(20260803), a=w.agents[1];
+    a.relYou={v:40,day:PURE.dayOf(w.t)};                 // 老友档内（35–49）
+    跑天(w,12);
+    ok(Sim.relYouGet(a)===35,'第 115 单·落：老友 40 上断联 12 天 → '+Sim.relYouGet(a)
+       +'（第 4 天起每天 −1，**停在「老友」档底 35**；再掉不动）');
+    ok(!!a.lastYouCold&&String(a.lastYouCold.tx).indexOf('好几天没收到你的消息')>=0,
+       '第 115 单·落：断联第 5 天留一条"关系："日志＋锚（'+(a.lastYouCold&&a.lastYouCold.tx)+'）');
+    const w2=Sim.makeWorld(20260803), b=w2.agents[2];
+    b.relYou={v:12,day:PURE.dayOf(w2.t)};
+    跑天(w2,6);
+    ok(Sim.relYouGet(b)===10,'第 115 单·落：12 掉到「点头之交」档底 10 就停（实测 '+Sim.relYouGet(b)+'）');
+  }
+  // ── 默认路径：不发信不长表 ─────────────────────────────────────────────
+  {
+    const w=Sim.makeWorld(20260803);
+    跑天(w,30);
+    ok(w.agents.every(a=>a.relYou===undefined),'第 115 单·默认路径：从不发信的 30 天里没有一个人长出 `relYou`'
+       +'（这一条账只在玩家真发声时才存在 ⇒ 世界轨迹逐拍不变）');
+  }
+  // ── 反向自查 ＋ 复原 ───────────────────────────────────────────────────
+  {
+    const 原={...Sim.REL_YOU};
+    let 病1=0;
+    try{
+      Sim.REL_YOU.bump=0;
+      const w=Sim.makeWorld(20260803); 发(w,'a1','eat'); 病1=Sim.relYouGet(w.agents[0]);
+    } finally { Sim.REL_YOU.bump=原.bump; }
+    ok(!(病1===1),'第 115 单·反向自查·一：把 `REL_YOU.bump` 抹成 0 ⇒「发信会涨」当场判红（实测 '+病1+'）');
+    let 病2=99;
+    try{
+      Sim.REL_YOU.coldLose=0;
+      const w=Sim.makeWorld(20260803), a=w.agents[1];
+      a.relYou={v:40,day:PURE.dayOf(w.t)};
+      跑天(w,12); 病2=Sim.relYouGet(a);
+    } finally { Sim.REL_YOU.coldLose=原.coldLose; }
+    ok(!(病2<40),'第 115 单·反向自查·二：把 `coldLose` 抹成 0 ⇒「断联会凉」当场判红（实测仍 '+病2+'）');
+    ok(Sim.REL_YOU.bump===原.bump&&Sim.REL_YOU.coldLose===原.coldLose&&Sim.REL_YOU.bdayBump===原.bdayBump,
+       '第 115 单·复原：反向自查跑完，`REL_YOU` 四个数逐字回到 1／3／3／1／5');
+  }
+}
+
 // ═══ 第 35 单·入夜点灯（屋里亮起来）═════════════════════════════════════════
 /* 被验的是生产源码原文：SKYTINT ＋ NIGHTLAMP 两段一起抠出来求值（灯要调 skyTint，两段必须同源），
    在一个只记账的假 ctx 上跑。四条闸：
@@ -6857,7 +6949,7 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   ok(恒绿===0,'第 66 单·闸二：`ok` 第一参数写死 true 的**读数型假断言**为 0 条（实测 '+恒绿+'；读数一律走 `读数()`）');
   // 闸三 · 反向自查登记（防整条被删）
   const 登记=['第 48 单','第 49 单','第 51 单','第 52 单','第 53 单','第 54 单','第 56 单','第 57 单',
-              '第 58 单','第 59 单','第 62 单','第 63 单','第 64 单','第 65 单','第 67 单','第 70 单','第 71 单','第 72 单','第 73 单','第 74 单','第 75 单','第 76 单','第 77 单','第 79 单','第 80 单','第 81 单','第 84 单','第 85 单','第 87 单','第 88 单','第 90 单','第 91 单','第 92 单','第 93 单','第 94 单','第 95 单','第 96 单','第 97 单','第 98 单','第 99 单','第 100 单','第 102 单','第 103 单','第 106 单','第 107 单','第 109 单','第 110 单','第 111 单','第 112 单','第 113 单',
+              '第 58 单','第 59 单','第 62 单','第 63 单','第 64 单','第 65 单','第 67 单','第 70 单','第 71 单','第 72 单','第 73 单','第 74 单','第 75 单','第 76 单','第 77 单','第 79 单','第 80 单','第 81 单','第 84 单','第 85 单','第 87 单','第 88 单','第 90 单','第 91 单','第 92 单','第 93 单','第 94 单','第 95 单','第 96 单','第 97 单','第 98 单','第 99 单','第 100 单','第 102 单','第 103 单','第 106 单','第 107 单','第 109 单','第 110 单','第 111 单','第 112 单','第 113 单','第 115 单',
               '闸四','闸五','闸十','闸十一','闸十二'];
   const 实有=[...new Set((自源.match(/(第 \d+ 单|闸[一二三四五六七八九十]+)·反向自查/g)||[])
                             .map(x=>x.replace('·反向自查','')))];

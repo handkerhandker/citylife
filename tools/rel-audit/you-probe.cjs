@@ -1,0 +1,71 @@
+// 第 115 单·玩家篇①期探针（只读诊断；进冒烟档 1，不进 gate.yml）
+//
+// 它量的是**你在他们心里的分量**（`ag.relYou`）在三种玩家节奏下怎么走：
+//   A 每天一条 ／ B 隔天一条 ／ C 整月不发（然后回头看掉档）
+// 判据（退出码）：① 发一条 +1；② 同一天只加一次；③ 生日当天那句 +3；④ 连着 3 天没信第 4 天起
+// 每天 −1、**落到本档下限就停**；⑤ 默认（从不发信）不给任何人凭空建账。五条全绿才退 0。
+// 用法：node tools/rel-audit/you-probe.cjs
+const path = require('path');
+const { Sim, PURE } = require(path.resolve(__dirname, '../../app.js'));
+
+const 跑天 = (w, n) => { for (let i = 0; i < n * 144; i++) Sim.step(w, 10); };
+const 档 = a => Sim.relYouGet(a) + '(' + Sim.relTierName(Sim.relYouGet(a)) + ')';
+const 发 = (w, id, msg) => { w.credits = 99; return Sim.sendMessage(w, id, msg); };   // 探针要点满额度（世界每天只给 3 封）
+let 红 = 0;
+const ok = (好, 话) => { console.log((好 ? ' ok : ' : ' FAIL: ') + 话); if (!好) 红++; };
+
+// ① 每天一条：四人各 +1/天
+{
+  const w = Sim.makeWorld(20260803);
+  const 天 = [1, 2, 3].map(() => { w.agents.forEach(a => 发(w, a.id, 'cheer')); 跑天(w, 1); return w.agents.map(a => Sim.relYouGet(a)); });
+  ok(天[0].every(v => v === 1) && 天[2].every(v => v === 3),
+    'A·每天一条：四人三天后都到 3（实测 ' + 天[2].join('/') + '）');
+  const 前=Sim.relYouGet(w.agents[0]);
+  发(w, 'a1', 'cheer'); 发(w, 'a1', 'cheer');
+  ok(Sim.relYouGet(w.agents[0])===前+1,
+    '② 同一天连发两条只加一次（' + 前 + ' → ' + Sim.relYouGet(w.agents[0]) + '）');
+}
+// ③ 生日当天那句 +3
+{
+  const w = Sim.makeWorld(20260803), a = w.agents[0];
+  w.t = Sim.thisYearBdayAt(w, a) + 60;
+  发(w, 'a1', 'birthday');
+  ok(Sim.relYouGet(a) === 3, '③ 生日当天发「生日快乐」＝ +3（实测 ' + Sim.relYouGet(a) + '）');
+  发(w, 'a1', 'birthday');
+  ok(Sim.relYouGet(a) === 3, '③ 同日再发不加（仍是 ' + Sim.relYouGet(a) + '）');
+}
+// ④ 隔天一条 / 整月不发：掉档与下限
+{
+  const w = Sim.makeWorld(20260803), a = w.agents[1];
+  a.relYou = { v: 12, day: PURE.dayOf(w.t) };            // 12＝「点头之交」档内（10–19）
+  跑天(w, 6);                                            // 断联 6 天：第 4 天起每天 −1，撞到本档下限就停
+  ok(Sim.relYouGet(a) === 10, '④ 断联 6 天：12 → ' + Sim.relYouGet(a) + '（第 4 天起每天 −1，**停在「点头之交」档底 10**）');
+  const 锚 = a.lastYouCold;
+  ok(!!锚 && String(锚.tx).indexOf('好几天没收到你的消息') >= 0, '④ 断联第 5 天留一条"关系："日志（锚：' + (锚 && 锚.tx) + '）');
+  a.relYou = { v: 40, day: PURE.dayOf(w.t) };            // 40＝「老友」档内（35–49）
+  跑天(w, 12);
+  ok(Sim.relYouGet(a) === 35, '④ 老友 40 上断联 12 天 → ' + Sim.relYouGet(a) + '（停在「老友」档底 35，不掉穿）');
+  a.relYou = { v: 20, day: PURE.dayOf(w.t) - 10 };       // 熟档下限 20
+  跑天(w, 10);
+  ok(Sim.relYouGet(a) === 20, '④ 已在档底（熟 20）：断联 10 天仍是 ' + Sim.relYouGet(a) + '（一次都不掉）');
+}
+// ⑤ 默认路径：从不发信，谁都不该长出账
+{
+  const w = Sim.makeWorld(20260803);
+  跑天(w, 30);
+  const 有账 = w.agents.filter(a => a.relYou !== undefined).length;
+  ok(有账 === 0, '⑤ 默认路径（从不发信）30 天：长出 `relYou` 的人 ' + 有账 + ' 个（应为 0——不给全城凭空长表）');
+}
+// 轨迹总览（给人看的）
+{
+  const w = Sim.makeWorld(20260803);
+  const 线 = [];
+  for (let d = 1; d <= 12; d++) {
+    if (d % 2 === 1) Sim.sendMessage(w, 'a1', 'cheer');           // 隔天一条
+    跑天(w, 1);
+    线.push('D' + d + ' ' + 档(w.agents[0]));
+  }
+  console.log('轨迹（隔天一条给顾云帆）：' + 线.join(' | '));
+}
+console.log(红 ? ('✘ ' + 红 + ' 条判据不过') : '✔ 玩家篇①期：涨／落／下限／一天一次／默认不长表——五条全绿');
+process.exit(红 ? 1 : 0);

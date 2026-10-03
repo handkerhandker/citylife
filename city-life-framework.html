@@ -442,7 +442,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v101</span>
+<span class="num dim" id="set-build">v102</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -2280,6 +2280,60 @@ function relStep(w){
     }
   }
 }
+/* ---------- 第 115 单·关系·玩家篇①期：你在他们心里的分量（只记，不改行为）----------
+   方案＝`docs/规划/关系状态机_玩家篇方案_v1.md`（第 114 单·只出方案）。
+   出处（**2026-10-03 实测 HTTP 200**）：星露谷 wiki·Friendship「Each day, not talking to a villager will
+   slightly decrease their friendship…」＋「…multiplied on their birthday (×8)」；Nookipedia·Friendship
+   「+1 point — speaking to the villager for the first time each day」——★这两条本来就是**玩家↔村民**的口径，
+   第 88 单把它们移植到了住户之间；本单把它**接回原处**。
+
+   ①期只做"记下来 ＋ 看得见"（照第 67 单关系一期那条边界）：**没有任何 `decide()` 读它**。
+   口径（一处定义，全在下面这张表里）：
+     · `ag.relYou={v,day}`——每位住户一条；**只在玩家真发过消息时才建**（不给全城凭空长表，照 `relRec` 先例）；
+     · 涨：那天**第一次**收到你的消息 **+1**；那一条正好是「生日快乐」而他那天生日 **+3**（一天只记一次）；
+     · 落：连着 **3 天**没收到你的消息 ⇒ 第 4 天起每天 **−1**，**落到本档下限就停**；第 5 天留一条"关系："日志；
+     · 上限 `REL.cap`（60）、档位沿用**同一张** `REL_TIERS`。 */
+const REL_YOU={ bump:1, bdayBump:3, coldAfter:3, coldLose:1, coldLine:5 };   // 与 REL 同形：一处定义、可整体调
+function relYouOf(ag){
+  if(!ag.relYou||typeof ag.relYou!=='object'||Array.isArray(ag.relYou)) ag.relYou={v:0,day:0};
+  if(!isFinite(ag.relYou.v)) ag.relYou.v=0;
+  if(!isFinite(ag.relYou.day)) ag.relYou.day=0;
+  return ag.relYou;
+}
+// 只取不建：没记过账的人一律当 0（照 `relGet` 先例）
+function relYouGet(ag){
+  const r=ag&&ag.relYou;
+  return (r&&typeof r==='object'&&!Array.isArray(r)&&isFinite(r.v))?relV(r.v):0;
+}
+// 玩家发来一条消息（`warm`＝那天正好是他的生日、且这条是「生日快乐」）
+function relYouBump(w, ag, warm){
+  const d=PURE.dayOf(w.t);
+  const r=relYouOf(ag);
+  if(r.day===d) return;                        // 一天只记一次（动森口径）
+  const 旧底=relTier(r.v).lo;
+  r.v=relV(r.v+(warm?REL_YOU.bdayBump:REL_YOU.bump)); r.day=d;
+  if(relTier(r.v).lo>旧底){
+    const 句='关系：和你处成了「'+relTierName(r.v)+'」';
+    ag.lastRelYou={ t:w.t, tier:relTierName(r.v), v:relV(r.v), tx:句 };
+    logAct(w, ag, 句, '有人记着，日子就不一样。');
+  }
+}
+// 每天 00:00：连着几天没收到你的消息就凉（照 `relStep` 同一套数、同一张档位表）
+function relYouStep(w){
+  const d=PURE.dayOf(w.t);
+  for(const ag of w.agents){
+    const r=ag.relYou; if(!r||typeof r!=='object'||Array.isArray(r)||!isFinite(r.v)||!isFinite(r.day)) continue;
+    const 隔=d-r.day;
+    if(隔<=REL_YOU.coldAfter) continue;
+    const 底=relTier(r.v).lo;
+    if(r.v>底) r.v=Math.max(底, relV(r.v)-REL_YOU.coldLose);
+    if(隔===REL_YOU.coldLine){
+      const 句='关系：好几天没收到你的消息了';
+      ag.lastYouCold={ t:w.t, tx:句 };
+      logAct(w, ag, 句, '（手机安安静静的。）');
+    }
+  }
+}
 /* ---------- 第 91 单·交心（照星露谷的 heart events）----------
    出处（**本单复核：2026-10-03 实测 HTTP 200**，整句逐字摘）：
      「As friendships deepen, the villagers' dialogue lines become more friendly, cut-scenes called
@@ -3373,6 +3427,7 @@ function advance10(w){
     w.credits=3; w.sentToday=[];
     logSys(w,'新的一天。短信额度已重置（✉×3）。');
     relStep(w);       // 第 88 单·关系回落（每天 00:00 一次；连着 3 天没说话才掉，落到本档下限停）
+    relYouStep(w);    // 第 115 单·玩家篇：连着 3 天没收到你的消息就凉（同一套数；没人发过信时一次都不写）
   }
   const day=PURE.dayOf(w.t);
   if(mod===8*60 && day%30===2 && w.rentPaidDay!==day){       // 每月 2 号交租
@@ -3448,6 +3503,7 @@ function sendMessage(w, agentId, msgId){
   const m=MSGS.find(x=>x.id===msgId);
   if(!ag||!m) return false;
   w.credits--; ag.inbox.push(m);
+  relYouBump(w, ag, m.id==='birthday'&&inBirthday(w,ag));   // 第 115 单·玩家篇①期：你在他心里 +1（生日当天那句 +3）
   w.sentToday.push({to:ag.name,label:m.label,t:w.t});
   pushLog(w,{type:'player',sms:'out',name:'你',text:'给'+ag.name+'发了短信「'+m.label+'」',thought:'剩余 ✉×'+w.credits});
   return true;
@@ -3458,6 +3514,7 @@ function sendCustomMessage(w, agentId, text){
   const t=String(text||'').replace(/\s+/g,' ').trim().slice(0,60);
   if(!ag||!t) return false;
   w.credits--; ag.inbox.push({id:'custom', label:t});
+  relYouBump(w, ag, t.indexOf('生日快乐')>=0&&inBirthday(w,ag));   // 第 115 单：自写的祝福也算（同样一天只记一次）
   w.sentToday.push({to:ag.name,label:t,t:w.t});
   pushLog(w,{type:'player',sms:'out',name:'你',text:'给'+ag.name+'发了短信「'+t+'」',thought:'剩余 ✉×'+w.credits});
   return true;
@@ -3610,6 +3667,7 @@ const Sim={makeWorld, step, sendMessage, sendCustomMessage, decide, MSGS, ANCHOR
   REL_CHAT_MUL, 熟缘,   // 第 107 单·B 档②（门禁按真值读：档位系数一处定义）
   BDAY_CO, 陪过,   // 第 110 单·生日有人陪（门禁按真值读：时长与独白一处定义、一年一对人一次）
   SEASON_OUT, seasonIdx, seasonOutMul,   // 第 113 单·四季行为二期（门禁按真值读：因子表一处定义＋三支调用）
+  REL_YOU, relYouOf, relYouGet, relYouBump, relYouStep,   // 第 115 单·玩家篇①期（门禁按真值读：涨落一处定义）
   HEART, heartMate,   // 第 91 单·交心（门禁按真值读：门槛与时长一处定义）
   RAIN_STROLL_THOUGHTS, RAIN_IDLE_THOUGHTS, 天气词,   // 第 97 单·雨天的独白（门禁按真值读同一份池）
   IDLE_THOUGHTS, STROLL_THOUGHTS,                     // 第 97 单：两张基础池也一并导出（门禁要按真值比对"串没串池"）
@@ -4153,6 +4211,16 @@ function relText(w, ag){
   const v=relGet(ag, mate.id);
   return '和 '+mate.name+' · '+relTierName(v)+'（'+v+'）';
 }
+/* ---------- 第 115 单·玩家篇①期：把"你在他心里"摆出来 ----------
+   与 `relText`（他和谁最常来往）是**两条不同的账**，分开说、不混着写：
+     · `relText` 读的是 `w.stats.pair`（他说了多少话，跟谁）；
+     · `relYouText` 读的是 `ag.relYou`（**你**在他那儿的分量，0–60，涨落见 SIM 段）。
+   空账照实说"还没说上过话"（照第 67 单"空账照实说"先例）。 */
+function relYouText(ag){
+  const v=relYouGet(ag);
+  if(!(v>0)) return '还没说上过话';
+  return relTierName(v)+'（'+v+'）';
+}
 /* ---------- 第 79 单·云港日历（把"接下来会发生什么"摆出来）----------
    出处（2026-10-03 实测可访问）：星露谷 wiki·Festivals／Birthdays——村民的生日与节日都挂在**日历**上，
    玩家靠"看日历"安排；Nookipedia·Event 同理（动森的公告栏提前贴出活动）。
@@ -4201,6 +4269,7 @@ function buildRoles(){
     +'<div class="kv"><span>目标</span><span class="rr-goal"></span></div>'
     +'<div class="kv"><span>上周</span><span class="rr-mem"></span></div>'
     +'<div class="kv"><span>关系</span><span class="rr-rel"></span></div>'
+    +'<div class="kv"><span>和你</span><span class="rr-you"></span></div>'
     +'<div class="kv"><span>正在</span><span class="rr-act"></span></div>'
     +'<div class="row" style="margin-top:.4rem"><span class="faint" style="font-size:.72rem">饱食</span><span class="bar"><i class="rr-h"></i></span></div>'
     +'<div class="row" style="margin-top:.25rem"><span class="faint" style="font-size:.72rem">体力</span><span class="bar"><i class="rr-e" style="background:var(--blue)"></i></span></div>'
@@ -4230,6 +4299,7 @@ function renderRoles(){
     const gEl=c.querySelector('.rr-goal'); if(gEl) gEl.textContent=goalText(ag);   // 第 52 单·目标外显
     const mEl=c.querySelector('.rr-mem'); if(mEl) mEl.textContent=memText(ag);     // 第 53 单·周记忆外显
     const rEl=c.querySelector('.rr-rel'); if(rEl) rEl.textContent=relText(state.world, ag);   // 第 67 单·关系外显（一期）
+    const uEl=c.querySelector('.rr-you'); if(uEl) uEl.textContent=relYouText(ag);              // 第 115 单·「你在他心里」
     c.querySelector('.rr-act').textContent=ag.activity.label+' · '+(loc?loc.label:'路上');
     c.querySelector('.rr-h').style.width=(100-ag.hunger)+'%';
     c.querySelector('.rr-e').style.width=ag.energy+'%';
@@ -4262,6 +4332,7 @@ function openAgentDialog(id){
     /* 第 67 单：这一行原先是"累计 N 次来往记在心里"——只有总数，看不出**跟谁**。
        现在把既有那份 `w.stats.pair` 账摆出来（谁、多少次），旧的总数保留在括号里。 */
     +'<div class="kv"><span>关系</span><span>'+esc(relText(state.world, ag))+'（累计 '+(ag.relNotes|0)+' 次来往）</span></div>'
+    +'<div class="kv"><span>和你</span><span>'+esc(relYouText(ag))+'</span></div>'
     /* 第 99 单·「此刻」：把活动里那半句独白（`ag.activity.think`）摆出来——空闲独白从此看得见。
        没有独白的活动（走路、交心之类直接挂活动的）就不出这一行，不做样子。 */
     +(ag.activity&&ag.activity.think?'<div class="kv"><span>此刻</span><span>「'+esc(ag.activity.think)+'」</span></div>':'')
@@ -4302,8 +4373,10 @@ function phoneHistoryHTML(w, id){
   const ag=(w.agents||[]).find(a=>a.id===id);
   const 等=(ag&&ag.waiting&&isFinite(ag.waiting.t)&&(w.t-ag.waiting.t)<=2*1440)
     ? '<li class="faint ph-wait">TA 留了话，在等你回一句。</li>' : '';
-  if(!条.length) return 等+'<li class="faint ph-empty">还没有往来。发一条试试——TA 看到后会在这里回你（同时写进日志）。TA 在忙或在睡时，要等有空才看手机。</li>';
-  return 等+条.map(e=>'<li><span class="lt num">'+PURE.fmtStamp(e.t)+'</span>'+esc(e.text)
+  /* 第 115 单·玩家篇①期：顶上再挂一行"你在他心里"（与"在等你回话"并排；空账照实说）。 */
+  const 你=ag?'<li class="faint ph-you">你在他心里：'+esc(relYouText(ag))+'</li>':'';
+  if(!条.length) return 你+等+'<li class="faint ph-empty">还没有往来。发一条试试——TA 看到后会在这里回你（同时写进日志）。TA 在忙或在睡时，要等有空才看手机。</li>';
+  return 你+等+条.map(e=>'<li><span class="lt num">'+PURE.fmtStamp(e.t)+'</span>'+esc(e.text)
     +(e.thought?' <span class="lth">— '+esc(e.thought)+'</span>':'')+'</li>').join('');
 }
 function renderPhone(){
