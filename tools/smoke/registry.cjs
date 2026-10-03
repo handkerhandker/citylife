@@ -33,6 +33,7 @@ const 清单 = [
   { 路径: 'tools/save-audit/probe.mjs',       档: 2, 参数: ['{OUT}/save-audit'],        超时: 180000, 备注: '存档两条真实路径（导出/导入往返＋坏码不崩；离线两天补算＋回城弹窗＋补算零 AI）' },
   { 路径: 'tools/fileopen-audit/probe.mjs',   档: 2, 参数: ['{OUT}/fileopen-audit'],    超时: 180000, 备注: 'file:// 直开（用户双击打开的实际路径：素材/存档可写/重载续档/导出/版本行/AI 降级结算 9 条）' },
   { 路径: 'tools/multitab-audit/probe.mjs',   档: 2, 参数: ['{OUT}/multitab-audit'],    超时: 300000, 备注: '双开（两标签页互相覆盖存档的现场＋丢动作实证；提示：单开不误报/双开两页都报/关了自动收）' },
+  { 路径: 'tools/backpop-audit/probe.mjs',    档: 2, 参数: ['{OUT}/backpop-audit'],     超时: 180000, 备注: '回城弹窗「看全部剪辑」＋三处一致性（弹窗/横幅/日志的 N 与封顶文案；乙形态）' },
   { 路径: 'tools/gift-audit/probe.cjs',       档: 1, 参数: [],                        超时: 90000, 备注: '欠人情排队（与上一版并排跑生日那两周）' },
   { 路径: 'tools/offline-catchup/probe.cjs',  档: 1, 参数: [],    超时: 90000, 备注: '离线补算取证' },
   { 路径: 'tools/offline-catchup/pushprobe.cjs', 档: 1, 参数: [], 超时: 90000, 备注: '回城推送判据取证' },
