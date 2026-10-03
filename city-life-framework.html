@@ -417,6 +417,10 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
         <button class="btn small" id="set-sound" data-fx>开</button>
       </div>
       <div class="set-row">
+        <span class="lbl">环境音<small>下雨时轻轻的雨声（默认关；首次点击后生效）</small></span>
+        <button class="btn small" id="set-amb" data-fx>关</button>
+      </div>
+      <div class="set-row">
         <span class="lbl">像素画风<small>样板间试点：公寓真瓷砖；素材未就位时自动回落</small></span>
         <button class="btn small" id="set-pix" data-fx>开</button>
         <span class="num dim" id="set-pix-stat">—</span>
@@ -466,7 +470,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v115</span>
+<span class="num dim" id="set-build">v116</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -3938,6 +3942,7 @@ const state={
   miles:bootMiles,         // 第 131 单·云港手账（玩家侧里程碑的小账）
   screen:'live',
   soundOn:true,            // 第 124 单·提示音（默认开；与"减少动效"同口径：只活在本次会话里）
+  ambienceOn:false,        // 第 136 单·环境音（雨声）（默认关——持续音更需用户自己点头；同样只活本次会话）
   forcedLayout:'auto',
   logStick:true,
   llm:{on:true, calls:0, pending:0, status:'待机', lastErr:'', warned:false, channel:''},
@@ -4653,6 +4658,65 @@ function refreshUnread(){
   dot.textContent = n>9?'9+':String(n);
   if(新到) 提示音();
 }
+/*AMBIENCE-START*/
+/* ---------- 第 136 单·环境音（雨声）：把"正在下雨"从画面延伸到耳朵 ----------------------------
+   调研出处（2026-10-04 当日复核，逐条 HTTP 200）：
+     · Nookipedia·Weather（英文，200）：「When snowing, hourly music is altered slightly to sound more
+       like the rain variants but with sleigh bell sounds integrated into them as well.」
+       ——天气不只影响画面，连"听到的东西"都跟着换（雨是一档专门的声音状态）。
+     · 星露谷 wiki·Soundtrack（英文，200）：「Outside areas and most stores are silent during Rain and
+       Storm days.」——雨天在该作是一档专门处理过的听觉状态（原声让位）。
+     · zh.stardewvalleywiki.com·天气（中文，200）：雨／暴风雨是独立天气档（本作雨天行为见第 49 单）。
+     · 萌娘百科·星露谷物语（中文，200）：可达（只作中文侧可达性佐证，未取用语料）。
+   本段落成：环境音开关**默认关**（设置里点一下开；同"减少动效/提示音"口径：只活本次会话）。
+   开着且**正在下雨**时，用 WebAudio 现场合成一层轻轻的雨声底（零素材）：
+     · 确定性噪声（xorshift32 ⇒ 全文件继续零 Math.random）；2 秒缓冲循环；
+     · 低通 1800Hz 去掉刺耳段；音量 0.02，起 0.8 秒淡入、停 0.5 秒淡出（不"咔"地起停）；
+     · **切走标签页即静音**、切回来续上；雨停自动停；按钮点了立刻生效（那一下本身就是用户手势）。
+   两个口味值（截止频率／音量）一处可调；纯 DOM/音频层：零 rng、零存档字段、不改世界。 */
+let 雨声=null, 雨声缓冲=null;
+function 雨声开(){
+  if(雨声) return;
+  const ac=音频上下文(); if(!ac) return;
+  try{
+    if(!雨声缓冲){
+      const sr=ac.sampleRate||44100, n=Math.max(1,Math.round(sr*2));
+      const buf=ac.createBuffer(1,n,sr), d=buf.getChannelData(0);
+      let s=2463534242|0;                                  // xorshift32：确定性噪声，不碰 Math.random
+      for(let i=0;i<n;i++){ s^=s<<13; s^=s>>>17; s^=s<<5; d[i]=((s>>>0)/4294967296*2-1)*0.9; }
+      雨声缓冲=buf;
+    }
+    const t0=ac.currentTime;
+    const src=ac.createBufferSource(); src.buffer=雨声缓冲; src.loop=true;
+    const lp=ac.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=1800; lp.Q.value=0.7;
+    const g=ac.createGain();
+    g.gain.setValueAtTime(0.0001,t0);
+    g.gain.exponentialRampToValueAtTime(0.02,t0+0.8);
+    src.connect(lp); lp.connect(g); g.connect(ac.destination);
+    src.start(t0);
+    雨声={src,g};
+  }catch(_){ 雨声=null; }
+}
+function 雨声关(){
+  if(!雨声) return;
+  const o=雨声; 雨声=null;
+  try{
+    const t0=(音频&&音频.currentTime)||0;
+    o.g.gain.cancelScheduledValues(t0);
+    o.g.gain.setValueAtTime(Math.max(0.0001,o.g.gain.value),t0);
+    o.g.gain.exponentialRampToValueAtTime(0.0001,t0+0.5);
+    o.src.stop(t0+0.55);
+  }catch(_){ try{ o.src.stop(); }catch(_){} }
+}
+function 环境音步(){
+  const 应响=!!(state.ambienceOn && state.world.weather && state.world.weather.rain)
+    && document.visibilityState!=='hidden';        // 切走的那一段不响（rAF 停之外再兜一道，由构造保证）
+  if(应响) 雨声开(); else 雨声关();
+}
+document.addEventListener('visibilitychange',()=>{        // 切走静音（礼貌），切回来自动续上
+  if(document.visibilityState==='hidden') 雨声关(); else 环境音步();
+});
+/*AMBIENCE-END*/
 /* ---------- 第 131 单·云港手账（玩家侧里程碑：只读世界＋自己的小账，不改世界）----------
    出处（2026-10-04 实测 HTTP 200）：Nookipedia·Nook Miles（「…showing various achievements, their
    milestones, and daily goals」）；星露谷 wiki·Achievements——生活模拟里"长期目标清单"是标配。
@@ -4756,6 +4820,11 @@ $('#set-sound').addEventListener('click',()=>{                    // 第 124 单
   state.soundOn=!state.soundOn;
   $('#set-sound').textContent=state.soundOn?'开':'关';
   if(state.soundOn) 音频上下文();   // 按钮这一下本身就是用户手势，顺手解锁音频
+});
+$('#set-amb').addEventListener('click',()=>{                      // 第 136 单·环境音（雨声）开关
+  state.ambienceOn=!state.ambienceOn;
+  $('#set-amb').textContent=state.ambienceOn?'开':'关';
+  环境音步();                       // 按钮这一下本身就是用户手势：开着且正下雨 ⇒ 立刻起雨声
 });
 
 // 城市体检：读 w.stats 只读统计，口径与 sim30.js 一致（熵/基尼由 PURE 计算）
@@ -6638,7 +6707,7 @@ function loop(now){
   drainLog();
   penSweep(now);   // 第 29 单：占位符收尾死线按真实时钟在这里判（不用 setTimeout：后台标签页会把它节流到分钟级）
   const tick=Math.floor(w.t/10);
-  if(tick!==lastTick){ lastTick=tick; renderTopbar(); refreshUnread(); milesStep();   // 第 80／131 单：未读角标与手账小账跟着世界走
+    if(tick!==lastTick){ lastTick=tick; renderTopbar(); refreshUnread(); milesStep(); 环境音步();   // 第 80／131／136 单：未读角标与手账小账跟着世界走；环境音跟着天气走
     if(state.llm.on){
       const d=PURE.dayOf(w.t);
       if(d!==state.lastReflectDay && PURE.minuteOfDay(w.t)>=REFLECT_MIN){ state.lastReflectDay=d; runReflection(); }
