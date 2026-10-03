@@ -57,6 +57,10 @@ function 查一天(w, d, 坏) {
   }
   if (w.log.length > 400) 坏.push('日志墙越界@D' + d + ' ' + w.log.length);
   if ((w.clips || []).length > 60) 坏.push('剪辑越界@D' + d + ' ' + (w.clips || []).length);
+  /* 第 103 单：面板口径那笔账（`stats.rainMin`）也要守得住——0 ≤ 累计 ≤ 开档至今的分钟数。 */
+  if (w.stats && !(isFinite(w.stats.rainMin) && w.stats.rainMin >= 0 && w.stats.rainMin <= w.t + 10)) {
+    坏.push('rainMin 越界@D' + d + ' ' + w.stats.rainMin);
+  }
 }
 
 let 红 = 0;

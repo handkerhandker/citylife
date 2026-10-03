@@ -410,7 +410,9 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       <div class="set-row"><span class="lbl">动作熵（比特/人）</span><span class="num dim" id="mt-ent">—</span></div>
       <div class="set-row"><span class="lbl">财富基尼</span><span class="num dim" id="mt-gini">—</span></div>
       <div class="set-row"><span class="lbl">距上次有戏</span><span class="num dim" id="mt-gap">—</span></div>
-      <div class="set-row"><span class="lbl">雨 / 发薪 / 交租 / 街市</span><span class="num dim" id="mt-anchor">—</span></div>
+      <!-- 第 103 单：雨那一行拆出来、改报「场次 ＋ 占全时长」——与门禁（第 23 单换的尺）同一口径 -->
+      <div class="set-row"><span class="lbl">雨 · 场次／占全时长<small>与门禁同一把尺</small></span><span class="num dim" id="mt-rain">—</span></div>
+      <div class="set-row"><span class="lbl">发薪 / 交租 / 街市</span><span class="num dim" id="mt-anchor">—</span></div>
       <h2 class="sec">存档</h2>
       <div class="set-row">
         <span class="lbl">存档状态<small>留在你手机浏览器本地；工件内与 ?seed 试玩不写档</small></span>
@@ -440,7 +442,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v94</span>
+<span class="num dim" id="set-build">v95</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -3290,6 +3292,13 @@ function advance10(w){
   }
   if(有戏) w.lastSpark=w.t;
   const g=w.t-w.lastSpark; if(g>w.stats.maxGap) w.stats.maxGap=g;
+  /* 第 103 单·城市体检的雨那一行要报**占全时长**（与门禁第 23 单换的那把尺同一口径）：
+     本拍结束时在下雨就记 10 分钟。**口径对齐 sim30.js 的 `rainTicks+=w.weather.rain?1:0`**
+     ——同一拍、同一个字段、同一时刻读；**必须放在"起雨／停雨"那两段之后**（本单第一版放在停雨之后、
+     起雨之前，于是每一场雨都少记第一拍：30 天实测 5560 vs 6080，正好差 52 场 ×10 分钟）。
+     旧档没有这段账 ⇒ 从 0 起算；坏值（非数）就地重建，绝不在字符串上做加法。 */
+  if(!isFinite(w.stats.rainMin)) w.stats.rainMin=0;
+  if(w.weather.rain) w.stats.rainMin+=10;
   // 第 21 单·每日剪辑：本拍末尾采样，跨日切时结算前一天。只读不改、零 rng（见 CLIP 段首注释）
   clipTick(w);
 }
@@ -4258,7 +4267,11 @@ function renderStats(){
   $('#mt-ent').textContent=w.agents.map(a=>a.name[0]+PURE.entropy(S.act[a.id]||{}).toFixed(2)).join(' ');
   $('#mt-gini').textContent=PURE.gini(w.agents.map(a=>a.money)).toFixed(2);
   $('#mt-gap').textContent=(w.t-w.lastSpark)+' 分钟（最长 '+S.maxGap+'）';
-  $('#mt-anchor').textContent=S.rain+' / '+S.pay+' / '+S.rentPaid+' / '+S.market;
+  /* 第 103 单：雨那一行从"场次"改成"场次 ＋ 占全时长"——与 sim30 那条判据同一把尺
+     （`rainMin/全时长`）。旧档没有 `rainMin` ⇒ 当 0（那一行会显示 0.0%，不是坏档）。 */
+  const 雨分=isFinite(S.rainMin)?S.rainMin:0, 全长=Math.max(1,w.t);
+  $('#mt-rain').textContent=S.rain+' 场 · '+(雨分/全长*100).toFixed(1)+'%（'+Math.round(雨分)+' 分钟）';
+  $('#mt-anchor').textContent=S.pay+' / '+S.rentPaid+' / '+S.market;
   refreshSaveLine();
 }
 
