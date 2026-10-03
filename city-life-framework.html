@@ -446,7 +446,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v111</span>
+<span class="num dim" id="set-build">v112</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -1238,7 +1238,7 @@ function rhyWorn(ag){
 // 今晚的就寝钟点（1260–1500；>1440 表示跨零点）
 function rhyBedClock(w,ag,R,rest){
   const extraNap=Math.max(0, Math.min(3, rest.nap-1));      // 白天多眯的觉数（第一觉是常态，不算）
-  let x=R.bed + R.reg*(R.owl*rhySign(w,ag) - RHY_CRASH_BED*rhyWorn(ag) + RHY_NAP_BED*extraNap);
+  let x=R.bed + 季作息(w).bed + R.reg*(R.owl*rhySign(w,ag) - RHY_CRASH_BED*rhyWorn(ag) + RHY_NAP_BED*extraNap);   // 第 126 单：夏晚睡/冬早睡
   if(ag.flags.sleepEarly) x-=RHY_SMS_BED;                   // 玩家短信「早点睡」：既有行为原样保留
   return PURE.clamp(Math.round(x), RHY_BED_MIN, RHY_BED_MAX);   // 取整到分钟：存档与指纹里不留浮点尾数
 }
@@ -1259,7 +1259,7 @@ function rhyDur(w,ag,R,rest){
   const off=(PURE.weekday(wakeDay)>=5) ? 1 : 0;                      // 5＝周六，6＝周日
   const over=(rest.dur>R.dur+RHY_OVER) ? 1 : 0;                      // 昨晚睡饱了
   const extraNap=Math.max(0, Math.min(3, rest.nap-1));
-  let d=R.dur + R.reg*(R.keep*rhySign(w,ag) + R.lie*off + RHY_CRASH_DUR*rhyWorn(ag)
+  let d=R.dur + 季作息(w).dur + R.reg*(R.keep*rhySign(w,ag) + R.lie*off + RHY_CRASH_DUR*rhyWorn(ag)   // 第 126 单：夏少睡/冬多睡
                        - RHY_REBOUND*over - RHY_NAP_DUR*extraNap);
   if(ag.flags.earlyWork) d-=RHY_SMS_DUR;                             // 玩家短信「别迟到」
   return PURE.clamp(Math.round(d), RHY_DUR_MIN, RHY_DUR_MAX);        // 取整到分钟（同 rhyBedClock）
@@ -1527,6 +1527,21 @@ function seasonIdx(w){
 function seasonOutMul(w){
   const m=SEASON_OUT[seasonIdx(w)];
   return (isFinite(m)&&m>0)?m:1;
+}
+/* ---------- 第 126 单·作息随季节漂移（夏晚睡、冬早睡；春/秋＝基准）----------
+   出处（2026-10-03 实测）：星露谷 wiki·Day Cycle（HTTP 200）「Depending on the season, nightfall is at
+   different times. In Spring and Summer, it is 8pm, while in Fall it is at 7pm and Winter is 6pm.」；
+   星露谷 wiki·Villagers（HTTP 200）「…so they can be located in different sections of town depending on
+   the in-game time of the day and weather.」——村民的作息本来就跟"天色/时间"走，冬天黑得早、人早收摊。
+   口径：只动"何时睡、睡多久"两个数，**不新增任何抽签**（照第 113 单"只换比较的那一边"同族做法）；
+   春夏秋冬＝一年四段（第 111 单那本日历）；**春/秋＝基准** ⇒ 开档头 90 天逐拍不变。
+   四个数都是拍的（同类作品没有可逐字引的"夏天晚睡多少分钟"），按第 63 单口径登记清楚、一处可调。 */
+const SEASON_RHY_BED=[0, 30, 0, -30];   // 就寝钟点偏移（分钟）：夏 +30、冬 −30
+const SEASON_RHY_DUR=[0,-25, 0,  25];   // 睡眠时长偏移（分钟）：夏 −25、冬 +25
+function 季作息(w){
+  const i=seasonIdx(w);
+  return { bed:(isFinite(SEASON_RHY_BED[i])?SEASON_RHY_BED[i]:0),
+           dur:(isFinite(SEASON_RHY_DUR[i])?SEASON_RHY_DUR[i]:0) };
 }
 /*SEASONWX-END*/
 /*GOAL-START*/
@@ -3789,6 +3804,7 @@ const Sim={makeWorld, step, sendMessage, sendCustomMessage, decide, MSGS, ANCHOR
   REL_CHAT_MUL, 熟缘,   // 第 107 单·B 档②（门禁按真值读：档位系数一处定义）
   BDAY_CO, 陪过,   // 第 110 单·生日有人陪（门禁按真值读：时长与独白一处定义、一年一对人一次）
   SEASON_OUT, seasonIdx, seasonOutMul,   // 第 113 单·四季行为二期（门禁按真值读：因子表一处定义＋三支调用）
+  SEASON_RHY_BED, SEASON_RHY_DUR, 季作息,   // 第 126 单·作息随季节（门禁按真值读：两张表＋一处取用）
   REL_YOU, relYouOf, relYouGet, relYouBump, relYouStep,   // 第 115 单·玩家篇①期（门禁按真值读：涨落一处定义）
   REL_WAIT_DAYS, 等你天数, relYouWord,   // 第 117 单·玩家篇②期（门禁按真值读：窗口表＋那句"你在他心里"一处定义）
   HEART, heartMate,   // 第 91 单·交心（门禁按真值读：门槛与时长一处定义）
