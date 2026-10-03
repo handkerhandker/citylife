@@ -3180,6 +3180,63 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   }
 }
 
+// ═══ 第 61 单·「到点结算」的读写次序普查（先快照 → 再清账 → 再派活）════════════
+/* 病根（第 60 单抓到的那处）：清账与读账次序反了 ⇒ 下游读到空值。
+   治法不是"再小心一点"，而是**把读收成一个出口**：`weekSnapshot(ag)` 是周账唯一的读点，
+   `weekMemory` 与 `goalAssign` 都只吃这份快照。本段把这套次序连同另外几处"到点清账"一起钉住。 */
+{
+  const fs=require('fs'), path=require('path');
+  const src=fs.readFileSync(path.resolve(__dirname,'city-life-framework.html'),'utf8');
+  // 闸一 · 周账：快照是唯一读出口
+  ok((src.match(/function weekSnapshot\(/g)||[]).length===1,'第 61 单·`weekSnapshot` 一处定义（周账唯一读出口）');
+  {
+    const i=src.indexOf('function weekMemory(w,ag,snap){'), j=src.indexOf('\n}',i);
+    const body=src.slice(i,j), 清账点=body.indexOf('ag.week={');     // 这个函数末尾本来就要**写**（清账），只查"写之前有没有读"
+    ok(清账点>0&&body.slice(0,清账点).indexOf('ag.week')<0,
+       '第 61 单·`weekMemory` 在清账之前**不直接读** `ag.week`（只吃快照）——免得清账次序被改回来');
+    ok(/const snap=weekSnapshot\(ag\);[\s\S]{0,160}weekMemory\(w,ag,snap\)[\s\S]{0,160}goalAssign\(w,ag,snap\.smsId\)/.test(src),
+       '第 61 单·到点结算三步钉死：**先快照 → 再清账（weekMemory）→ 再派活（goalAssign 吃快照里的 smsId）**');
+  }
+  // 闸二 · 另外几处"到点清账"的次序（同类一并钉住，判据都是"读在清之前"）
+  ok(src.indexOf('clipClose(w,sh)')<src.indexOf('sh=w.clipDay=clipSheet(w,cd)'),
+     '第 61 单·剪辑日切：**先算旧窗（clipClose）再建新窗（clipSheet）**——反了就会拿新窗去结旧账');
+  ok(/if\(!rec \|\| rec\.d!==day \|\| !Array\.isArray\(rec\.used\)\)/.test(src),
+     '第 61 单·`pickV`：跨天判定在重置之前（先判再清）');
+  ok(/if\(w\.weather\.rain && w\.t>=w\.weather\.until\)\{\s*\n\s*w\.weather\.rain=false;/.test(src),
+     '第 61 单·雨停：先判 `until` 到点、再清 `rain` 标');
+  ok((src.match(/w\.nmCount=0/g)||[]).length===2,
+     '第 61 单·夜市到客数：只在"换周"与"开张"两处归零（实测 '+(src.match(/w\.nmCount=0/g)||[]).length+' 处）');
+  // 闸三 · 清账点清单逐条登记（防"删了清账点却没登记"）——清单本身写在交付件第五节
+  const 清单=[
+    ['日志额度每日重置', /if\(mod===0\)\{\s*\n\s*w\.credits=3; w\.sentToday=\[\];/],
+    ['交租（每月 2 号）', /w\.rentPaidDay=day;\s*\n\s*w\.stats\.rentPaid\+\+;/],
+    ['发薪（周五 18:00）', /w\.stats\.pay\+\+;/],
+    ['雨停', /w\.weather\.rain=false; logSys\(w,'雨停了/],
+    ['夜市换周/开张归零', /w\.nmNext=开; w\.nmNotice=0; w\.nmCount=0;/],
+    ['晨报日号', /w\.morningDay=d;/],
+    ['周账快照→清账', /const snap=weekSnapshot\(ag\);/],
+    ['剪辑日切', /clipClose\(w,sh\);/],
+    ['pickV 跨天重置', /rec=sd\[k\]=\{d:day, used:\[\]\};/],
+    ['离线追帧的水位线（DOM 层，开局记一次）', /const aiFloorLid=state\.world\.lidSeq;/],
+  ];
+  const 缺=清单.filter(([,re])=>!re.test(src)).map(([名])=>名);
+  ok(缺.length===0,'第 61 单·清账点清单逐条对得上源码（对不上的：'+(缺.join('／')||'无')+'）');
+  // 闸四 · 行为：周记忆仍然每周每人一条、三个数字都在文本里（快照改法没把内容弄丢）
+  {
+    const w=Sim.makeWorld(424242); let 条=0, 坏=0, 已读=0;
+    for(let i=0;i<15*144;i++){
+      Sim.step(w,10);
+      for(const e of w.log){
+        if(e.lid<=已读) continue; 已读=e.lid;
+        const t=String(e.text||''); if(t.indexOf('上周的日子记一笔：')!==0) continue;
+        条++;
+        if(!/上了 \d+ 天班、和人聊了 \d+ 次、出门 \d+ 次/.test(t)||!(/你发来 \d+ 条短信/.test(t)||/你一条短信也没发/.test(t))) 坏++;
+      }
+    }
+    ok(条===8&&坏===0,'第 61 单·行为侧：15 天里周记忆 '+条+' 条（应 2 批 × 4 人＝8），格式不对的 '+坏+' 条');
+  }
+}
+
 // ═══ 第 33 单·天色昼夜（把「现在几点」画到画面上）═════════════════════════════
 /* 被验的是生产源码原文：SKYTINT-START…SKYTINT-END 整块抠出来，在一个只记账不作画的假 ctx 上跑
    （照第 31 单 iconLab、第 32 单 chipLab 先例）。四条闸：

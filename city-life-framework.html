@@ -428,7 +428,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v60</span>
+<span class="num dim" id="set-build">v61</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -1514,16 +1514,29 @@ function weekTick(w,ag){
   if(出门&&!k.wasStroll) k.出++;
   k.wasStroll=出门;
 }
-/* 第 53 单·周记忆压缩（零 AI）：把上一周**数得出来的东西**压成一句话，留给角色卡与日志墙。
-   玩家短信是它的正式输入之一（条数 ＋ 最近一条的标题），这是"影子机制"那一半：如实写进记忆，但不做成玩法提示。 */
-function weekMemory(w,ag){
+/* 第 61 单·**周账的唯一读出口**：清账之前要用的东西全在这一处取（快照）。
+   为什么要有这么个函数：第 60 单抓到的那处 bug 就是"先清后读"（`weekMemory` 把 `ag.week` 清空之后
+   `goalAssign` 才去读 `smsId`）——光靠注释约定挡不住第 2 次，得让**读**只有一条路：
+   到点结算时先 `weekSnapshot(ag)`，再把这份快照递给 `weekMemory` 与 `goalAssign`。 */
+function weekSnapshot(ag){
   const k=(ag.week&&typeof ag.week==='object')?ag.week:{};
-  const 聊=Math.max(0,(ag.relNotes|0)-((typeof k.relBase==='number')?k.relBase:(ag.relNotes|0)));
-  const 信=k.信|0, 最近=k.smsLabel||'', 结局=k.结局||'';
-  const 句='上了 '+(k.班|0)+' 天班、和人聊了 '+聊+' 次、出门 '+(k.出|0)+' 次'
+  return { 信:k.信|0,
+           smsId:(typeof k.smsId==='string')?k.smsId:'',
+           smsLabel:(typeof k.smsLabel==='string')?k.smsLabel:'',
+           结局:(typeof k.结局==='string')?k.结局:'',
+           班:k.班|0, 出:k.出|0,
+           聊:Math.max(0,(ag.relNotes|0)-((typeof k.relBase==='number')?k.relBase:(ag.relNotes|0))) };
+}
+/* 第 53 单·周记忆压缩（零 AI）：把上一周**数得出来的东西**压成一句话，留给角色卡与日志墙。
+   玩家短信是它的正式输入之一（条数 ＋ 最近一条的标题），这是"影子机制"那一半：如实写进记忆，但不做成玩法提示。
+   第 61 单起**只吃快照**（`snap`），自己不直接读 `ag.week`——免得哪天清账次序又被改回来。 */
+function weekMemory(w,ag,snap){
+  const s=snap||weekSnapshot(ag);
+  const 聊=s.聊||0, 信=s.信|0, 最近=s.smsLabel||'', 结局=s.结局||'';
+  const 句='上了 '+(s.班|0)+' 天班、和人聊了 '+聊+' 次、出门 '+(s.出|0)+' 次'
     +(信?('；你发来 '+信+' 条短信（最近一条「'+最近+'」）'):'；你一条短信也没发')
     +(结局?('；那件想做的事，'+结局):'');
-  ag.mem={ t:w.t, text:句, 班:k.班|0, 聊, 出:k.出|0, 信, 结局 };
+  ag.mem={ t:w.t, text:句, 班:s.班|0, 聊, 出:s.出|0, 信, 结局 };
   logAct(w,ag,'上周的日子记一笔：'+句, null);
   ag.week={ relBase:(ag.relNotes|0), workDays:{}, 班:0, 出:0, 信:0, smsLabel:'', smsId:'', 结局:'', wasWork:false, wasStroll:false };
   return ag.mem;
@@ -1539,10 +1552,12 @@ function goalStep(w,ag){
       /* 到点：先把上周压成一句话（每周一条），再派本周的活——四人的这一拍是同一个点 ⇒ **打包生成**。
          "该不该记"按**日号差 ≥7** 判，不按毫秒差：批时刻会在 08:00 与 08:10 之间抖（第一拍落点差 10 分钟），
          拿 `w.t-mem.t>=7*1440` 当闸会让每周少记一条（实测 8 周里少了 4 条）。开局第一周不记（城刚开，没有"上周"）。 */
-      const 上周信=(ag.week&&typeof ag.week.smsId==='string')?ag.week.smsId:'';   // 见上面 goalAssign 的注释：先取再清
+      /* 第 61 单：到点结算的次序钉死成三步——**先快照 → 再清账 → 再派活**。
+         快照是唯一读出口（`weekSnapshot`），`weekMemory` 与 `goalAssign` 都只吃这份快照。 */
+      const snap=weekSnapshot(ag);
       const 该记=ag.mem?((PURE.dayOf(w.t)-PURE.dayOf(ag.mem.t||0))>=7):(w.t>=7*1440);
-      if(该记) weekMemory(w,ag);
-      g=goalAssign(w,ag,上周信);
+      if(该记) weekMemory(w,ag,snap);
+      g=goalAssign(w,ag,snap.smsId);
     }
     if(!g) return;
   }
