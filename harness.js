@@ -4913,6 +4913,86 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   }
 }
 
+// ═══ 第 92 单·新状态的耐久性（长期不变量 ＋ 存档往返；200 天档压进闸）════════════════
+/* 为什么要有它：第 87／88／90／91 单连着往世界里加了四样**长期活着**的东西——
+   `giftRecv`（欠人情）／`ag.rel`（关系值）／`rel[对方].heart`（交心旗子）／`festLampDay`（今晚放过灯）。
+   门禁与 sim30 都只看 30 天，看不住"跑久了会不会长歪"（数值越界／旗子单边／剪辑与日志墙撑破／
+   存档往返丢字段）。本段把其中**便宜的那一半**压进闸里（200 天 × 2 种子），长期画像另见
+   `tools/long-run/probe.cjs`（1000 天 × 3 种子，只读诊断）。
+   被验的是：
+     ① 结构：`serialize` 是全字段拷贝（只跳函数）、`hydrate` 用 `rngState` 重建 rng；
+     ② 长期不变量（200 天 × 2 种子，逐日扫）：关系值恒在 0–60、`rel.day` 非负、交心旗子两侧一致、
+        日志墙 ≤400、剪辑 ≤60、四人钱／饥饿／体力不出 NaN；
+     ③ 存档往返：跑 200 天 → 序列化 → `hydrate` → **键序不敏感深比全等**（含 rel／heart）→ 再各跑 2 天逐拍一致；
+     ④ 反向自查：把存档里的 `a.rel` 删掉再 hydrate ⇒ 深比**必须**判红（证明这条闸真的看得见字段丢失）；
+     ⑤ 坏档容错：`rel` 是字符串／数组／越界值 ⇒ 不抛错、就地归一。 */
+{
+  const fs=require('fs'), path=require('path');
+  const src=fs.readFileSync(path.resolve(__dirname,'city-life-framework.html'),'utf8');
+  ok(/function serialize\(w, meta\)\{[\s\S]{0,160}world\[k\]=w\[k\];/.test(src)
+     &&/if\(!isFinite\(w\.rngState\)\) w\.rngState=\(\(w\.seed>>>0\)\|\|1\);/.test(src),
+     '第 92 单·结构：`serialize` 全字段拷贝（只跳函数）＋`hydrate` 用 `rngState` 重建 rng');
+  const 深=x=>JSON.stringify(x,(k,v)=>(v&&typeof v==='object'&&!Array.isArray(v))
+    ?Object.keys(v).sort().reduce((o,kk)=>(o[kk]=v[kk],o),{}):v);
+  const 扫=(w,d,坏)=>{
+    for(const a of w.agents){
+      if(!isFinite(a.money)||!isFinite(a.hunger)||!isFinite(a.energy)) 坏.push('NaN@D'+d);
+      for(const id in (a.rel||{})){
+        const r=a.rel[id];
+        if(!r||typeof r!=='object'){ 坏.push('rel 条目坏@D'+d); continue; }
+        if(!isFinite(r.v)||r.v<0||r.v>Sim.REL.cap) 坏.push('rel 越界@D'+d+' v='+r.v);
+        if(!isFinite(r.day)||r.day<0) 坏.push('rel.day 坏@D'+d);
+        if(r.heart){ const o=w.agents.find(x=>x.id===id);
+          if(!o||!(o.rel&&o.rel[a.id]&&o.rel[a.id].heart)) 坏.push('旗子单边@D'+d+' '+a.name); }
+      }
+    }
+    if(w.log.length>400) 坏.push('日志越界@D'+d+' '+w.log.length);
+    if((w.clips||[]).length>60) 坏.push('剪辑越界@D'+d+' '+(w.clips||[]).length);
+  };
+  const 天=200, 种=[20260803,424242];
+  let 违规=[], 往返坏=0, 分叉坏=0;
+  const 存样=[];
+  for(const seed of 种){
+    const w=Sim.makeWorld(seed);
+    for(let d=1;d<=天;d++){ for(let i=0;i<144;i++) Sim.step(w,10); 扫(w,d,违规); if(违规.length>8) break; }
+    const {world:w2}=Sim.hydrate(Sim.serialize(w,null))||{};
+    if(!w2||深(w)!==深(w2)) 往返坏++;
+    else{
+      存样.push(JSON.parse(Sim.serialize(w,null)));
+      let 分叉=-1;
+      for(let i=0;i<288 && 分叉<0;i++){
+        Sim.step(w,10); Sim.step(w2,10);
+        for(const a of w.agents){ const b=w2.agents.find(x=>x.id===a.id);
+          if(!b||JSON.stringify(a)!==JSON.stringify(b)){ 分叉=i+1; break; } }
+      }
+      if(分叉>0) 分叉坏++;
+    }
+  }
+  ok(违规.length===0,'第 92 单·长期不变量（'+天+' 天 × '+种.length+' 种子，逐日扫）：关系值恒在 0–'+Sim.REL.cap
+     +'、旗子不单边、日志墙 ≤400、剪辑 ≤60、钱／饥饿／体力不出 NaN（违规 '+违规.length+' 处）'
+     +(违规.length?('：'+违规.slice(0,3).join('；')):''));
+  ok(往返坏===0&&分叉坏===0,'第 92 单·存档往返：'+天+' 天存档 → hydrate → 深比全等（含 rel／heart）'
+     +'（坏了 '+往返坏+' 处）；往返后再跑 2 天逐拍一致（分叉 '+分叉坏+' 处）');
+  {
+    const s=存样[0];
+    const 病=JSON.parse(JSON.stringify(s));
+    for(const a of 病.world.agents) delete a.rel;                 // 故障注入：让存档少一样新状态
+    const {world:病w}=Sim.hydrate(JSON.stringify(病))||{};
+    ok(!!病w&&深(病w)!==深(存样[0].world),
+       '第 92 单·反向自查·拦得住：把存档里的 `rel` 删掉再 hydrate ⇒ 深比**判红**（证明这条闸看得见字段丢失，不是恒绿）');
+  }
+  {
+    const w=Sim.makeWorld(20260803);
+    w.agents[0].rel='坏档'; w.agents[0].rel=[]; w.agents[0].rel='坏档';             // 字符串 × 数组 × 再字符串
+    w.agents[1].rel={a2:{v:999,day:-5}}; w.agents[1].rel={a2:{v:999,day:-5}};
+    let 崩=0; try{ for(let i=0;i<144;i++) Sim.step(w,10); }catch(_){ 崩++; }
+    const v=Sim.relGet(w.agents[1],'a2');
+    ok(崩===0&&v>=0&&v<=Sim.REL.cap,
+       '第 92 单·坏档容错：`rel` 是字符串／数组／越界值（999／day −5）⇒ 不抛错、取值一律归一到 0–'
+       +Sim.REL.cap+'（实测 '+v+'）');
+  }
+}
+
 // ═══ 第 33 单·天色昼夜（把「现在几点」画到画面上）═════════════════════════════
 /* 被验的是生产源码原文：SKYTINT-START…SKYTINT-END 整块抠出来，在一个只记账不作画的假 ctx 上跑
    （照第 31 单 iconLab、第 32 单 chipLab 先例）。四条闸：
@@ -5656,7 +5736,7 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   ok(恒绿===0,'第 66 单·闸二：`ok` 第一参数写死 true 的**读数型假断言**为 0 条（实测 '+恒绿+'；读数一律走 `读数()`）');
   // 闸三 · 反向自查登记（防整条被删）
   const 登记=['第 48 单','第 49 单','第 51 单','第 52 单','第 53 单','第 54 单','第 56 单','第 57 单',
-              '第 58 单','第 59 单','第 62 单','第 63 单','第 64 单','第 65 单','第 67 单','第 70 单','第 71 单','第 72 单','第 73 单','第 74 单','第 75 单','第 76 单','第 77 单','第 79 单','第 80 单','第 81 单','第 84 单','第 85 单','第 87 单','第 88 单','第 90 单','第 91 单',
+              '第 58 单','第 59 单','第 62 单','第 63 单','第 64 单','第 65 单','第 67 单','第 70 单','第 71 单','第 72 单','第 73 单','第 74 单','第 75 单','第 76 单','第 77 单','第 79 单','第 80 单','第 81 单','第 84 单','第 85 单','第 87 单','第 88 单','第 90 单','第 91 单','第 92 单',
               '闸四','闸五','闸十','闸十一','闸十二'];
   const 实有=[...new Set((自源.match(/(第 \d+ 单|闸[一二三四五六七八九十]+)·反向自查/g)||[])
                             .map(x=>x.replace('·反向自查','')))];
