@@ -3556,9 +3556,12 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   });
   ok(/\{id:'birthday',label:'生日快乐'\}/.test(src)&&/birthdayToday:/.test(src),
      '第 64 单·结构：短信表加了「生日快乐」，且反应表分平时／当天两句');
-  ok(/bday_cake:2\.6/.test(src)&&/bday:'bday'/.test(src)&&/\['bday',\s*\['给自己买了块蛋糕'\]\]/.test(src)
+  ok(/bday_cake:2\.6/.test(src)&&/bday:'bday'/.test(src)
+     &&Sim.clipCat({type:'act',text:'给自己买了块蛋糕'})==='bday'
      &&/case 'bday_cake'/.test(src),
-     '第 64 单·结构：剪辑项 `bday_cake` 齐（权重／摘原文类目／日志归类／模板文案）');
+     '第 64 单·结构：剪辑项 `bday_cake` 齐（权重／摘原文类目／日志归类／模板文案）'
+     +'——★第 110 单把这条从"整行逐字对表"改成了**真值归类**：同一条 `bday` 类里多了陪坐那两句，'
+     +'逐字写法会假红；判据本意（那句话必须归到 `bday` 类）一字未松');
   // 构造：a1 生日当天 07:00 起跑两天（10 分钟一拍 ⇒ 正好踩到 08:10 的晨报；跨过 04:00 的剪辑日切）
   /* 跑一天：`起点本` 不传＝按当前生日表算；传了就用它（反向自查要在"原来的生日那天"跑，见下）。 */
   const 跑=(起点本)=>{
@@ -3660,6 +3663,95 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
        '第 64 单·反向自查·拦得住：把 a1 的生日挪走（改成 ' +挪.month+' 月 '+挪.dayOfMonth+' 日）之后，'
        +'**原来的那一天**晨报那句 0 条、买蛋糕 0 次 ⇒ 上面三条不是恒绿');
   }
+}
+
+// ═══ 第 110 单·生日有人陪（关系 C 档②：生日联动读关系）═══════════════════════════
+/* 被验的是生产源码与真值：
+     ① 结构：`BDAY_CO` 一处定义（时长 60 ＋ 四条按 `workKind` 的固定独白）、门槛读 `REL_TIERS[2].lo`（「熟」）、
+        `陪过` 一处定义；**支内零 rng**（抠 BDAYCO 段源码——START／END 两条标记之间，不许出现 `w.rng`／`Math.random`）；
+     ② 行为（确定性构造：a4 生日 20:30，a3 与他同屋、都空闲，问候旗＋聊天冷却＋礼物旗都先按上，
+        只剩"陪"这一支可走）——两边都到「熟」（20）⇒ 陪恰 1 次、寿星那边一条"有人陪着"、`陪过` 记上、
+        `lastBdayCo` 有值；差一点（19）／生疏（0）／不同屋／寿星在上班／22:30（窗外）⇒ 全 0；
+     ③ 日志归类：两条新日志都归 `bday` 类（`clipCat` 真值调用，不另抄一张表）；
+     ④ 剪辑层：`bday_co` 已登记（权重／乙级／摘原文类目／文案）；
+     ⑤ 反向自查：把"一年一对人一次"的旗每次拆掉 ⇒ 同一构造里陪 **2** 次（健 1 次）⇒ 那道闸不是恒绿；
+     ⑥ 真轨迹对照：跑到 a4 的生日（seed 20260803，D262 09:00→22:00），全关系摁到「熟」⇒ 那天真有人陪，
+        摁到差一点（19）⇒ 一个都没有。 */
+{
+  const fs=require('fs'), path=require('path');
+  const src=fs.readFileSync(path.resolve(__dirname,'city-life-framework.html'),'utf8');
+  const 段=(src.match(/\/\*BDAYCO-START\*\/[\s\S]*?\/\*BDAYCO-END\*\//)||[''])[0];
+  ok(段.length>0&&!/w\.rng|Math\.random/.test(段)&&/记陪过\(/.test(段)&&/陪过\(/.test(段)&&/REL_TIERS\[2\]/.test(段),
+     '第 110 单·结构：陪坐那一支一处、**不摇 rng**、门槛读同一张档位表的「熟」档、`陪过` 一处判重');
+  ok(typeof Sim.陪过==='function'&&!!Sim.BDAY_CO&&Sim.BDAY_CO.dur===60
+     &&['work','clerk','trade','write'].every(k=>typeof Sim.BDAY_CO.think[k]==='string'&&Sim.BDAY_CO.think[k].length>0),
+     '第 110 单·结构：`BDAY_CO` 一处定义（时长 '+Sim.BDAY_CO.dur+' 分钟；四条固定独白按 workKind 齐）');
+  ok(Sim.CLIP_W.bday_co>0&&Sim.CLIP_TIER.bday_co==='b'
+     &&Sim.clipCat({type:'act',text:'陪着白一鸣坐了一会儿'})==='bday'
+     &&Sim.clipCat({type:'act',text:'有人陪着坐了会儿（顾云帆）'})==='bday'
+     &&Sim.clipItemText({id:'bday_co',v:{to:'白一鸣'}}).indexOf('陪白一鸣')>=0,
+     '第 110 单·结构：剪辑项 `bday_co` 齐（权重 '+Sim.CLIP_W.bday_co+'／乙级／摘原文走 `bday` 类／文案「'
+     +Sim.clipItemText({id:'bday_co',v:{to:'白一鸣'}})+'」），两条新日志都归到 `bday` 类');
+  const 构造=(关系值,拆旗,窗外,同屋,寿上班)=>{
+    const w=Sim.makeWorld(20260803);
+    const 宾=w.agents[2], 寿=w.agents[3];                    // 陆知秋 陪 白一鸣
+    const 本=Sim.thisYearBdayAt(w,寿);
+    w.t=本+11.5*60+(窗外?2*60:0);                             // 20:30（窗外档＝22:30，四人都已下班）
+    const 年=PURE.dayOf(w.t)-((PURE.dayOf(w.t)-1)%Sim.FESTIVAL.yearDays);
+    宾.anchor='home_tv'; 宾.activity={type:'idle',label:'在家待着'}; 宾.busyUntil=w.t; 宾.hunger=20; 宾.energy=90;
+    寿.anchor=同屋?'home_table':'store_counter';
+    寿.activity=寿上班?{type:'work',label:'上班'}:{type:'idle',label:'在家待着'};
+    寿.busyUntil=w.t+900; 寿.hunger=20; 寿.energy=90;
+    宾.rel={a4:{v:关系值,day:PURE.dayOf(w.t)}}; 寿.rel={a3:{v:关系值,day:PURE.dayOf(w.t)}};
+    宾.flags['cg_a4']=PURE.dayOf(w.t); 寿.flags['cg_a3']=PURE.dayOf(w.t);   // 问候已按过
+    宾.flags['cw_a4']=w.t; 寿.flags['cw_a3']=w.t;                           // 刚聊过（90 分钟冷却里）
+    宾.giftYears={a4:年};                                                   // 礼已送过 ⇒ 只剩"陪"这一支
+    let 已=w.lidSeq, 陪=0, 收=0, 归=true;
+    for(let i=0;i<12;i++){
+      Sim.step(w,10);
+      if(拆旗) delete 宾.bdayCoYears;
+      for(const e of w.log){
+        if(e.lid<=已) continue; 已=e.lid;
+        const t=String(e.text||'');
+        if(t.indexOf('陪着')===0){ 陪++; if(Sim.clipCat(e)!=='bday') 归=false; }
+        if(t.indexOf('有人陪着')===0){ 收++; if(Sim.clipCat(e)!=='bday') 归=false; }
+      }
+    }
+    return {陪,收,归,旗:Sim.陪过(宾,'a4',年),last:宾.lastBdayCo,w};
+  };
+  const 正=构造(20,false,false,true,false);
+  ok(正.陪===1&&正.收===1&&正.归&&正.旗&&!!正.last&&正.last.to==='a4'&&正.last.toName==='白一鸣',
+     '第 110 单·行为：两边都到「熟」⇒ 生日那天坐下来陪恰一次（陪 '+正.陪+' 次／寿星那边"有人陪着" '+正.收
+     +' 条／归类全对 '+(正.归?'✓':'✘')+'／`陪过` 记上 '+(正.旗?'✓':'✘')+'／`lastBdayCo`→'+(正.last&&正.last.toName));
+  {
+    const 深=x=>JSON.stringify(x,(k,v)=>(v&&typeof v==='object'&&!Array.isArray(v))
+      ?Object.keys(v).sort().reduce((o,kk)=>(o[kk]=v[kk],o),{}):v);
+    const 回=Sim.hydrate(Sim.serialize(正.w,null))||{}, w2=回.world;
+    ok(!!w2&&深(w2)===深(正.w)&&!!(w2.agents[2].bdayCoYears&&w2.agents[2].bdayCoYears.a4===1)&&!!w2.agents[2].lastBdayCo,
+       '第 110 单·存档往返：陪过之后 serialize→hydrate **深比全等**，`bdayCoYears`／`lastBdayCo` 两样新状态都在'
+       +'（照第 92 单那条"新状态别丢"的口径）');
+  }
+  const 差=构造(19,false,false,true,false), 无=构造(0,false,false,true,false);
+  ok(差.陪===0&&无.陪===0,'第 110 单·行为：差一点（19）与生疏（0）都不陪（实测 '+差.陪+'／'+无.陪+' 次）');
+  const 邻=构造(20,false,false,false,false), 班=构造(20,false,false,true,true), 外=构造(20,false,true,true,false);
+  ok(邻.陪===0&&班.陪===0&&外.陪===0,'第 110 单·行为：不同屋／寿星在上班／22:30（窗外）三种都不陪（实测 '
+     +邻.陪+'／'+班.陪+'／'+外.陪+' 次）');
+  const 病=构造(20,true,false,true,false);
+  ok(病.陪>正.陪,'第 110 单·反向自查·拦得住：把"一年一对人一次"的旗每次拆掉 ⇒ 同一构造里陪了 '+病.陪
+     +' 次（健 '+正.陪+' 次）⇒ 那道闸不是恒绿');
+  const 基点=(()=>{ const w=Sim.makeWorld(20260803), 本=Sim.thisYearBdayAt(w,w.agents[3]);
+    while(w.t<本) Sim.step(w,10); return {w:Sim.serialize(w,null),本}; })();
+  const 真跑=值=>{
+    const w=Sim.hydrate(基点.w).world;
+    for(const a of w.agents) for(const o of w.agents){ if(a===o) continue; a.rel=a.rel||{}; a.rel[o.id]={v:值,day:PURE.dayOf(w.t)}; }
+    let 已=w.lidSeq, 陪=0;
+    while(w.t<基点.本+13*60){ Sim.step(w,10);
+      for(const e of w.log){ if(e.lid<=已) continue; 已=e.lid; if(String(e.text||'').indexOf('陪着')===0) 陪++; } }
+    return 陪;
+  };
+  const 真熟=真跑(20), 真生=真跑(19);
+  ok(真熟>=1&&真生===0,'第 110 单·真轨迹对照：跑到 a4 生日那年（seed 20260803，D262 09:00→22:00），关系到「熟」⇒ '
+     +'那天真有人陪（'+真熟+' 次）；关系差一点 ⇒ 0 次');
 }
 
 // ═══ 第 65 单·住户互相祝贺生日（把"生日"接进闲聊那条线）════════════════════════
@@ -6482,7 +6574,7 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   ok(恒绿===0,'第 66 单·闸二：`ok` 第一参数写死 true 的**读数型假断言**为 0 条（实测 '+恒绿+'；读数一律走 `读数()`）');
   // 闸三 · 反向自查登记（防整条被删）
   const 登记=['第 48 单','第 49 单','第 51 单','第 52 单','第 53 单','第 54 单','第 56 单','第 57 单',
-              '第 58 单','第 59 单','第 62 单','第 63 单','第 64 单','第 65 单','第 67 单','第 70 单','第 71 单','第 72 单','第 73 单','第 74 单','第 75 单','第 76 单','第 77 单','第 79 单','第 80 单','第 81 单','第 84 单','第 85 单','第 87 单','第 88 单','第 90 单','第 91 单','第 92 单','第 93 单','第 94 单','第 95 单','第 96 单','第 97 单','第 98 单','第 99 单','第 100 单','第 102 单','第 103 单','第 106 单','第 107 单','第 109 单',
+              '第 58 单','第 59 单','第 62 单','第 63 单','第 64 单','第 65 单','第 67 单','第 70 单','第 71 单','第 72 单','第 73 单','第 74 单','第 75 单','第 76 单','第 77 单','第 79 单','第 80 单','第 81 单','第 84 单','第 85 单','第 87 单','第 88 单','第 90 单','第 91 单','第 92 单','第 93 单','第 94 单','第 95 单','第 96 单','第 97 单','第 98 单','第 99 单','第 100 单','第 102 单','第 103 单','第 106 单','第 107 单','第 109 单','第 110 单',
               '闸四','闸五','闸十','闸十一','闸十二'];
   const 实有=[...new Set((自源.match(/(第 \d+ 单|闸[一二三四五六七八九十]+)·反向自查/g)||[])
                             .map(x=>x.replace('·反向自查','')))];

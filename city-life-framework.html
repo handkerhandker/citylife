@@ -442,7 +442,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v97</span>
+<span class="num dim" id="set-build">v98</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -2341,6 +2341,36 @@ function 熟缘(ag, mate){
   const m=REL_CHAT_MUL[线];
   return (isFinite(m)&&m>0)?m:1;
 }
+/* ---------- 第 110 单·生日有人陪（关系状态机 C 档②：生日联动读关系）----------
+   出处（Nookipedia·Birthday，**2026-10-03 实测 HTTP 200**，整句逐字摘）：
+     「As the player leaves their home, they are immediately greeted by **the villager with whom they have
+       the highest friendship**. They are then taken to that villager's house… **Two other villagers attend
+       the party.**」
+     ⇒ 同类作品里，生日是"**关系近的人会到场**"的日子——不是制度排班，是交情。
+   本作对应，两半分开：
+     · **制度那一半照旧**（第 81／94／95 单）：谁都会来送份东西——那是"日子该有的样子"，不动；
+     · **多出来的这一半读关系**（本单）：送完礼**不急着走**，处得「熟」以上的人会**坐下来陪一会儿**。
+   口径（照第 95／106 单那套"零 rng"的做法，一处不摇）：
+     · 窗口＝**礼物窗口**（`GIFT.open–close`，与蛋糕并齐的"生日那一段"，一处定义）；
+     · 门槛＝`REL_TIERS[2].lo`（「熟」），**两边都认**（取较小值，照第 106 单先例）；
+     · **同屋才算陪**——他要"陪"就得到跟前，本单不另开一趟路（第 104 单那族坑：位置一变节律就漂）；
+     · 寿星**醒着**且**没在上班**；自己这一拍是空闲的（`decide()` 本来就在空闲时跑）；
+     · **一年一对人至多一次**（`陪过／记陪过`，照第 95 单 `给过／记给过` 先例）；
+     · 时长写死 60 分钟、独白按写稿人的 `workKind` 取**固定句** ⇒ **一次 rng 都不摇**。 */
+const BDAY_CO={ dur:60, think:{
+  work:'一年就这么一天。坐会儿，不亏。',
+  clerk:'今天他最大嘛——我多坐一会儿，店里不急。',
+  trade:'日程往后挪一小时。例外只有这一次。',
+  write:'一年里该有几页是留给人的，今天算一页。',
+} };
+function 陪过(ag, id, 年){
+  const C=ag&&ag.bdayCoYears;
+  return !!(C&&typeof C==='object'&&!Array.isArray(C)&&C[id]===年);
+}
+function 记陪过(ag, id, 年){
+  if(!ag.bdayCoYears||typeof ag.bdayCoYears!=='object'||Array.isArray(ag.bdayCoYears)) ag.bdayCoYears={};
+  ag.bdayCoYears[id]=年;
+}
 function decide(w, ag){
   const mod=PURE.minuteOfDay(w.t);
   const R=rhyOf(ag);          // 第 22 单·逐人作息人格（由既有特质逐条相加，见 RHY 段）
@@ -2682,6 +2712,28 @@ function decide(w, ag){
         return;
       }
     }
+    /* 第 110 单·生日有人陪（关系 C 档②）——见上方 `BDAY_CO` 那张表的缘由与口径。
+       排在送礼两支**之后**：先把东西递到手上（制度），再看交情坐下来（关系）。
+       本支**一次 rng 都不摇**（时长写死、独白按 workKind 取固定句），故非生日日子的
+       rng 流一字不差；生日那天从"本该摇下一次"的那一拍起才分叉——属预期（见交付件第五节）。 */
+    /*BDAYCO-START*/
+    {
+      const 寿=w.agents.find(o=>o!==ag && inBirthday(w,o) && 醒着(o)
+        && !(o.activity&&o.activity.type==='work')                    // 上班那一段不算"在家过生日"
+        && roomOf(o.anchor)===roomOf(ag.anchor)                        // 陪＝已经在一起，本单不另开一趟路
+        && Math.min(relGet(ag,o.id),relGet(o,ag.id))>=((REL_TIERS[2]&&REL_TIERS[2].lo)||20)
+        && !陪过(ag,o.id,年));
+      if(寿){
+        记陪过(ag,寿.id,年);
+        const 句='陪着'+寿.name+'坐了一会儿';
+        ag.lastBdayCo={ t:w.t, to:寿.id, toName:寿.name, tx:句 };
+        setActivity(w,ag,寿.anchor,'idle','陪'+寿.name+'坐会儿',BDAY_CO.dur,
+          BDAY_CO.think[ag.workKind]||'一年就这么一天，坐会儿。',句);
+        logAct(w,寿,'有人陪着坐了会儿（'+ag.name+'）','（今天这个日子，有人坐着。）');
+        return;
+      }
+    }
+    /*BDAYCO-END*/
   }
   if(inNightMkt(w) && (ag.flags.wantMkt || w.rng()<夜市率)){
     delete ag.flags.wantMkt;                                        // 第 57 单：玩家发了「今晚去夜市」⇒ 这一趟必去
@@ -2792,6 +2844,7 @@ const CLIP_W={
   bday_cake:2.6,                                  // 第 64 单·生日蛋糕（甲级：一年一次的个人日，与江灯节同档——"值得当天的卡"）
   talk_go:1.0,                                    // 第 73 单·去了一趟夜谈角（乙级弱信号，与夜市 `mkt_go` 同档）
   gift:1.2,                                       // 第 81 单·给寿星带了点东西（乙级上档：它是"两个人之间的事"）
+  bday_co:1.4,                                    // 第 110 单·生日坐下来陪一会儿（乙级上档：比"带了东西"再深一层——"人在"）
   rel_up:1.6,                                     // 第 88 单·关系升到新档（甲级：不是每天都有的事，值得当天的卡）
   rel_cold:0.8,                                   // 第 88 单·连着五天没说话（乙级弱信号：日子里的凉意，不是"事"）
   heart:2.0,                                      // 第 91 单·交心（甲级：一对人一辈子就一场，够当天的卡）
@@ -2803,7 +2856,7 @@ const CLIP_W={
   freq:0.2,
 };
 const CLIP_TIER={sit_flat:'b', sit_none:'b', money_debt:'b', freq:'c', mkt_go:'b', talk_go:'b', gift:'b',
-                 rel_cold:'b'};   // 第 88 单·冷线归乙级；未列者一律甲级（rel_up 走甲级）
+                 bday_co:'b', rel_cold:'b'};   // 第 88 单·冷线归乙级（第 110 单·陪坐同归乙级）；未列者一律甲级（rel_up 走甲级）
 // 日志正文 → 类目。取的是 decide() 实际写出的字串（harness 有覆盖率断言：30 天里
 // 每条 act 条目都必须归到某一类，谁改了 logText 那条断言即红）。
 const CLIP_LOGCAT=[
@@ -2826,7 +2879,7 @@ const CLIP_LOGCAT=[
   // 「本来想做的事，眼下做不成了」这一句第 53 单漏登过，第 56 单的世界位移把它顶进了日志窗口才被抓出来。
   ['goal',  ['这周想的事','上周的日子记一笔','本来想做的事']],
   ['fest',  ['在江边放了一盏灯']],   // 第 62 单·江灯节放灯（世界级播报另在 BACK_SUM 里登记）
-  ['bday',  ['给自己买了块蛋糕']],   // 第 64 单·生日蛋糕（个人日志，不需要新桶；覆盖率闸照查）
+  ['bday',  ['给自己买了块蛋糕','陪着','有人陪着']],   // 第 64 单·生日蛋糕 ＋ 第 110 单·陪坐那两句（前缀都固定；覆盖率闸照查）
   ['rel',   ['关系：']],             // 第 88 单·关系涨档／冷线两句（前缀固定"关系："，一处管两句话）
   ['heart', ['交心：']],             // 第 91 单·交心那两条日志（前缀固定"交心："，两人各一条都归这类）
 ];
@@ -2839,6 +2892,7 @@ const CLIP_QCAT={sit:'work', money:'money', social:'chat', sleep:'sleep', wake:'
                  mkt:'eat',    // 第 57 单：夜市那条日志（「在夜市买了份小吃」）归在 eat 类 ⇒ 摘原文就引它
                  fest:'fest',  // 第 62 单：放灯那条日志归在 fest 类
                  bday:'bday',  // 第 64 单：生日蛋糕那条日志归在 bday 类
+                 bday_co:'bday',  // 第 110 单：陪坐那句也归 bday ⇒ 摘原文就引"陪着…"那条
                  talk_go:'talk',  // 第 73 单：夜谈那条日志单开一类 ⇒ 摘原文就引它
                  gift:'gift',     // 第 81 单：礼物那两句单开一类 ⇒ 摘原文引"带了…"那句
                  rel_up:'rel', rel_cold:'rel',   // 第 88 单：关系两句同归一"关系"类 ⇒ 摘原文引那条日志
@@ -2966,6 +3020,12 @@ function clipSample(w,sh){
       r.bdayT=lb.t; r.bdaySpent=lb.spent|0;
       r.bdayTx0=(typeof lb.tx==='string')?lb.tx:'';
     }
+    // 第 110 单·生日有人陪：与上面同一套事件通道（`bdayCoYears` 已保证一对人一年至多一条）
+    const lbc=ag.lastBdayCo;
+    if(lbc && typeof lbc==='object' && isFinite(lbc.t) && lbc.t>=t0 && lbc.t<t1 && r.bdayCoT!==lbc.t){
+      r.bdayCoT=lbc.t; r.bdayCoTo=(typeof lbc.toName==='string')?lbc.toName:'';
+      r.bdayCoTx0=(typeof lbc.tx==='string')?lbc.tx:'';
+    }
     // 第 73 单·夜谈：同上（`talkWeek` 已保证每人每周至多一条）
     const lt=ag.lastTalk;
     if(lt && typeof lt==='object' && isFinite(lt.t) && lt.t>=t0 && lt.t<t1 && r.talkT!==lt.t){
@@ -3026,6 +3086,7 @@ function clipMake(w,sh,ent,ag,sum,base){
   if(r.bdayT) push('bday_cake',{spent:r.bdaySpent, tx:r.bdayTx0},r.bdayT);   // 第 64 单·生日蛋糕（每人每年至多一条；落笔抄录）
   if(r.talkT) push('talk_go',{topic:r.talkTopic, tx:r.talkTx0},r.talkT);     // 第 73 单·夜谈（每人每周至多一条；落笔抄录）
   if(r.giftT) push('gift',{to:r.giftTo, tx:r.giftTx0},r.giftT);              // 第 81 单·生日礼物（每人每年至多一条；落笔抄录）
+  if(r.bdayCoT) push('bday_co',{to:r.bdayCoTo, tx:r.bdayCoTx0},r.bdayCoT);   // 第 110 单·生日有人陪（一对人一年至多一条；落笔抄录）
   if(r.relUpT)   push('rel_up',  {to:r.relUpTo, tier:r.relUpTier, v:r.relUpV, tx:r.relUpTx0}, r.relUpT);   // 第 88 单·关系升档
   if(r.relColdT) push('rel_cold',{to:r.relColdTo, tx:r.relColdTx0}, r.relColdT);                            // 第 88 单·关系冷线
   if(r.heartT)   push('heart',   {to:r.heartTo, lv:r.heartLv, tx:r.heartTx0}, r.heartT);                    // 第 91／96 单·交心（一对人每档一次）
@@ -3101,6 +3162,7 @@ function clipItemText(it){
     case 'bday_cake':  return '生日 · 给自己买了块蛋糕：花了 ¥'+(v.spent||0)+'（一年一次）';
     case 'talk_go':    return '夜谈 · 去坐了一晚：聊「'+(v.topic||'')+'」';
     case 'gift':       return '生日 · 给'+(v.to||'人')+'带了点东西';
+    case 'bday_co':    return '生日 · 陪'+(v.to||'人')+'坐了会儿';
     case 'rel_up':     return '关系 · 升到「'+(v.tier||'新档')+'」：和'+(v.to||'人')+'（'+(v.v|0)+'）';
     case 'rel_cold':   return '关系 · 冷下来了：好几天没和'+(v.to||'人')+'说上话';
     case 'heart':      return '交心 · 和'+(v.to||'人')+((v.lv|0)>=2?'一起出门走了一趟':'坐下来好好聊了一回');
@@ -3521,6 +3583,7 @@ const Sim={makeWorld, step, sendMessage, sendCustomMessage, decide, MSGS, ANCHOR
   GIFT,   // 第 81 单·生日礼物（门禁按真值读：窗口与价钱一处定义）
   REL, REL_TIERS, relV, relTier, relTierName, relGet,   // 第 88 单·关系状态机 A 档（门禁按真值读：档位表一处定义）
   REL_CHAT_MUL, 熟缘,   // 第 107 单·B 档②（门禁按真值读：档位系数一处定义）
+  BDAY_CO, 陪过,   // 第 110 单·生日有人陪（门禁按真值读：时长与独白一处定义、一年一对人一次）
   HEART, heartMate,   // 第 91 单·交心（门禁按真值读：门槛与时长一处定义）
   RAIN_STROLL_THOUGHTS, RAIN_IDLE_THOUGHTS, 天气词,   // 第 97 单·雨天的独白（门禁按真值读同一份池）
   IDLE_THOUGHTS, STROLL_THOUGHTS,                     // 第 97 单：两张基础池也一并导出（门禁要按真值比对"串没串池"）
