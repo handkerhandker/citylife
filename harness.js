@@ -4170,6 +4170,85 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   }
 }
 
+// ═══ 第 77 单·别的时候也开口（生日／放灯／目标达成各留一句）════════════════════
+/* 被验的是生产源码与真值：
+     ① 结构：`NOTE`（每天 21:00）＋ 两池留言 ≥2 条；`noteStep` 一处定义且在 `advance10` 里被调；
+        三种由头都在（生日／当天放过灯／当天目标达成）；一天一句（`ag.noteDay`）；
+     ② 行为：三个构造各验一次——生日当晚恰 1 条、江灯节当晚四人各 1 条（且**不是同一句**）、
+        连跑 40 天出现"这周想做的事做到了：…"型留言；周日 17:50→22:00 每人**只一条**（惦记不叠加）；
+     ③ 反向自查：把 `NOTE.at` 挪成 -1 ⇒ 生日／节日／目标三种由头的留言全塌到 0。 */
+{
+  const fs=require('fs'), path=require('path');
+  const src=fs.readFileSync(path.resolve(__dirname,'city-life-framework.html'),'utf8');
+  ok(/const NOTE=\{ at:21\*60 \}/.test(src)&&(src.match(/function noteStep\(/g)||[]).length===1
+     &&/noteStep\(w\);/.test(src),
+     '第 77 单·结构：`NOTE`（21:00）＋ `noteStep` 一处定义、且在 `advance10` 里被调');
+  ok(['bday','fest'].every(k=>Array.isArray(Sim.NOTE_LINES[k])&&Sim.NOTE_LINES[k].length>=2),
+     '第 77 单·结构：留言池两池齐、每池 ≥2 条（'+['bday','fest'].map(k=>k+':'+Sim.NOTE_LINES[k].length).join(' ')+'）');
+  ok(/inBirthday\(w,ag\)/.test(src)&&/ag\.lastFest\.t\)===d/.test(src)&&/ag\.lastGoalOut\.k==='done'/.test(src),
+     '第 77 单·结构：三种由头都在（生日／当天放过灯／当天目标达成）');
+  ok(/if\(ag\.noteDay===d\) continue;/.test(src)&&/ag\.noteDay=PURE\.dayOf\(w\.t\)/.test(src),
+     '第 77 单·结构：**一天最多一句**（与"惦记"共用 `ag.noteDay`）');
+  // 行为①②：生日当晚 / 江灯节当晚
+  const 采=(起跑,mut,步数)=>{
+    const 原=Sim.NOTE.at; if(mut) Sim.NOTE.at=mut;
+    let 留=[];
+    try{
+      for(let i=0;i<步数;i++){
+        Sim.step(起跑,10);
+        for(const e of 起跑.log){ if(e.lid<=已读) continue; 已读=e.lid;
+          if(e.type==='player'&&e.sms==='note') 留.push(e.name+'：'+e.text); }
+      }
+    } finally { Sim.NOTE.at=原; }
+    return 留;
+  };
+  let 已读=0;
+  {
+    const w=Sim.makeWorld(20260803), 本=Sim.thisYearBdayAt(w,w.agents[0]);
+    w.t=本+12*60-10; 已读=w.lidSeq;
+    const 留=采(w,null,3);
+    ok(留.length===1&&留[0].indexOf('今天生日')>=0,
+       '第 77 单·行为①：生日当晚恰 1 条（'+JSON.stringify(留)+'）');
+  }
+  {
+    const w=Sim.makeWorld(20260803), 节=Sim.thisYearFestAt(w);
+    w.t=节-10; 已读=w.lidSeq;
+    const 留=采(w,null,15);
+    /* 取"说法"要取**第一个冒号之后的全部**：留言文本本身还含一个冒号（"给你留了一句：…"），
+       用 split('：')[1] 取到的是"给你留了一句"（四个人都一样）——第一版就栽在这。 */
+    const 说法=x=>String(x).slice(String(x).indexOf('：')+1);
+    ok(留.length===4&&留.every(x=>x.indexOf('灯')>=0)&&new Set(留.map(说法)).size>=2,
+       '第 77 单·行为②：江灯节当晚四人各留一句、且**不是同一句**（'+留.length+' 条，'
+       +new Set(留.map(说法)).size+' 种说法）');
+  }
+  // 行为③：连跑 40 天，看目标达成型
+  {
+    const w=Sim.makeWorld(20260803); let 已=w.lidSeq, 成=0, 总=0;
+    for(let i=0;i<40*144;i++){
+      Sim.step(w,10);
+      for(const e of w.log){ if(e.lid<=已) continue; 已=e.lid;
+        if(e.type==='player'&&e.sms==='note'){ 总++; if(String(e.text).indexOf('这周想做的事做到了')>=0) 成++; } }
+    }
+    ok(成>=1,'第 77 单·行为③：连跑 40 天共 '+总+' 条留言，其中"这周想做的事做到了：…"型 '+成+' 条（判据 ≥1）');
+  }
+  // 行为④：一天最多一句（惦记 + 别的由头不叠加）
+  {
+    const w=Sim.makeWorld(20260803), 周日=Sim.thisWeekTalkAt(w)-2*60;
+    w.t=周日-10; 已读=w.lidSeq;
+    const 留=采(w,null,(4*60)/10+2);
+    const 每人={}; 留.forEach(x=>{ const 名=x.split('：')[0]; 每人[名]=(每人[名]||0)+1; });
+    ok(留.length===4&&Object.values(每人).every(n=>n===1),
+       '第 77 单·行为④：周日 17:50→22:00 每人**只一条**（'+JSON.stringify(每人)+'）——惦记那句与 21:00 的由头不叠加');
+  }
+  // 反向自查：不在 21:00 触发 ⇒ 三种由头全塌到 0
+  {
+    const w=Sim.makeWorld(20260803), 节=Sim.thisYearFestAt(w);
+    w.t=节-10; 已读=w.lidSeq;
+    const 病=采(w,-1,15);
+    ok(病.length===0,'第 77 单·反向自查·拦得住：把 `NOTE.at` 挪成 -1 ⇒ 江灯节当晚的留言塌到 '+病.length+' 条 ⇒ 判据不是恒绿');
+  }
+}
+
 // ═══ 第 33 单·天色昼夜（把「现在几点」画到画面上）═════════════════════════════
 /* 被验的是生产源码原文：SKYTINT-START…SKYTINT-END 整块抠出来，在一个只记账不作画的假 ctx 上跑
    （照第 31 单 iconLab、第 32 单 chipLab 先例）。四条闸：
@@ -4913,7 +4992,7 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   ok(恒绿===0,'第 66 单·闸二：`ok` 第一参数写死 true 的**读数型假断言**为 0 条（实测 '+恒绿+'；读数一律走 `读数()`）');
   // 闸三 · 反向自查登记（防整条被删）
   const 登记=['第 48 单','第 49 单','第 51 单','第 52 单','第 53 单','第 54 单','第 56 单','第 57 单',
-              '第 58 单','第 59 单','第 62 单','第 63 单','第 64 单','第 65 单','第 67 单','第 70 单','第 71 单','第 72 单','第 73 单','第 74 单','第 75 单','第 76 单',
+              '第 58 单','第 59 单','第 62 单','第 63 单','第 64 单','第 65 单','第 67 单','第 70 单','第 71 单','第 72 单','第 73 单','第 74 单','第 75 单','第 76 单','第 77 单',
               '闸四','闸五','闸十','闸十一','闸十二'];
   const 实有=[...new Set((自源.match(/(第 \d+ 单|闸[一二三四五六七八九十]+)·反向自查/g)||[])
                             .map(x=>x.replace('·反向自查','')))];

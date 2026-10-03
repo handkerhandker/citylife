@@ -428,7 +428,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v74</span>
+<span class="num dim" id="set-build">v75</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -1844,6 +1844,18 @@ function talkStep(w){
    ——一条**个人日志**（带住户名，故 `BACK_SUM` 另开一桶 `miss`，回城弹窗会单列"有人惦记过你"）。
    口径：**零 AI、零 rng、只写日志**——不改变任何行为（不去找你、不扣钱、不改作息）。 */
 const MISS={ day:6, at:18*60 };
+/* 第 77 单·别的时候也开口（把"留话"从一周一次扩到"今天有件值得说的话"）——
+   第 76 单那条通道只在"一周没来信"时用，可值得跟你说一声的时候不止那一刻：
+   **今天他生日**、**今晚他放了灯**、**这周想做的事做到了**。
+   本单加一处**每天 21:00** 的结算：三种由头按优先级取第一个成立的，落同样一条 `sms:'note'`。
+   口径：**一天最多一句**（与"惦记"共用 `ag.noteDay`）；**零 AI、零 rng**；不改任何行为。 */
+const NOTE={ at:21*60 };
+const NOTE_LINES={
+  /* 第一版这两句都提到"蛋糕"——可蛋糕是 15:00–22:00 之间**空闲时**才去买，21:00 前未必买上，
+     写成"买了一块"就可能与实际不符。改成不依赖那件事的说法（照"说不出出处的，不许说"那条口径）。 */
+  bday:['今天生日。没什么仪式，就是想说一声。','今天生日。一个人也得记一笔。'],
+  fest:['今晚去江边放了盏灯。人不少。','灯放出去了，江面上晃了一路。'],
+};
 /* 第 76 单·居民主动开口（把"惦记"升级成"留句话给你"）——
    第 74 单只做到"他心里惦记"（一条独白式日志），玩家能看见的仍是单向的：你说，他答。
    本单开一条**他→你**的通道：惦记时**给你留一句话**，走的是**同一条往来记录**
@@ -1871,8 +1883,33 @@ function missStep(w){
     ag.missWeek=周号;
     logAct(w,ag,'翻到上次的短信，看了两遍','（这周你一句话都没来。）');
     const 话=missNoteOf(ag, 周号);
-    if(话) pushLog(w,{type:'player',sms:'note',agent:ag.id,name:ag.name,
-      text:'给你留了一句：'+话, thought:''});
+    if(话){
+      ag.noteDay=PURE.dayOf(w.t);      // 第 77 单：与"别的时候也开口"共用"一天最多一句"的额度
+      pushLog(w,{type:'player',sms:'note',agent:ag.id,name:ag.name,
+        text:'给你留了一句：'+话, thought:''});
+    }
+  }
+}
+/* 第 77 单·每天 21:00：今天若有件值得跟你说的事，就留一句（三种由头按优先级取第一个成立的）。 */
+function noteStep(w){
+  if(PURE.minuteOfDay(w.t)!==NOTE.at) return;
+  const d=PURE.dayOf(w.t), 年=d-((d-1)%FESTIVAL.yearDays);
+  for(const ag of w.agents){
+    if(ag.noteDay===d) continue;                       // 一天最多一句（惦记那句若已留过，这里跳过）
+    let 话='';
+    /* 取句时把**人名**拌进去：同一天四个人不该说一字不差的一句（第一版只用日号，四个人全一样） */
+    const 序号=d+((ag.id&&ag.id.charCodeAt(1))||0);
+    if(inBirthday(w,ag)){
+      话=NOTE_LINES.bday[序号%NOTE_LINES.bday.length];
+    } else if(ag.lastFest && isFinite(ag.lastFest.t) && PURE.dayOf(ag.lastFest.t)===d){
+      话=NOTE_LINES.fest[序号%NOTE_LINES.fest.length];
+    } else if(ag.lastGoalOut && isFinite(ag.lastGoalOut.t) && PURE.dayOf(ag.lastGoalOut.t)===d
+              && ag.lastGoalOut.k==='done' && typeof ag.lastGoalOut.label==='string'){
+      话='这周想做的事做到了：'+ag.lastGoalOut.label+'。';
+    }
+    if(!话) continue;
+    ag.noteDay=d;
+    pushLog(w,{type:'player',sms:'note',agent:ag.id,name:ag.name,text:'给你留了一句：'+话,thought:''});
   }
 }
 /*MISS-END*/
@@ -2819,6 +2856,7 @@ function advance10(w){
   festivalStep(w);  // 第 62 单·江灯节（一年一次：提前一周预告／开灯／收灯）
   talkStep(w);      // 第 70 单·周日夜谈（周日 20:00–22:00，22:00 散场播报）
   missStep(w);      // 第 74 单·住户主动惦记你（周日 18:00；这周没收到短信的人各留一条）
+  noteStep(w);      // 第 77 单·别的时候也开口（每天 21:00；生日／放灯／目标达成各留一句）
   if(w.weather.rain && w.t>=w.weather.until){
     w.weather.rain=false; logSys(w,'雨停了，街道亮得像洗过。'); w.lastSpark=w.t;
   }
@@ -3016,6 +3054,7 @@ const Sim={makeWorld, step, sendMessage, sendCustomMessage, decide, MSGS, ANCHOR
   TALK_OPEN, talkOpenLine, talkTopicOnDay,   // 第 72 单·题面带着台词走（门禁按真值读：占位符一处替换）
   MISS, missStep,   // 第 74 单·惦记（门禁按真值读：周日 18:00、一周零来信才留一条）
   MISS_NOTE, missNoteOf,   // 第 76 单·居民的留言池（门禁按真值读：按周号取句、不摇 rng）
+  NOTE, NOTE_LINES, noteStep,   // 第 77 单·别的时候也开口（门禁按真值读：每天 21:00、一天一句）
   BIRTHDAYS, BDAY, bdayInDays, thisYearBdayAt, bdayAt, inBirthday,   // 第 64 单·住户生日（门禁按真值读同一份日历）
   CATCHUP_MIN_PER_MIN, CATCHUP_MAX_DAYS, REFLECT_MIN, SMS_NOREPLY,
   catchUpPlan, catchUp, reflectFallback, clipTopDay,
