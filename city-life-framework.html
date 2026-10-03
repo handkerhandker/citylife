@@ -428,7 +428,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v55</span>
+<span class="num dim" id="set-build">v56</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -1535,6 +1535,45 @@ function goalKnob(ag,kind){
   return kind==='social'?0.20:(kind==='out'?0.15:(kind==='sleep'?90:0));
 }
 /*GOAL-END*/
+/*NIGHTMKT-START*/
+/* ---------- 第 56 单·周五夜市（把"周日街市"之外再挂一个公共活动，给一周一个节奏）----------
+   调研出处（2026-10-03 实测可访问）：
+     · 星露谷 wiki·Festivals：「Festivals are special events…Mayor Lewis will send the player a letter
+       **in advance** of each festival, describing **when and where** it will take place.」
+       ／「On the day of the festival, a pop-up…will let the player know when the festival has begun.」
+       ⇒ 公共活动的三个要件：**提前预告、地点固定、当天再提一次**。
+     · Nookipedia·Event：动森的活动「are often based on real-world holidays…hosted by special characters」
+       ⇒ 活动让日历有"日子感"，且是有人张罗的（本作里就是"城市"这条系统日志）。
+     · 萌娘百科·星露谷物语：「季节与节日…一年分为四个季节」⇒ 节日挂在日历上，不是随机掉下来的。
+   本单落成的最小形态（零素材、零 AI，全部走既有的锚点与日志）：
+     每周**周五 19:00–23:00**，广场街市摊区（既有的 `market` 锚点）开夜市。
+     · 提前两天：一条城市日志「这周五晚上 19:00 广场有夜市，摊子已经在搭了。」
+     · 当天 19:00：一条城市日志「夜市开张了，广场上支起了小吃摊。」
+     · 时段内：空闲的人按 `p` 去逛，去了会**花钱买份小吃**（−¥8、垫肚子）——这条是它跟"傍晚散步"的区别：有经济后果。
+     口径：只占用**空闲时间**那一档（社交之后、傍晚散步之前），上班／吃饭的钱／睡觉一概不碰。 */
+const NIGHT_MKT={ day:4, open:19*60, close:23*60, p:0.55, cost:8, noticeMin:2*1440 };
+// 本周五 19:00 的世界时间戳（本周五的这一刻已经过了 ⇒ 顺延到下周）
+function nightMktStartAt(w){
+  const wd=PURE.weekday(w.t), mod=PURE.minuteOfDay(w.t);
+  let days=(NIGHT_MKT.day-wd+7)%7;
+  if(days===0 && mod>=NIGHT_MKT.open) days=7;
+  return (w.t-mod+19*60)+days*1440;
+}
+function inNightMkt(w){
+  const mod=PURE.minuteOfDay(w.t);
+  return PURE.weekday(w.t)===NIGHT_MKT.day && mod>=NIGHT_MKT.open && mod<NIGHT_MKT.close;
+}
+// 城市级：预告与开张各一条（换周自动重置，旧档缺字段＝当作没预告过，绝不判坏档）
+function nightMktStep(w){
+  const 开=nightMktStartAt(w);
+  if(w.nmNext!==开){ w.nmNext=开; w.nmNotice=0; }
+  if(!w.nmNotice && 开>w.t && 开-w.t<=NIGHT_MKT.noticeMin){
+    w.nmNotice=开;
+    logSys(w,'这周五晚上 19:00 广场有夜市，摊子已经在搭了。（'+PURE.fmtStamp(开)+'）');   // 预告：什么时候、在哪
+  }
+  if(inNightMkt(w) && w.nmOpen!==开){ w.nmOpen=开; logSys(w,'夜市开张了，广场上支起了小吃摊。'); }
+}
+/*NIGHTMKT-END*/
 function decide(w, ag){
   const mod=PURE.minuteOfDay(w.t);
   const R=rhyOf(ag);          // 第 22 单·逐人作息人格（由既有特质逐条相加，见 RHY 段）
@@ -1710,6 +1749,15 @@ function decide(w, ag){
     return;
   }
   // 第 52 单：目标旋钮（out）加在**晴天那一档**之上（雨天该压还是压；上班与吃饭一概不动）
+  /* 第 56 单·周五夜市：夜市时段里，空闲的人多半去广场逛一趟——买份小吃（花钱、垫肚子），
+     这是它跟"傍晚散步"的区别：有经济后果。上班／吃饭的钱／睡觉一概不碰；雨天照去（摊子有棚）。 */
+  if(inNightMkt(w) && w.rng()<NIGHT_MKT.p){
+    ag.money-=NIGHT_MKT.cost;
+    if(ag.hunger>12) ag.hunger=Math.max(10,ag.hunger-18);
+    setActivity(w,ag,'market','stroll','逛夜市',tempoDur(w,ag,40),pickV(w,MARKET_THOUGHTS,ag,'lm'),
+      '在夜市买了份小吃（¥'+NIGHT_MKT.cost+'）');
+    return;
+  }
   const eveClear=(周末?WEEKEND_OUT.eveStroll:0.3)+goalKnob(ag,'out');   // 晴天那一档（原值 0.3／0.45 原样保留）
   if(mod>=18.5*60 && mod<21*60 && w.rng()<(raining?(周末?RAIN_RULES.eveWeekend:RAIN_RULES.eveWorkday):eveClear)){
     const spot=w.rng()<0.5?'park_bench':'river_walk';
@@ -1796,7 +1844,9 @@ const CLIP_LOGCAT=[
   ['stroll',['出门散步','街市逛逛','周末出门逛逛']],   // 第 46 单后半新增的一句（第 21 单那条覆盖率断言当场抓到了它）
   ['sleep', ['回卧室睡觉']],
   ['money', ['交了房租']],
-  ['goal',  ['这周想的事','上周的日子记一笔']],   // 第 52／53 单：目标事件（定下／做到／没做成）与周记忆——只归类，不单独出卡
+  // 第 52／53 单：目标事件（定下／做到／没做成／**前提破裂**）与周记忆——只归类，不单独出卡。
+  // 「本来想做的事，眼下做不成了」这一句第 53 单漏登过，第 56 单的世界位移把它顶进了日志窗口才被抓出来。
+  ['goal',  ['这周想的事','上周的日子记一笔','本来想做的事']],
 ];
 const CLIP_CATNAME={eat:'吃饭', work:'上班', nap:'小憩', stroll:'散步', sleep:'睡觉', chat:'闲聊', goal:'目标'};
 // 丙级只数这几类。刻意不含 chat：闲聊次数已由甲级 social_burst 按同一个数出活，
@@ -2184,6 +2234,8 @@ function advance10(w){
     w.lastSpark=w.t;
   }
   // 导演层：太平淡就下场雨
+  // 第 56 单·周五夜市：城市级地判一次预告与开张（与学生活无关，故放在逐人决策之前）
+  nightMktStep(w);
   if(w.weather.rain && w.t>=w.weather.until){
     w.weather.rain=false; logSys(w,'雨停了，街道亮得像洗过。'); w.lastSpark=w.t;
   }
@@ -2364,6 +2416,7 @@ const Sim={makeWorld, step, sendMessage, sendCustomMessage, decide, MSGS, ANCHOR
   RAIN_RULES,   // 第 49 单·雨回流进行为（门禁按真值断言，不另抄一份概率）
   GOALS, GOAL_MAP, GOAL_TARGETS, GOAL_DAYS, goalOf, goalKnob, goalTagHit, goalAssign,   // 第 52 单·目标系统（门禁与诊断工具按真值读）
   GOAL_BREAK_TICKS, nextGoalAt, weekMemory, weekTick,   // 第 53 单·周打包／周记忆／前提破裂（门禁按真值读，不另抄一套日历）
+  NIGHT_MKT, nightMktStartAt, inNightMkt, nightMktStep,   // 第 56 单·周五夜市（门禁按真值读）
   CATCHUP_MIN_PER_MIN, CATCHUP_MAX_DAYS, REFLECT_MIN, SMS_NOREPLY,
   catchUpPlan, catchUp, reflectFallback, clipTopDay,
   DIARY_FB, DIARY_FB_RECENT, CHAT_FB_OPEN, CHAT_FB_REPLY, pickV, pickFresh, diaryFallback,   // 第 27 单·兜底文案扩池
@@ -4714,6 +4767,10 @@ const BACK_SUM=[
   {k:'rent',   hit:(e,tx)=>e.type==='sys' && tx.indexOf('交租')>=0,     line:n=>'到了 '+n+' 次交租日。'},
   {k:'rain',   hit:(e,tx)=>e.type==='sys' && tx.indexOf('下起雨')>=0,   line:n=>'下过 '+n+' 场雨。'},
   {k:'clear',  hit:(e,tx)=>e.type==='sys' && tx.indexOf('雨停了')>=0,   line:n=>'雨停过 '+n+' 次。'},
+  // 第 56 单·周五夜市：两种世界级播报（提前两天的预告 ＋ 当天开张）——不补桶就会被那条
+  // 「未单列的一律带 agent」的闸当场判红（它正是为"加了第八种 logSys 忘了补桶"立的）。
+  {k:'nmPlan', hit:(e,tx)=>e.type==='sys' && tx.indexOf('广场有夜市')>=0, line:n=>'城里预告过 '+n+' 回夜市。'},
+  {k:'nmOpen', hit:(e,tx)=>e.type==='sys' && tx.indexOf('夜市开张了')>=0, line:n=>'夜市开了 '+n+' 回。'},
   {k:'market', hit:(e,tx)=>e.type==='act' && tx.indexOf('街市')>=0,     line:n=>'有 '+n+' 回去了周日街市。'},
   {k:'chat',   hit:(e,tx)=>e.type==='chat',                             line:n=>'住户之间搭话 '+n+' 次。'},
   {k:'diary',  hit:(e,tx)=>e.type==='diary',                            line:n=>'住户写下 '+n+' 篇睡前日记。'},

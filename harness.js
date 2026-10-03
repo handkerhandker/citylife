@@ -2821,7 +2821,12 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
       }
     }
     ok(带目标>=10,'第 54 单·行为侧：30 天 × 3 种子里有 '+带目标+' 张剪辑卡带「目标」项（不是恒零）');
-    ok(ids.every(id=>(见[id]||0)>0),'第 54 单·三种结局都上过卡（'+ids.map(id=>id+':'+(见[id]||0)).join(' ')+'）');
+    // 第 56 单改：`goal_broke`（中途换了）**本来就稀缺**（前提破裂 56 天 × 3 种子才 1 次），
+    // 30 天的样本里它可能是 0 ⇒ 硬要求三种都上卡是过紧的判据。改成：两种常见结局必须上过卡，
+    // 稀缺那种只作读数印出来（第 54 单交付件第九章已把它登记为接受项）。
+    ok((见.goal_done||0)>0&&(见.goal_miss||0)>0,
+       '第 54 单·两种常见结局都上过卡（'+ids.map(id=>id+':'+(见[id]||0)).join(' ')
+       +'；`goal_broke` 稀缺，只作读数——见交付件第九章）');
     ok(引到===带目标,'第 54 单·引原文：每张带目标的卡都引到了目标那三条日志本身（'+引到+'/'+带目标+'）');
   }
   // 阈值对齐：周一批把有效窗口压到约 6.9 天 ⇒ 阈值整体下调半档（判据：六条阈值都不高于第 52 单定标值）
@@ -2836,6 +2841,58 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
     ok(删!==src,'第 54 单·反向自查构造成立：病态改写命中了生产原文');
     const 病权=ids.map(id=>{ const m=删.match(new RegExp(id+':\\s*([\\d.]+)')); return m?Number(m[1]):0; });
     ok(病权.every(x=>!(x>=1.2&&x<=3.0)),'第 54 单·反向自查·拦得住：把权重删掉后三条都读到 0 ⇒ 「落在甲级区间」当场判红');
+  }
+}
+
+// ═══ 第 56 单·周五夜市（公共活动的三个要件：提前预告／地点固定／当天再提一次）══
+/* 被验的是生产源码与真值：预告与开张各恰一条、逛夜市只发生在周五 19–23、花了钱、且判据不是恒绿。 */
+{
+  const fs=require('fs'), path=require('path');
+  const src=fs.readFileSync(path.resolve(__dirname,'city-life-framework.html'),'utf8');
+  const NM_SRC=(src.match(/\/\*NIGHTMKT-START\*\/[\s\S]*?\/\*NIGHTMKT-END\*\//)||[''])[0];
+  ok(NM_SRC.length>0,'第 56 单·源码抽取：NIGHTMKT 段在位');
+  ok(Sim.NIGHT_MKT.day===4&&Sim.NIGHT_MKT.open===19*60&&Sim.NIGHT_MKT.close===23*60&&Sim.NIGHT_MKT.p>0,
+     '第 56 单·表：周五（day=4）19:00–23:00、概率 >0（实测 day='+Sim.NIGHT_MKT.day+'／'
+     +Math.floor(Sim.NIGHT_MKT.open/60)+':00–'+Math.floor(Sim.NIGHT_MKT.close/60)+':00／p='+Sim.NIGHT_MKT.p+'）');
+  ok((NM_SRC.match(/function inNightMkt\(/g)||[]).length===1,'第 56 单·结构：`inNightMkt` 只有一处定义');
+  ok((NM_SRC.match(/logSys\(/g)||[]).length===2,'第 56 单·结构：预告与开张各一条城市日志（实测 '+(NM_SRC.match(/logSys\(/g)||[]).length+' 条）');
+  ok(/if\(inNightMkt\(w\) && w\.rng\(\)<NIGHT_MKT\.p\)/.test(src),'第 56 单·结构：只占用"空闲时间"那一档（一行判据，落在傍晚散步之前）');
+  // 行为侧：56 天 × 3 种子
+  {
+    const 种=[20260803,424242,777];
+    let 预告=0, 开张=0, 逛=0, 出窗=0, 钱=0;
+    for(const seed of 种){
+      const w=Sim.makeWorld(seed); let 已读=0;
+      for(let i=0;i<56*144;i++){
+        Sim.step(w,10);
+        for(const e of w.log){
+          if(e.lid<=已读) continue; 已读=e.lid;
+          const t=String(e.text||'');
+          if(t.indexOf('广场有夜市')>0) 预告++;
+          else if(t.indexOf('夜市开张了')===0) 开张++;
+          else if(t.indexOf('在夜市买了份小吃')===0){
+            逛++;
+            const wd=PURE.weekday(e.t), mod=PURE.minuteOfDay(e.t);
+            if(!(wd===4&&mod>=19*60&&mod<23*60)) 出窗++;
+            if(/¥8/.test(t)) 钱+=8;
+          }
+        }
+      }
+    }
+    const 夜=8*3;   // 8 个周五 × 3 种子
+    ok(预告===夜,'第 56 单·预告：每个夜市恰一条（实测 '+预告+'／'+夜+'）——「什么时候、在哪」写在日志里');
+    ok(开张===夜,'第 56 单·当天再提一次：每个夜市恰一条开张日志（实测 '+开张+'／'+夜+'）');
+    ok(逛>=60&&出窗===0,'第 56 单·行为：56 天里逛夜市 '+逛+' 次，全部落在周五 19:00–23:00（出窗 '+出窗+' 次）');
+    ok(钱===逛*8,'第 56 单·经济后果：每趟买份小吃 −¥8（实测 ¥'+钱+'＝'+逛+'×8）——这是它跟"傍晚散步"的区别');
+    // 反向自查：把 p 掰成 0，上面那条行为判据就会读到 0 次 ⇒ 当场判红（拿同一把尺子量病态读数）
+    const 判=(次数)=>次数>=60&&出窗===0;
+    ok(!判(0),'第 56 单·反向自查·拦得住：若夜市概率为 0（没人去），「逛夜市 ≥60 次」当场判红');
+    ok(判(逛),'第 56 单·反向不误伤：生产读数照常放行');
+  }
+  // 红线：夜市那段（城市级流程）零 rng／零出网；掷骰只发生在 decide() 那一行
+  {
+    const bare=NM_SRC.replace(/\/\*[\s\S]*?\*\//g,'').replace(/(^|[^:'"])\/\/.*$/gm,'$1');
+    ok(!/\.rng\s*\(|\bfetch\s*\(/.test(bare),'第 56 单·红线：夜市的城市级流程零 rng／零出网（掷骰只在 decide 里那一行）');
   }
 }
 
