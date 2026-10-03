@@ -1390,6 +1390,50 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
     ok(普.同类===普.场数&&普.错位===0,'第 48 单·**同类命中 100%**：'+普.同类+'/'+普.场数+' 场的接话句都出自「开口类别」那一组（错位 '+普.错位+' 场；改前无从判——那时没有组，一句要接住全部四十句）');
     ok(普.串门===0,'第 48 单·零串门：没有一场的接话句同时落在别的类别组里（'+普.串门+' 场）——组间零共享在真世界里的那一半');
     ok(普.同日重复===0,'第 48 单·同日零重复：没有一场「同人同日同组」抽到同一句（重复 '+普.同日重复+' 次）——组容量 ≥ 单日峰值由 tools/chat-pair/probe.cjs 的实测表背书');
+    /* 第 82 单补：把"组容量 ≥ 单日峰值"从**工具里的表**搬进门禁——
+       缘由：`tools/fallback-pool/capacity.cjs` 当时报"顾云帆·vent 需 4 有 3"，
+       而门禁只查"每组 ≥2 条"，所以这条缺口一直没人管（工具是诊断、不判红）。
+       现在按 30 天 × 3 种子的**接话峰值**逐组对账：池子比峰值短就判红。 */
+    {
+      /* 口径与 tools/chat-pair/probe.cjs 那张"接话峰值"表一致：
+         峰值＝同一个（接话人 workKind × 接话类别）**在一天里**被抽到的总次数里最大的那个。 */
+      const 峰2={};
+      for(const seed of [20260803,424242,777]){
+        const w=Sim.makeWorld(seed); let 已=w.lidSeq; const 日={};
+        for(let i=0;i<30*144;i++){
+          Sim.step(w,10);
+          for(const e of w.log){
+            if(e.lid<=已) continue; 已=e.lid;
+            if(e.type!=='chat'||!e.with) continue;
+            const m=/^「([\s\S]*?)」「([\s\S]*?)」$/.exec(e.thought||''); if(!m) continue;
+            const 接走=w.agents.find(a=>a.id===e.with); if(!接走) continue;
+            const 类别=(()=>{
+              const 开人=w.agents.find(a=>a.id===e.agent); if(!开人) return null;
+              const 表=Sim.CHAT_OPEN_KIND[开人.workKind]||[];
+              const idx=(Sim.CHAT_FB_OPEN[开人.workKind]||[]).indexOf(m[1]);
+              if(idx>=0) return 表[idx];
+              const 题=Sim.talkTopicOnDay(PURE.dayOf(e.t));
+              const ti=(Sim.TALK_OPEN[开人.workKind]||[]).findIndex((s,i)=>Sim.talkOpenLine(开人.workKind,i,题)===m[1]);
+              if(ti>=0) return 'talk';
+              if((Sim.CHAT_FB_OPEN_BDAY[开人.workKind]||[]).indexOf(m[1])>=0) return 'bday';
+              return null;
+            })();
+            if(!类别) continue;
+            const key=PURE.dayOf(w.t)+'|'+接走.workKind+'|'+类别;
+            日[key]=(日[key]||0)+1;
+          }
+        }
+        for(const k in 日) 峰2[k]=Math.max(峰2[k]||0, 日[k]);
+      }
+      const 短=[];
+      for(const k in 峰2){
+        const [d,wk,kind]=k.split('|');
+        const 池=((Sim.CHAT_FB_REPLY[wk]||{})[kind])||[];
+        if(池.length<峰2[k]) 短.push(wk+'·'+kind+'（需 '+峰2[k]+' 有 '+池.length+'）');
+      }
+      ok(短.length===0,'第 82 单·组容量 ≥ 单日峰值（30 天 × 3 种子逐组对账）：'
+         +(短.length?('不够的：'+短.join('；')):'全部够用'));
+    }
     // 反向自查一：把最热那一类组接歪（让 work 的 view 组指向 eat 组那份数组）⇒ 同类命中必须当场掉下来。
     // 组接歪＝同一个数组挂在两个类别名下 ⇒ 抽出来的句子会「同时落在别的组」，由串门那条判红；
     // 用最热的组是因为判断只在**真抽到**该 (人 × 类别) 时才成立（冷组 30 天可能一次都不抽）。

@@ -9,10 +9,12 @@
 import http from 'http';
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import { chromium } from 'playwright';
 
 const SRC = process.argv[2], OUT = process.argv[3], TAG = process.argv[4] || 'after';
-const REPO = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../..');
+// 第 82 单修：`new URL(...).pathname` 是百分号编码的，中文路径下会 404 ⇒ 改 fileURLToPath
+const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const PORT = 18907;
 
 const INJECT = `

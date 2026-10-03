@@ -15,10 +15,13 @@
 import http from 'http';
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import { chromium } from 'playwright';
 
 const OUT = process.argv[2] || path.resolve('docs/交付/第26单-图');
-const REPO = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../..');
+/* 第 82 单修：原先用 `new URL(import.meta.url).pathname`——那是**百分号编码**过的路径，
+   仓库路径里只要有中文（本机是 `F:\资料\…`）就会 404、工具直接跑不通。改用 fileURLToPath。 */
+const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const PORT = 18926;
 const MIME = {'.html':'text/html;charset=utf-8', '.png':'image/png', '.js':'text/javascript', '.json':'application/json'};
 

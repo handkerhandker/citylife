@@ -17,7 +17,16 @@ const SEEDS = [20260803, 424242, 777];
 const DAYS = 30;
 const 样本上限 = Number(process.argv[2] || 14);
 const THOUGHT = /^「(.*)」「(.*)」$/;          // pushLog 里闲聊那条 thought 的格式（它把两句并进同一条日志）
-const 类别名 = {eat: '问我吃', busy: '问我忙', invite: '说地点', vent: '吐苦水', view: '说看法', self: '说自己'};
+/* 第 82 单修：这张名字表原先只写到六类，第 65 单加 `bday`、第 72 单加 `talk` 之后，
+   下面那行 `类别名[k].padEnd(5)` 直接**崩**（Cannot read properties of undefined）——
+   工具自己另抄了一份类别表，生产加一类它就烂一次。治法两条：
+     ① 名字**从生产那张 `Sim.CHAT_KINDS` 派生**，查不到就用键名兜底（**由构造保证不再崩**）；
+     ② 归类那一段也照生产的第二、第三张开口池（生日问候／夜谈话题）补上（不然"归不了类"会虚高）。 */
+const 类别名 = Object.fromEntries((Sim.CHAT_KINDS||[]).map(k => [k, ({
+  eat:'问我吃', busy:'问我忙', invite:'说地点', vent:'吐苦水', view:'说看法', self:'说自己',
+  bday:'过生日', talk:'聊话题',
+})[k] || k]));
+const 名 = k => 类别名[k] || String(k);
 
 const 开口峰 = {}, 接话峰 = {}, 样本 = [];
 let 总场数 = 0, 归类失败 = 0, 组内命中 = 0, 组内可判 = 0, 组间串门 = 0;
@@ -46,7 +55,13 @@ for (const seed of SEEDS) {
       if (!开口人 || !接话人) continue;
       const 表 = Sim.CHAT_OPEN_KIND[开口人.workKind] || [];
       const idx = Sim.CHAT_FB_OPEN[开口人.workKind].indexOf(m[1]);
-      const kind = idx >= 0 ? 表[idx] : undefined;
+      /* 第 82 单：开口池有三张了（平常那张按人挂；生日问候与夜谈话题各一张）——
+         后两张要照**条目自己的日子**把模板展开再比（与门禁那支普查同一套口径）。 */
+      const 题面 = Sim.talkTopicOnDay ? Sim.talkTopicOnDay(PURE.dayOf(e.t)) : '';
+      const ti = (Sim.TALK_OPEN && Sim.TALK_OPEN[开口人.workKind] || [])
+        .findIndex((s, i) => Sim.talkOpenLine(开口人.workKind, i, 题面) === m[1]);
+      const bi = (Sim.CHAT_FB_OPEN_BDAY && Sim.CHAT_FB_OPEN_BDAY[开口人.workKind] || []).indexOf(m[1]);
+      const kind = idx >= 0 ? 表[idx] : (bi >= 0 ? 'bday' : (ti >= 0 ? 'talk' : undefined));
       if (!kind) { 归类失败++; continue; }
       总场数++;
       const 日 = PURE.dayOf(w.t);
@@ -83,9 +98,9 @@ console.log('种子 ' + SEEDS.join('/') + '，各 ' + DAYS + ' 天；共 ' + 总
   + '；开口句归不了类的 ' + 归类失败 + ' 条');
 
 console.log('\n═══ 一 · 单日抽取峰值（按 人 × 类别；容量取这个数的上界）═══');
-console.log('开口人      ' + Sim.CHAT_KINDS.map(k => 类别名[k].padEnd(5)).join(''));
+console.log('开口人      ' + Sim.CHAT_KINDS.map(k => 名(k).padEnd(5)).join(''));
 for (const k of 四人) console.log(k.padEnd(12) + Sim.CHAT_KINDS.map(kd => 空(开口峰[k + '|' + kd]).padEnd(5)).join(''));
-console.log('接话人      ' + Sim.CHAT_KINDS.map(k => 类别名[k].padEnd(5)).join(''));
+console.log('接话人      ' + Sim.CHAT_KINDS.map(k => 名(k).padEnd(5)).join(''));
 for (const k of 四人) console.log(k.padEnd(12) + Sim.CHAT_KINDS.map(kd => 空(接话峰[k + '|' + kd]).padEnd(5)).join(''));
 console.log('（开口峰值＝该人当天说出的某类话最多几条；接话峰值＝该人当天接某类话最多几次。'
   + '分组后每一组的长度必须 ≥ 对应峰值，否则当天就会抽空重复。）');
@@ -98,7 +113,7 @@ else console.log('  同类命中 ' + 组内命中 + ' / ' + 组内可判 + ' 场
 
 console.log('\n═══ 三 · 逐字实录（语义只能目验：接话这一句，答上了吗）═══');
 for (const s of 样本) {
-  console.log('  [D' + s.日 + ' ' + s.开口人 + '→' + s.接话人 + '·' + 类别名[s.kind] + ']');
+  console.log('  [D' + s.日 + ' ' + s.开口人 + '→' + s.接话人 + '·' + 名(s.kind) + ']');
   console.log('    「' + s.said + '」');
   console.log('    「' + s.back + '」');
 }
@@ -111,7 +126,7 @@ for (const k of 四人) {
   for (const kd of Sim.CHAT_KINDS) {
     const 组 = (Sim.CHAT_FB_REPLY[k] || {})[kd] || [];
     if (!组.length) continue;
-    console.log('  【' + k + '·' + 类别名[kd] + '】');
+    console.log('  【' + k + '·' + 名(kd) + '】');
     const 没抽到 = [];
     for (const s of 组) {
       总数++;
