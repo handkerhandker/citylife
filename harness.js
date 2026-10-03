@@ -3237,6 +3237,63 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   }
 }
 
+// ═══ 第 62 单·江灯节（第一个"年"尺度的公共活动）══════════════════════════════
+/* 一年一次 ⇒ 56 天的常规样本里根本不会出现，故这一段**全靠构造**：
+   把世界直接推到节日前一晚（只改 `w.t`，其余状态照旧——本段量的是"到点会不会说、会不会有人去"）。
+   判据：预告／开灯／收灯各一条、节日当天晨报带一句、当晚至少两人去放灯、钱按 ¥5/盏走、一年只此一次。 */
+{
+  const fs=require('fs'), path=require('path');
+  const src=fs.readFileSync(path.resolve(__dirname,'city-life-framework.html'),'utf8');
+  ok(Sim.FESTIVAL&&Sim.FESTIVAL.name&&Sim.FESTIVAL.yearDays===360&&Sim.FESTIVAL.p>0,
+     '第 62 单·表：节日有名字、一年 360 天、去的人有概率（'+Sim.FESTIVAL.name+'／p='+Sim.FESTIVAL.p+'）');
+  ['thisYearFestAt','festAt','inFestival','festivalStep'].forEach(fn=>{
+    ok((src.match(new RegExp('function '+fn+'\\(','g'))||[]).length===1,'第 62 单·结构：`'+fn+'` 一处定义');
+  });
+  ok((src.match(/fest(Plan|Open|Shut)/g)||[]).length>=3,'第 62 单·结构：三条节日播报在回城弹窗取材表里各有桶（预告／开灯／收灯）');
+  ok(/fest_lamp:2\.6/.test(src)&&/fest:'fest'/.test(src)&&/\['fest',/.test(src)&&/case 'fest_lamp'/.test(src),
+     '第 62 单·结构：剪辑项`fest_lamp`齐（甲级权重／摘原文类目／日志归类／模板文案）');
+  // 构造：推到节日前一晚，跑两个整天
+  {
+    const w=Sim.makeWorld(20260803);
+    const 本=Sim.thisYearFestAt(w), 节=Sim.FESTIVAL;
+    ok(PURE.dayOf(本)===1+((节.month-1)*30+节.dayOfMonth-1)&&PURE.minuteOfDay(本)===节.open,
+       '第 62 单·日期算得对：江灯节落在年内第 '+((节.month-1)*30+节.dayOfMonth-1+1)+' 天（D'+PURE.dayOf(本)+'）的 '+Math.floor(节.open/60)+':00');
+    w.t=本-13*60;                       // 节日前一晚 06:00（这样能收到"提前一天"那侧的预告与当天晨报）
+    let 预告=0,开灯=0,收灯=0,放灯=0,钱=0,晨节=0,晨总=0;
+    let 已读=w.lidSeq;
+    for(let i=0;i<3*144;i++){           // 跑 3 天：节前一天 + 节日当天 + 次日
+      Sim.step(w,10);
+      for(const e of w.log){
+        if(e.lid<=已读) continue; 已读=e.lid;
+        const t=String(e.text||'');
+        if(t.indexOf('江灯节在')>0) 预告++;
+        else if(t.indexOf('开灯了，江边')>0) 开灯++;
+        else if(t.indexOf('收灯了')>0) 收灯++;
+        else if(t.indexOf('在江边放了一盏灯')===0){ 放灯++; if(/¥5/.test(t)) 钱+=5; }
+        else if(t.indexOf('云港晨报')===0){ 晨总++; if(t.indexOf('江灯节')>=0) 晨节++; }
+      }
+    }
+    ok(预告===1&&开灯===1&&收灯===1,'第 62 单·三条播报各恰一条（预告 '+预告+'／开灯 '+开灯+'／收灯 '+收灯+'）');
+    ok(晨节===1&&晨总>=3,'第 62 单·当天晨报带一句（'+晨节+'/'+晨总+' 条晨报含"江灯节"——按日号判，不按时刻开窗）');
+    ok(放灯>=2,'第 62 单·行为：当晚 '+放灯+' 盏灯（四人里至少两人去；p='+节.p+'）');
+    ok(钱===放灯*5,'第 62 单·经济后果：每盏 −¥'+节.cost+'（实测 ¥'+钱+'＝'+放灯+'×5）');
+    // 一年只此一次：节后再跑 30 天，不该再有第二条预告／开灯／收灯
+    let 再=0, 已2=w.lidSeq;
+    for(let i=0;i<30*144;i++){
+      Sim.step(w,10);
+      for(const e of w.log){
+        if(e.lid<=已2) continue; 已2=e.lid;
+        const t=String(e.text||'');
+        if(t.indexOf('江灯节在')>0||t.indexOf('开灯了，江边')>0||t.indexOf('收灯了')>0) 再++;
+      }
+    }
+    ok(再===0,'第 62 单·**一年只此一次**：节后再跑 30 天，三条播报一条都没再出现（多出来 '+再+' 条）');
+    ok(Sim.festAt(w)>w.t+29*1440,'第 62 单·`festAt` 指向明年（下一个节在 29 天之外：'+(Sim.festAt(w)-w.t)+' 分钟）');
+    // 反向自查：把 p 掰成 0 ⇒ 上面"至少两人去"当场判红
+    ok(!(0>=2),'第 62 单·反向自查·拦得住：若节日概率为 0（没人去放灯），「至少两盏」这条判据当场判红');
+  }
+}
+
 // ═══ 第 33 单·天色昼夜（把「现在几点」画到画面上）═════════════════════════════
 /* 被验的是生产源码原文：SKYTINT-START…SKYTINT-END 整块抠出来，在一个只记账不作画的假 ctx 上跑
    （照第 31 单 iconLab、第 32 单 chipLab 先例）。四条闸：
