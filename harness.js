@@ -6794,6 +6794,67 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   }
 }
 
+// ═══ 第 123 单·坏档容错二期（过闸的档必须跑得动）═══════════════════════════════════
+/* 被验的是生产源码与真值：
+     ① 结构：`pickV` 取用处对 `w.saidDay` 就地重建（照 `chatTopics`／`fbRecent` 先例，绝不抛错）；
+        `svAgentUsable` 对 `inbox`／`personalLog` 的**元素**也过白名单（坏元素整档判坏）；
+     ② 行为·契约：畸形档 → `hydrate` → 按产品源码里的 `worldUsable` 过闸 —— **过闸者必须能跑 5 天**；
+        三处现场点名：saidDay 坏值 ⇒ 过闸并就地治好；inbox／personalLog 坏元素 ⇒ 闸拒收；
+     ③ 反向自查：把闸里那两条新判据抠掉 ⇒ 坏元素当场"过闸后跑崩"；把 `pickV` 的治愈式写回旧写法
+        ⇒ saidDay 坏值当场抛错 —— 两条判据都不是恒绿（病态只改内存里的副本，生产源码一字不动）。 */
+{
+  const fs123=require('fs'), path123=require('path');
+  const src123=fs123.readFileSync(path123.resolve(__dirname,'city-life-framework.html'),'utf8');
+  ok(/w\.saidDay && typeof w\.saidDay==='object' && !Array\.isArray\(w\.saidDay\)/.test(src123),
+     '第 123 单·结构：`pickV` 对 `w.saidDay` 就地重建（照 chatTopics／fbRecent 先例）');
+  ok(/a\.inbox\.every\(m=>svObj\(m\)&&svStr\(m\.id\)&&svStr\(m\.label\)\)/.test(src123)
+     &&/a\.personalLog\.every\(e=>svObj\(e\)&&svNumF\(e\.t\)&&svStr\(e\.text\)/.test(src123),
+     '第 123 单·结构：坏档闸对 `inbox`／`personalLog` 的**元素**也过白名单（坏元素整档判坏）');
+  const 闸源123=(src123.match(/const SV_WORK_KINDS=\{[\s\S]*?\n\}\nfunction worldUsable\(w\)\{[\s\S]*?\n\}/)||[''])[0];
+  ok(!!闸源123,'第 123 单·构造成立：坏档闸源码抠得出来');
+  const worldUsable123=new Function('Sim', 闸源123+'\nreturn worldUsable;')(Sim);
+  const 档制123=(mut)=>{
+    const w=Sim.makeWorld(20260803);
+    for(let d=1;d<=40;d++){ w.credits=99; Sim.sendMessage(w,w.agents[0].id,'cheer'); for(let i=0;i<144;i++) Sim.step(w,10); }
+    const 档=JSON.parse(Sim.serialize(w,null)); mut(档.world); return JSON.stringify(档);
+  };
+  const 试123=(档,闸)=>{
+    const {world}=Sim.hydrate(档);
+    if(!闸(world)) return '拒收';
+    try{ for(let i=0;i<720;i++) Sim.step(world,10); return '过闸可跑'; }
+    catch(e){ return '过闸跑崩'; }
+  };
+  const 现场档={
+    saidDay: 档制123(w=>{ w.saidDay='x'; }),
+    inbox:   档制123(w=>{ w.agents[0].inbox=[null]; }),
+    log:     档制123(w=>{ w.agents[0].personalLog=[null]; }),
+  };
+  const 三果=[试123(现场档.saidDay,worldUsable123),试123(现场档.inbox,worldUsable123),试123(现场档.log,worldUsable123)];
+  ok(三果[0]==='过闸可跑'&&三果[1]==='拒收'&&三果[2]==='拒收',
+     '第 123 单·行为：三处现场点名——saidDay 坏值→'+三果[0]+'；inbox 坏元素→'+三果[1]+'；personalLog 坏元素→'+三果[2]);
+  {
+    const 病闸源123=闸源123.replace(/  if\(!Array\.isArray\(a\.inbox\) \|\| !a\.inbox\.every\([\s\S]*?\n     &&\(e\.thought===undefined\|\|e\.thought===null\|\|svStr\(e\.thought\)\)\)\) return false;[^\n]*\n/,
+      '  if(!Array.isArray(a.inbox) || !Array.isArray(a.personalLog)) return false;\n');
+    const 病闸123=new Function('Sim', 病闸源123+'\nreturn worldUsable;')(Sim);
+    const 病果=试123(现场档.inbox,病闸123);                       // 无头就会崩（decide 读 m.id）
+    const 病personal放行=病闸123(Sim.hydrate(现场档.log).world);   // 渲染面才崩，无头不崩——只验病态闸会放行
+    const pick源123=(src123.match(/function pickV\(w,arr,ag,key\)\{[\s\S]*?\n\}/)||[''])[0];
+    const 病pick源123=pick源123.replace("(w.saidDay && typeof w.saidDay==='object' && !Array.isArray(w.saidDay)) ? w.saidDay : (w.saidDay={})",'(w.saidDay||{})');
+    /* 游戏本体跑在 'use strict' 里（向字符串挂属性会抛错）；抠出来求值时要带上同一模式，
+       否则宽松模式会静默失败、反向自查假绿（本闸第一版就栽在这）。 */
+    const pick健=new Function('PURE', "'use strict';\n"+pick源123+'\nreturn pickV;')(PURE);
+    const pick病=new Function('PURE', "'use strict';\n"+病pick源123+'\nreturn pickV;')(PURE);
+    const 棒=()=>({t:1440,saidDay:'x',rng:()=>0});   // 每次现造：JSON 克隆会把 rng 函数丢掉
+    let 健果='抛错',病果2='不抛';
+    try{ pick健(棒(),['甲','乙'],null,'k'); 健果='不抛'; }catch(e){}
+    try{ pick病(棒(),['甲','乙'],null,'k'); }catch(e){ 病果2='抛错'; }
+    ok(病果==='过闸跑崩'&&病personal放行===true&&健果==='不抛'&&病果2==='抛错',
+       '第 123 单·反向自查·拦得住：抠掉闸里两条新判据 ⇒ inbox 坏元素当场"过闸跑崩"（实测 '+病果
+       +'）、personalLog 坏元素被放行（无头不崩，崩在角色卡对话框——闸正是为那条路守的）'
+       +'；把 `pickV` 治愈式写回旧写法 ⇒ saidDay 坏值当场抛错（生产副本 '+健果+'／病态副本 '+病果2+'）⇒ 判据不是恒绿');
+  }
+}
+
 // ═══ 第 35 单·入夜点灯（屋里亮起来）═════════════════════════════════════════
 /* 被验的是生产源码原文：SKYTINT ＋ NIGHTLAMP 两段一起抠出来求值（灯要调 skyTint，两段必须同源），
    在一个只记账的假 ctx 上跑。四条闸：
@@ -7407,7 +7468,7 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   ok(恒绿===0,'第 66 单·闸二：`ok` 第一参数写死 true 的**读数型假断言**为 0 条（实测 '+恒绿+'；读数一律走 `读数()`）');
   // 闸三 · 反向自查登记（防整条被删）
   const 登记=['第 48 单','第 49 单','第 51 单','第 52 单','第 53 单','第 54 单','第 56 单','第 57 单',
-              '第 58 单','第 59 单','第 62 单','第 63 单','第 64 单','第 65 单','第 67 单','第 70 单','第 71 单','第 72 单','第 73 单','第 74 单','第 75 单','第 76 单','第 77 单','第 79 单','第 80 单','第 81 单','第 84 单','第 85 单','第 87 单','第 88 单','第 90 单','第 91 单','第 92 单','第 93 单','第 94 单','第 95 单','第 96 单','第 97 单','第 98 单','第 99 单','第 100 单','第 102 单','第 103 单','第 106 单','第 107 单','第 109 单','第 110 单','第 111 单','第 112 单','第 113 单','第 115 单','第 116 单','第 117 单','第 118 单','第 119 单','第 120 单','第 121 单',
+              '第 58 单','第 59 单','第 62 单','第 63 单','第 64 单','第 65 单','第 67 单','第 70 单','第 71 单','第 72 单','第 73 单','第 74 单','第 75 单','第 76 单','第 77 单','第 79 单','第 80 单','第 81 单','第 84 单','第 85 单','第 87 单','第 88 单','第 90 单','第 91 单','第 92 单','第 93 单','第 94 单','第 95 单','第 96 单','第 97 单','第 98 单','第 99 单','第 100 单','第 102 单','第 103 单','第 106 单','第 107 单','第 109 单','第 110 单','第 111 单','第 112 单','第 113 单','第 115 单','第 116 单','第 117 单','第 118 单','第 119 单','第 120 单','第 121 单','第 123 单',
               '闸四','闸五','闸十','闸十一','闸十二'];
   const 实有=[...new Set((自源.match(/(第 \d+ 单|闸[一二三四五六七八九十]+)·反向自查/g)||[])
                             .map(x=>x.replace('·反向自查','')))];

@@ -442,7 +442,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v108</span>
+<span class="num dim" id="set-build">v109</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -1359,7 +1359,7 @@ function pickV(w,arr,ag,key){
   // 一句当天任何人说过即不再抽；跨天自动重置；池尽重置再抽（宁可重复不可沉默）。
   // 注意：不同数组严禁共键（used 存的是数组下标，共键会串账），故 lw 调用处把 workKind 并入键。
   // 旧档遗留的 住户id|key 记录自然搁置不再命中，绝不判坏档。
-  const sd=w.saidDay=(w.saidDay||{});
+  const sd=w.saidDay=(w.saidDay && typeof w.saidDay==='object' && !Array.isArray(w.saidDay)) ? w.saidDay : (w.saidDay={});
   const day=PURE.dayOf(w.t);
   const k=key;
   let rec=sd[k];
@@ -3838,7 +3838,9 @@ function svAgentUsable(a){
      || !svNumF(a.metab.eatAt) || !svNumF(a.metab.napAt)) return false;                   // F2：缺 metab→首拍崩
   if(!svObj(a.activity) || typeof a.activity.type!=='string' || !svStr(a.activity.label)) return false;
   if(!svObj(a.flags)) return false;
-  if(!Array.isArray(a.inbox) || !Array.isArray(a.personalLog)) return false;
+  if(!Array.isArray(a.inbox) || !a.inbox.every(m=>svObj(m)&&svStr(m.id)&&svStr(m.label))) return false;   // decide() 读 m.id/m.label（第 123 单：坏元素会当场崩）
+  if(!Array.isArray(a.personalLog) || !a.personalLog.every(e=>svObj(e)&&svNumF(e.t)&&svStr(e.text)
+     &&(e.thought===undefined||e.thought===null||svStr(e.thought)))) return false;                        // 角色卡对话框读 e.t/e.text/e.thought（第 123 单）
   if(!Array.isArray(a.traits) || !a.traits.every(svStr)) return false;
   if(!svNumR(a.hunger,0,100) || !svNumR(a.energy,0,100)) return false;
   if(!svNumF(a.money) || !svNumF(a.wage) || !svNumF(a.busyUntil) || !svNumF(a.relNotes)) return false;
