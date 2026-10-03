@@ -515,7 +515,10 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
     // 第 27 单那几条通用检查（非空／零撞句／零语气词起手／无 ✨ 与英文）原样照跑，口径一字未松。
     const 摊平接话=k=>[].concat(...Sim.CHAT_KINDS.map(kd=>((Sim.CHAT_FB_REPLY[k]||{})[kd])||[]));
     const 接话表={}; KINDS.forEach(k=>{ 接话表[k]=摊平接话(k); });
-    const pools=[['日记',Sim.DIARY_FB],['闲聊·开口',Sim.CHAT_FB_OPEN],['闲聊·接话',接话表]];
+    /* 第 116 单：把两张**按日子选的开口池**（第 65 单生日问候、第 116 单灯节夜）也纳入同一条闸——
+       它们此前挂在这条闸之外（写死的文案更该守规矩；这正是本闸第 27 单立单的缘由）。 */
+    const pools=[['日记',Sim.DIARY_FB],['闲聊·开口',Sim.CHAT_FB_OPEN],['闲聊·接话',接话表],
+                 ['生日问候·开口',Sim.CHAT_FB_OPEN_BDAY],['灯节夜·开口',Sim.FEST_OPEN]];
     for(const [label,P] of pools){
       ok(KINDS.every(k=>Array.isArray(P[k]) && P[k].length>0),label+'池按 workKind 四人齐备（照 WORK_THOUGHTS 先例挂表）');
       const all=[].concat(...KINDS.map(k=>P[k]||[]));
@@ -1333,8 +1336,9 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
       /* 第 72 单：第三张开口池（夜谈话题）——那几句是**带 `{题}` 的模板**，按条目自己的日子展开后再比。 */
       const 题面=Sim.talkTopicOnDay(PURE.dayOf(e.t));
       const ti=(Sim.TALK_OPEN[kindOf[e.agent]]||[]).findIndex((s,i)=>Sim.talkOpenLine(kindOf[e.agent],i,题面)===m[1]);
-      const oi=开池.indexOf(m[1]), bi=生日池.indexOf(m[1]);
-      const kind=oi>=0?表[oi]:(bi>=0?'bday':(ti>=0?'talk':null));
+      const 灯节池=Sim.FEST_OPEN[kindOf[e.agent]]||[];   // 第 116 单：第四张开口池（灯下的话）
+      const oi=开池.indexOf(m[1]), bi=生日池.indexOf(m[1]), fi=灯节池.indexOf(m[1]);
+      const kind=oi>=0?表[oi]:(bi>=0?'bday':(ti>=0?'talk':(fi>=0?'fest':null)));
       const 组=kind?((Sim.CHAT_FB_REPLY[kindOf[e.with]]||{})[kind]):null;
       if(!kind || !Array.isArray(组) || 组.indexOf(m[2])<0){ mis++; continue; }
       // 组间零共享由上面那条结构断言保证 ⇒ 这一句「同时落在别的组」本该不可能；真出现就是有两句同文，判红
@@ -1368,8 +1372,9 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
             const 生日池=Sim.CHAT_FB_OPEN_BDAY[开W]||[];      // 第 65 单：第二张开口池（生日问候）
             const 题面=Sim.talkTopicOnDay(PURE.dayOf(e.t));   // 第 72 单：第三张开口池（夜谈话题，带 `{题}` 模板）
             const ti=(Sim.TALK_OPEN[开W]||[]).findIndex((s,i)=>Sim.talkOpenLine(开W,i,题面)===m[1]);
-            const oi=开池.indexOf(m[1]), bi=生日池.indexOf(m[1]);
-            const kind=oi>=0?表[oi]:(bi>=0?'bday':(ti>=0?'talk':null));
+            const 灯节池=Sim.FEST_OPEN[开W]||[];              // 第 116 单：第四张开口池（灯下的话）
+            const oi=开池.indexOf(m[1]), bi=生日池.indexOf(m[1]), fi=灯节池.indexOf(m[1]);
+            const kind=oi>=0?表[oi]:(bi>=0?'bday':(ti>=0?'talk':(fi>=0?'fest':null)));
             if(!kind){ r.归类失败++; continue; }
             r.场数++;
             const 接表=Sim.CHAT_FB_REPLY[接W]||{};
@@ -1416,6 +1421,7 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
               const ti=(Sim.TALK_OPEN[开人.workKind]||[]).findIndex((s,i)=>Sim.talkOpenLine(开人.workKind,i,题)===m[1]);
               if(ti>=0) return 'talk';
               if((Sim.CHAT_FB_OPEN_BDAY[开人.workKind]||[]).indexOf(m[1])>=0) return 'bday';
+              if((Sim.FEST_OPEN[开人.workKind]||[]).indexOf(m[1])>=0) return 'fest';   // 第 116 单
               return null;
             })();
             if(!类别) continue;
@@ -6336,6 +6342,74 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   }
 }
 
+// ═══ 第 116 单·灯下的话（关系 C 档② 的节日那一半）═══════════════════════════════
+/* 被验的是生产源码与真值：
+     ① 结构：`FEST_OPEN` 四类齐、每类 ≥3 条；`CHAT_KINDS` 里认得出 `fest`；四人的
+        `CHAT_FB_REPLY[workKind].fest` 齐、每类 ≥3 条；`灯节接话组` 一处定义、key 另开号段；
+        `chatKindOf` 认得出灯节开口句（`Sim.chatKindOf` 不在导出里 ⇒ 用源码断言＋「不串门」行为兜）；
+     ② 门槛读同一张档位表（`REL_TIERS[2].lo`＝「熟」、取两边较小值）；
+     ③ 行为（真跑 400 天 × 3 种子）：灯节夜（`inFestival`）里凡 **两边都到「熟」** 的对话，
+        开口句出自 `FEST_OPEN`、接话句出自 `fest` 组；**非灯节夜的对话一条都不许出自 `FEST_OPEN`**；
+        生疏的一对在灯节夜照常说平常话（该晚这种对话 ≥0 条也不强求——由门槛句兜底）；
+     ④ 反向自查：把 `FEST_OPEN` 在运行时清空再跑同一段 ⇒ 灯节夜的 `fest` 条数落到 0 ⇒ 上面那条不是恒绿。 */
+{
+  const fs=require('fs'), path=require('path');
+  const src=fs.readFileSync(path.resolve(__dirname,'city-life-framework.html'),'utf8');
+  const 池=Sim.FEST_OPEN||{};
+  ok(['work','clerk','trade','write'].every(k=>Array.isArray(池[k])&&池[k].length>=3),
+     '第 116 单·结构：`FEST_OPEN` 四类齐、每类 ≥3 条（'+['work','clerk','trade','write'].map(k=>(池[k]||[]).length).join('/')+'）');
+  ok(Sim.CHAT_KINDS.indexOf('fest')>=0
+     &&['work','clerk','trade','write'].every(k=>Array.isArray(((Sim.CHAT_FB_REPLY[k]||{}).fest))&&Sim.CHAT_FB_REPLY[k].fest.length>=3),
+     '第 116 单·结构：`CHAT_KINDS` 加了第九类 `fest`；四人的接话组都齐、每类 ≥3 条');
+  ok(/function 灯节接话组\(workKind\)\{/.test(src)
+     &&/const 灯节=\(!寿星 && !题面 && inFestival\(w\)[\s\S]{0,120}REL_TIERS\[2\]/.test(src)
+     &&/灯节 \? pickV\(w,FEST_OPEN\[ag\.workKind\]/.test(src)
+     &&/灯节 \? 灯节接话组\(mate\.workKind\)/.test(src),
+     '第 116 单·结构：门槛读同一张档位表的「熟」档（两边较小值）；开口/接话两支都接了 `灯节`，'
+     +'优先级仍是 生日 > 题面 > 灯节 > 平常（平常那支留在 `const grp=` 行里）；`灯节接话组` 一处定义');
+  // ── 行为：真跑 400 天 × 3 种子，认灯节夜的那些句子 ──────────────────────
+  const 普查=()=>{
+    const r={灯节夜:0, 灯节夜错池:0, 别夜出现:0, 接话错组:0};
+    for(const seed of [20260803,424242,777]){
+      const w=Sim.makeWorld(seed); let 已=w.lidSeq;
+      for(let i=0;i<400*144;i++){
+        Sim.step(w,10);
+        for(const e of w.log){
+          if(e.lid<=已) continue; 已=e.lid;
+          if(e.type!=='chat'||!e.with) continue;
+          const m=/^「([\s\S]*?)」「([\s\S]*?)」$/.exec(e.thought||''); if(!m) continue;
+          const 开=w.agents.find(a=>a.id===e.agent), 接=w.agents.find(a=>a.id===e.with);
+          if(!开||!接) continue;
+          const 出灯池=(Sim.FEST_OPEN[开.workKind]||[]).indexOf(m[1])>=0;
+          if(!出灯池) continue;
+          const 夜=Sim.inFestival({t:e.t});
+          if(!夜){ r.别夜出现++; continue; }
+          r.灯节夜++;
+          if(!(Sim.CHAT_FB_REPLY[接.workKind]||{}).fest || (Sim.CHAT_FB_REPLY[接.workKind].fest||[]).indexOf(m[2])<0) r.接话错组++;
+          const 档=Math.min(Sim.relGet(开,接.id),Sim.relGet(接,开.id));
+          if(档<((Sim.REL_TIERS[2]&&Sim.REL_TIERS[2].lo)||20)) r.灯节夜错池++;
+        }
+      }
+    }
+    return r;
+  };
+  const 健=普查();
+  ok(健.灯节夜>0&&健.别夜出现===0&&健.接话错组===0&&健.灯节夜错池===0,
+     '第 116 单·行为（400 天 × 3 种子）：灯节夜说出 `FEST_OPEN` 句子的对话 **'+健.灯节夜+' 场**；'
+     +'错池 '+健.灯节夜错池+'／别夜出现 '+健.别夜出现+'／接话错组 '+健.接话错组);
+  // 反向自查：运行时把这张池清空（"没这套话"）⇒ 同一段普查里灯节夜的 fest 条数落到 0
+  {
+    const 原=Sim.FEST_OPEN.work.slice();
+    let 病=null;
+    try{ for(const k of ['work','clerk','trade','write']) Sim.FEST_OPEN[k]=[]; 病=普查(); }
+    finally{ for(const k of ['work','clerk','trade','write']) Sim.FEST_OPEN[k]=原; }
+    ok(!(病.灯节夜>0),'第 116 单·反向自查·拦得住：把 `FEST_OPEN` 清空 ⇒ 灯节夜条数落到 '+病.灯节夜
+       +' ⇒ 上面那条判据不是恒绿（池已复原）');
+    ok((Sim.FEST_OPEN.work||[]).length===原.length&&Sim.FEST_OPEN.work[0]===原[0],
+       '第 116 单·复原：反向自查跑完，`FEST_OPEN` 四类逐条回到生产原文');
+  }
+}
+
 // ═══ 第 35 单·入夜点灯（屋里亮起来）═════════════════════════════════════════
 /* 被验的是生产源码原文：SKYTINT ＋ NIGHTLAMP 两段一起抠出来求值（灯要调 skyTint，两段必须同源），
    在一个只记账的假 ctx 上跑。四条闸：
@@ -6949,7 +7023,7 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   ok(恒绿===0,'第 66 单·闸二：`ok` 第一参数写死 true 的**读数型假断言**为 0 条（实测 '+恒绿+'；读数一律走 `读数()`）');
   // 闸三 · 反向自查登记（防整条被删）
   const 登记=['第 48 单','第 49 单','第 51 单','第 52 单','第 53 单','第 54 单','第 56 单','第 57 单',
-              '第 58 单','第 59 单','第 62 单','第 63 单','第 64 单','第 65 单','第 67 单','第 70 单','第 71 单','第 72 单','第 73 单','第 74 单','第 75 单','第 76 单','第 77 单','第 79 单','第 80 单','第 81 单','第 84 单','第 85 单','第 87 单','第 88 单','第 90 单','第 91 单','第 92 单','第 93 单','第 94 单','第 95 单','第 96 单','第 97 单','第 98 单','第 99 单','第 100 单','第 102 单','第 103 单','第 106 单','第 107 单','第 109 单','第 110 单','第 111 单','第 112 单','第 113 单','第 115 单',
+              '第 58 单','第 59 单','第 62 单','第 63 单','第 64 单','第 65 单','第 67 单','第 70 单','第 71 单','第 72 单','第 73 单','第 74 单','第 75 单','第 76 单','第 77 单','第 79 单','第 80 单','第 81 单','第 84 单','第 85 单','第 87 单','第 88 单','第 90 单','第 91 单','第 92 单','第 93 单','第 94 单','第 95 单','第 96 单','第 97 单','第 98 单','第 99 单','第 100 单','第 102 单','第 103 单','第 106 单','第 107 单','第 109 单','第 110 单','第 111 单','第 112 单','第 113 单','第 115 单','第 116 单',
               '闸四','闸五','闸十','闸十一','闸十二'];
   const 实有=[...new Set((自源.match(/(第 \d+ 单|闸[一二三四五六七八九十]+)·反向自查/g)||[])
                             .map(x=>x.replace('·反向自查','')))];

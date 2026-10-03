@@ -442,7 +442,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v102</span>
+<span class="num dim" id="set-build">v103</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -894,7 +894,7 @@ const CHAT_FB_OPEN={
 // 不占 `CHAT_OPEN_KIND` 那张"按人挂"的表——因为生日问候是**按日子**选的，不是按人挂的。
 // 第 72 单再追加第八类 `talk`（夜谈话题的接话组）：开口句在 `TALK_OPEN` 里带 `{题}` 占位符，
 // 题面按日子换 ⇒ 同样不占"按人挂"的那张表。
-const CHAT_KINDS=['eat','busy','invite','vent','view','self','bday','talk'];
+const CHAT_KINDS=['eat','busy','invite','vent','view','self','bday','talk','fest'];
 const CHAT_OPEN_KIND={
   work: ['self','vent','view', 'eat','view','invite', 'vent','self','self','view'],
   clerk:['invite','busy','eat', 'invite','vent','self', 'self','vent','vent','invite'],
@@ -918,6 +918,8 @@ const CHAT_FB_REPLY={
     bday:['谢了。蛋糕晚上买，你那份我记着。', '收到。今天不想加班，就这一句。', '谢了。这一岁接着混。', '生日就生日。蛋糕留到晚上，白天照常。'],
     /* 第 72 单·夜谈话题的接话：**刻意写得接得住任何题面**（不点具体物件，照第 18 单话题粒度口径） */
     talk:['没细想过。你这么一提，我倒有点想法。', '这事想起来挺绕。先说吃住，再说别的。', '行，那就聊这个。反正坐着也是坐着。', '你起这个头，我就顺着说两句。'],
+    /* 第 116 单·灯节夜（"灯下的话"）：关系到了「熟」的人，在江灯节那晚开口/接话另走一组 */
+    fest:['看了就回吧。不早不晚。', '行，听你的。', '明年还来。'],
     self:['我也差不多。习惯改不了，先这样。', '我懂。人各有各的毛病，我也有。', '我这种人，一忙起来就不爱说话。',
           '我这人一到晚上反而精神，白天总差点意思。'],
   },
@@ -931,6 +933,7 @@ const CHAT_FB_REPLY={
           '有道理，我听你的。'],
     bday:['谢谢你！今天我早点收工，给自己买块蛋糕！', '谢谢！你这一句比红包还甜。', '谢谢你啦！晚上我请自己吃蛋糕，谁也别拦我。', '谢谢谢谢！我今天笑得有点多，你别介意。'],
     talk:['这个我能说一晚上！', '我早就想说了——就是没人接话。', '这个我有例子，楼下那家我就见过。', '你别说，这事我昨儿还想着呢。'],
+    fest:['好呀好呀，那就说定了！', '是吧是吧，我一晚上都在笑！', '明年咱们还一块儿来！'],
     self:['我也差不多，见着人就想多说两句。', '我懂我懂，我这毛病也不小。', '我也是这脾气，见不得冷场。'],
   },
   // 陆知秋（交易员）——精算、话少、直
@@ -944,6 +947,7 @@ const CHAT_FB_REPLY={
     view:['有道理。我这边也是按这个算的。', '认同。省下来的那部分最稳。', '对。我的账也是这么记的。'],
     bday:['收到。谢谢，我会记着。', '谢谢。今天按计划走，晚上加一项：蛋糕。', '谢了。年龄不改结论，只改日程。', '谢谢。今天这一页翻得比平时轻。'],
     talk:['可以谈。但前提得先摆清楚。', '这个话题有意思。风险在哪儿，我说两句。', '我记着几条，一条一条说。', '这个我有账。等我说完你再看。'],
+    fest:['可以。就按这个来。', '人多，账也不乱。', '记下了。明年同一时候。'],
     self:['我也一样。话少归话少，心里有数。', '都这样。一天说多少话，自己心里有数。', '我这边也差不多。一天下来没几句话说。', '我也差不多。安静惯了，人也懒了。'],
   },
   // 白一鸣（自由撰稿）——文艺、自省、慢性子
@@ -958,6 +962,7 @@ const CHAT_FB_REPLY={
           '你说得在理。我这边也差不多是这个看法。', '我想了想，还真是这么回事。'],
     bday:['谢谢你。这一句我要记下来，今天写得动。', '谢谢。蛋糕买了，就着黄昏吃正好。', '多谢。被人记着生日，是件稀罕事。', '谢谢。这种日子适合写点柔软的句子。'],
     talk:['写下来的话，这事能写成一整篇。', '这题目好。我只怕说起来比写起来长。', '有意思。我先听听你们怎么说。', '你这一句，够我回去想两天。'],
+    fest:['有时候看一眼就够了。', '写不写都行，今晚不必。', '我懂。这种晚上，话比字实在。'],
     self:['我也差不多。人一闷久了，话都变少了。', '我懂。我这边也是一天不说几句话。', '我这人也是，常常一个人坐一下午。', '我懂。安静的毛病，一时半会儿改不了。'],
   },
 };
@@ -985,6 +990,31 @@ const CHAT_FB_OPEN_BDAY={
   write:['生日快乐。日子过得比稿子快，这话今天格外真。', '生日快乐。愿你今天写的每一行都不用改。', '又到这一天了。生日快乐，蜡烛我替你记着。'],
 };
 /*BDAYCHAT-END*/
+/*FESTCHAT-START*/
+/* ---------- 第 116 单·灯下的话（关系 C 档② 的节日那一半）----------
+   第 110 单把"生日"那一半接了关系（处得熟的人会坐下来陪一会儿）；本单补**节日**那一半：
+   **江灯节那晚**（`inFestival`，一年一夜），**两边都到「熟」**的人说话换一套——
+   开口走这张池、接话走 `CHAT_FB_REPLY[workKind].fest`，由 `chatKindOf` 认出 `fest` 类。
+
+   口径（照第 65／72 单那套，一处不新摇）：
+     · 优先级照旧定死：**生日问候 > 夜谈题面 > 灯节 > 平常**（人对人的事最优先，一年一夜的事排在日常之前）；
+     · 每场仍是**两次抽签**（开口一次、接话一次），换的只是"从哪张池里抽"⇒ rng 流一字不动；
+     · 门槛取**两边较小值 ≥「熟」**（同一张 `REL_TIERS`，照第 106／110 单"两边都认"的写法）；
+       生疏的人那晚照常说平常话——"灯下的话"是熟人才有的那一层；
+     · 每组 3 条：一晚一对人最多聊一场，3 条足够「同人同日同组零重复」（第 48 单那条闸）。
+   出处：同类作品里"节日当晚的对话随关系变"是常态（动森：节日当天村民有专属台词；本作第 65 单已用同一条路
+   给生日做过一套）；关系那一层的出处见第 88／114 单（星露谷 Friendship／Nookipedia Friendship）。 */
+const FEST_OPEN={
+  // 顾云帆（程序员）：短句、冷幽默
+  work:['灯不错。看完早点回去。', '你数了没，今年挂了几排。', '这地方安静，灯一亮更安静。'],
+  // 沈小满（店员）：热络
+  clerk:['你也来啦！灯真好看！', '我刚才放的那盏，写得可认真了！', '人多才好呀，越热闹越像过节！'],
+  // 陆知秋（交易员）：克制精准
+  trade:['今年的灯，比去年多一排。', '去看了。秩序还行。', '一年一次，走一趟不亏。'],
+  // 白一鸣（撰稿）：书面、文气
+  write:['灯亮起来的时候，江面像翻了个面。', '这种晚上，适合什么都不想。', '我本想写点什么，到了江边就觉得不必了。'],
+};
+/*FESTCHAT-END*/
 // 开口句 → 类别（查表；查不到一律回落到 `view`——最泛用的一类，绝不抛错）。
 // 这张表与 `CHAT_FB_OPEN` **一一对应**，两边长度不等、或表里冒出 `CHAT_KINDS` 之外的值，门禁当场判红。
 function chatKindOf(workKind,said){
@@ -994,6 +1024,8 @@ function chatKindOf(workKind,said){
   /* 第 65 单：生日问候的开口句在**另一张池**里，认出来一律归 `bday` 类
      （照旧：查不到一律回落到 `view`，绝不抛错）。 */
   if(!(CHAT_KINDS.indexOf(k)>=0) && (CHAT_FB_OPEN_BDAY[workKind]||[]).indexOf(said)>=0) return 'bday';
+  /* 第 116 单：灯节夜的开口句在第三张池里，认出来一律归 `fest` 类。 */
+  if(!(CHAT_KINDS.indexOf(k)>=0) && (FEST_OPEN[workKind]||[]).indexOf(said)>=0) return 'fest';
   return CHAT_KINDS.indexOf(k)>=0?k:'view';
 }
 // 接话组（第 48 单）：按「开口类别」取该人对应的那一组；缺组回落 `view`；
@@ -1016,6 +1048,12 @@ function 话题接话组(workKind){
   const g=(CHAT_FB_REPLY[workKind]||{}).talk;
   return (Array.isArray(g)&&g.length>0) ? {key:'tk2:'+workKind, arr:g}
                                         : chatReplyGroup(workKind,'talk');
+}
+// 灯节夜的接话组（第 116 单）：与生日／夜谈那两组同形，key 另开号段
+function 灯节接话组(workKind){
+  const g=(CHAT_FB_REPLY[workKind]||{}).fest;
+  return (Array.isArray(g)&&g.length>0) ? {key:'fs2:'+workKind, arr:g}
+                                        : chatReplyGroup(workKind,'fest');
 }
 // —— 第 18 单·病症三：闲聊话题由代码派定（不再交给模型自选）——
 // 缘由（决策者实证，v28 线上）：七段闲聊全部围着冰箱转——酸奶／蛋炒饭／冰箱贴／速冻饺子／
@@ -2643,13 +2681,19 @@ function decide(w, ag){
     /* 第 72 单·夜谈话题：**两人都坐在夜谈角**时，开口那句换成带题面的模板句（题面按日号取）。
        优先级照旧定死：**生日问候 > 夜谈话题 > 平常那套**（人对人的事优先于对话题的事）。 */
     const 题面=(!寿星 && ag.anchor==='plaza_talk' && mate.anchor==='plaza_talk' && inTalk(w)) ? talkTopicOf(w) : null;
+    /* 第 116 单·灯下的话：**江灯节那晚**、**两边都到「熟」**（取较小值，同一张档位表）⇒ 换第三张开口池。
+       优先级照旧定死：生日问候 > 夜谈题面 > 灯节 > 平常（人对人的事最优先）。 */
+    const 灯节=(!寿星 && !题面 && inFestival(w)
+      && Math.min(relGet(ag,mate.id),relGet(mate,ag.id))>=((REL_TIERS[2]&&REL_TIERS[2].lo)||20));
     const said = 寿星 ? pickV(w,CHAT_FB_OPEN_BDAY[ag.workKind],ag,'cb:'+ag.workKind)
                : (题面 ? pickV(w,TALK_OPEN[ag.workKind].map((s,i)=>talkOpenLine(ag.workKind,i,题面)),ag,'tk:'+ag.workKind)
-                       : pickV(w,CHAT_FB_OPEN[ag.workKind],ag,'co:'+ag.workKind));
-    /* 三支接话组：生日 > 夜谈话题 > 平常。写法上让**平常那一支**留在 `const grp=` 这一行里——
+                       : (灯节 ? pickV(w,FEST_OPEN[ag.workKind],ag,'fc:'+ag.workKind)
+                               : pickV(w,CHAT_FB_OPEN[ag.workKind],ag,'co:'+ag.workKind)));
+    /* 四支接话组：生日 > 夜谈话题 > 灯节 > 平常。写法上让**平常那一支**留在 `const grp=` 这一行里——
        第 48 单那条源码闸（"取组必须走 chatKindOf＋chatReplyGroup 一处定义"）照旧咬得住。 */
     const grp=(寿星 ? 生日接话组(mate.workKind)
-              : (题面 ? 话题接话组(mate.workKind) : null)) || chatReplyGroup(mate.workKind,chatKindOf(ag.workKind,said));
+              : (题面 ? 话题接话组(mate.workKind)
+                      : (灯节 ? 灯节接话组(mate.workKind) : null))) || chatReplyGroup(mate.workKind,chatKindOf(ag.workKind,said));
     const back=pickV(w,grp.arr,mate,grp.key);
     ag.flags['cw_'+mate.id]=w.t; mate.flags['cw_'+ag.id]=w.t;
     ag.activity={type:'chat',label:'和'+mate.name+'聊天'}; ag.busyUntil=w.t+20;
@@ -3676,6 +3720,7 @@ const Sim={makeWorld, step, sendMessage, sendCustomMessage, decide, MSGS, ANCHOR
   DIARY_FB, DIARY_FB_RECENT, CHAT_FB_OPEN, CHAT_FB_REPLY, pickV, pickFresh, diaryFallback,   // 第 27 单·兜底文案扩池
   CHAT_KINDS, CHAT_OPEN_KIND,   // 第 48 单·接话池分组（门禁按真值断言，不在闸里抄一份类别表）
   CHAT_FB_OPEN_BDAY,   // 第 65 单·生日问候的开口池（门禁按真值断言，不另抄一份）
+  FEST_OPEN,   // 第 116 单·灯节夜的开口池（门禁按真值断言；接话走 CHAT_FB_REPLY[..].fest）
   CLIP_CUT, CLIP_KEEP, CLIP_QUOTE_MAX, CLIP_BASE_MIN, CLIP_COMMON_N, CLIP_COMMON_MUL, CLIP_FREQ_CAP,
   CLIP_BROKE, CLIP_STARVE, CLIP_DRAINED, CLIP_W, CLIP_TIER, CLIP_LOGCAT, CLIP_CATNAME, CLIP_FREQ_CATS,
   clipDayOf, clipT0, clipCat, clipTier, clipWeight, clipItemText};
