@@ -442,7 +442,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v104</span>
+<span class="num dim" id="set-build">v105</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -1997,6 +1997,11 @@ function missStep(w){
   const 周号=Math.floor(w.t/(7*1440));
   for(const ag of w.agents){
     if(ag.week && (ag.week.信|0)>0) continue;      // 这周收到过你的短信 ⇒ 不惦记
+    /* 第 118 单·玩家篇收尾：**只惦记"和你真有来往"的人**——他从来没收到过你的短信时，
+       "翻到上次的短信看两遍"根本无中生有（第 74 单留下的怪）。那本账就是 `ag.relYou`（第 115 单）：
+       **没有账就不惦记**（连那条独白、留言、等待一并不落）。代价照实登记：默认世界里这一档"有戏"没了，
+       雨的机会跟着变（第 58 单那条耦合）——定标与读数见 `docs/交付/第118单-惦记认人.md`。 */
+    if(relYouGet(ag)<=0) continue;
     if(ag.missWeek===周号) continue;                // 每人每周至多一条（旧档缺字段＝当作没记过）
     ag.missWeek=周号;
     logAct(w,ag,'翻到上次的短信，看了两遍','（这周你一句话都没来。）');

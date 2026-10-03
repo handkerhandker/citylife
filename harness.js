@@ -362,8 +362,12 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
     // 篡改档：chatTopics 为畸形值不得抛错
     const bad=JSON.parse(Sim.serialize(w,null)); bad.world.chatTopics='x';
     const rb=Sim.hydrate(JSON.stringify(bad));
-    for(let i=0;i<50;i++) Sim.step(rb.world,10);
-    ok(Array.isArray(rb.world.chatTopics),'篡改档 chatTopics 非数组 → 就地重建，不抛错');
+    /* ★第 118 单顺手改：原版走"50 拍里恰好有人闲聊"去撞 `pickTopic` 那处归一——世界一漂就假红。
+       现在直接调那处取词（判据一字未松：畸形值就地重建、不抛错）。 */
+    let 崩='';
+    try{ Sim.pickTopic(rb.world); }catch(e){ 崩=String((e&&e.message)||e); }
+    ok(!崩&&Array.isArray(rb.world.chatTopics),
+       '篡改档 chatTopics 非数组 → 就地重建、不抛错'+(崩?('（实测抛了：'+崩+'）'):''));
   }
 }
 // --- AI 文案层：DOM 层源码抽取求值（第 18 单；照 tools/voice-check 先例，被验的是生产源码原文） ---
@@ -4203,6 +4207,10 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
     const w=Sim.makeWorld(20260803);
     const 周日=Sim.thisWeekTalkAt(w)-2*60;          // 本周日 18:00（夜谈是 20:00）
     w.t=周日-4*1440;                                 // 回到本周三 18:00
+    /* 第 118 单：惦记的前提是"和你真有来往"——四人都先立账。
+       档位取「熟」（20）：它**永不掉穿本档下限**（第 88／115 单那套"掉到档位停"）⇒ 下一周仍会惦记；
+       a2 给 19，挨本周那条短信一加就跨到 20（与另外三人同档）。 */
+    for(const a of w.agents) a.relYou={v:(a.id==='a2'?19:20),day:1};
     Sim.sendMessage(w,'a2','cheer');
     let 已=w.lidSeq;
     for(let i=0;i<4*144;i++) Sim.step(w,10);         // 步进整四天 ⇒ 正好踩到周日 18:00
@@ -4309,6 +4317,7 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
     const w=Sim.makeWorld(20260803);
     const 周日=Sim.thisWeekTalkAt(w)-2*60;
     w.t=周日-4*1440;
+    for(const a of w.agents) a.relYou={v:(a.id==='a2'?19:20),day:1};   // 第 118 单：同上——四人的账都立到「熟」（掉不穿档底）
     Sim.sendMessage(w,'a2','cheer');               // 周三给 a2 发一条 ⇒ 他不该留话
     let 已=w.lidSeq; const 留=[]; const 惦记=[];
     for(let i=0;i<4*144+4;i++){
@@ -4409,6 +4418,7 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   {
     const w=Sim.makeWorld(20260803), 周日=Sim.thisWeekTalkAt(w)-2*60;
     w.t=周日-10; 已读=w.lidSeq;
+    for(const a of w.agents) a.relYou={v:20,day:1};                  // 第 118 单：四人都"和你真有来往"（熟档）⇒ 18:00 各一条惦记（21:00 那条被 noteDay 挡住）
     const 留=采(w,null,(4*60)/10+2);
     const 每人={}; 留.forEach(x=>{ const 名=x.split('：')[0]; 每人[名]=(每人[名]||0)+1; });
     ok(留.length===4&&Object.values(每人).every(n=>n===1),
@@ -4515,6 +4525,7 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
     const w=Sim.makeWorld(20260803);
     const 周日=Sim.thisWeekTalkAt(w)-2*60;
     w.t=周日-10;
+    for(const a of w.agents) a.relYou={v:20,day:1};   // 第 118 单：留言的前提是"和你真有来往"（熟档，掉不穿档底）
     for(let i=0;i<4+2;i++) Sim.step(w,10);      // 18:00 惦记 + 留言
     ok(f(w,0)>=1,'第 80 单·行为：居民主动留话（note）也算未读（实测 '+f(w,0)+' 条）');
   }
@@ -6495,6 +6506,57 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   }
 }
 
+// ═══ 第 118 单·惦记只认有来往的人（玩家篇收尾）═════════════════════════════════
+/* 被验的是生产源码与真值：
+     ① 结构：`missStep` 里那道判据（`relYouGet(ag)<=0 ⇒ continue`）**一处**；
+     ② 行为（真跑 400 天 × 3 种子）：**从没发过信**的世界里"翻到上次的短信" **0 条**——不再无中生有；
+        立过账（熟档 v=20，掉不穿档底）的人照旧：每周日 18:00 一条 ⇒ **>0 条**（正反两面都在）；
+     ③ 反向自查（抠源码喂桩）：把那道判据从 `missStep` 源码里掰掉 ⇒ 同一构造里没账的人也惦记 ⇒ 判红；
+     ④ 记账：默认世界少了一档"有戏"（第 58 单那条耦合）⇒ **世界指纹必变**（22883597… → aca433e7…），
+        sim30 六项复测全绿（静默 20.14%／20.32% ≤27%、雨 13.54%／13.19% ∈12–18%）。 */
+{
+  const fs=require('fs'), path=require('path');
+  const src=fs.readFileSync(path.resolve(__dirname,'city-life-framework.html'),'utf8');
+  ok((src.match(/if\(relYouGet\(ag\)<=0\) continue;/g)||[]).length===1
+     &&/第 118 单/.test(src),
+     '第 118 单·结构：`missStep` 里那道"只惦记有来往的人"的判据一处（`relYouGet(ag)<=0 ⇒ continue`）');
+  const 普查=(上账)=>{
+    let 条=0;
+    for(const seed of [20260803,424242,777]){
+      const w=Sim.makeWorld(seed);
+      if(上账) for(const a of w.agents) a.relYou={v:20,day:1};
+      let 已=w.lidSeq;
+      for(let i=0;i<400*144;i++){
+        Sim.step(w,10);
+        for(const e of w.log){ if(e.lid<=已) continue; 已=e.lid;
+          if(String(e.text||'').indexOf('翻到上次的短信')===0) 条++; }
+      }
+    }
+    return 条;
+  };
+  const 无账=普查(false), 有账=普查(true);
+  ok(无账===0,'第 118 单·行为：**从没发过信**的 400 天 × 3 种子 ⇒ "翻到上次的短信" '+无账+' 条（应为 0——不再无中生有）');
+  ok(有账>0,'第 118 单·行为：立过账（熟档）的人照旧惦记 ⇒ 同一段里 '+有账+' 条（>0；每周日 × 4 人）');
+  // 反向自查：抠 `missStep` 源码、掰掉那道判据
+  {
+    const FN=(src.match(/function missStep\(w\)\{[\s\S]*?\n\}/)||[''])[0];
+    const 台=(mut)=>{
+      const rec={惦记:0,留言:0};
+      const w0=Sim.makeWorld(20260803), 周日=Sim.thisWeekTalkAt(w0)-2*60;
+      const w={t:周日, agents:[{id:'a1',workKind:'work',week:{信:0}}]};   // 没账的人
+      const code=mut?mut(FN):FN;
+      const F=new Function('PURE','MISS','logAct','pushLog','missNoteOf','relYouGet',
+        code+'\nreturn missStep;')(PURE, Sim.MISS, ()=>rec.惦记++, ()=>rec.留言++, ()=>'（信）', Sim.relYouGet);
+      F(w);
+      return rec;
+    };
+    const 健=台(null), 病=台(s=>s.replace('if(relYouGet(ag)<=0) continue;',''));
+    ok(健.惦记===0&&病.惦记===1,
+       '第 118 单·反向自查·拦得住：抠源码喂桩——生产原文下"没账的人"惦记 '+健.惦记+' 条；'
+       +'把那道判据掰掉 ⇒ '+病.惦记+' 条 ⇒ 上面那条判据不是恒绿');
+  }
+}
+
 // ═══ 第 35 单·入夜点灯（屋里亮起来）═════════════════════════════════════════
 /* 被验的是生产源码原文：SKYTINT ＋ NIGHTLAMP 两段一起抠出来求值（灯要调 skyTint，两段必须同源），
    在一个只记账的假 ctx 上跑。四条闸：
@@ -7108,7 +7170,7 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   ok(恒绿===0,'第 66 单·闸二：`ok` 第一参数写死 true 的**读数型假断言**为 0 条（实测 '+恒绿+'；读数一律走 `读数()`）');
   // 闸三 · 反向自查登记（防整条被删）
   const 登记=['第 48 单','第 49 单','第 51 单','第 52 单','第 53 单','第 54 单','第 56 单','第 57 单',
-              '第 58 单','第 59 单','第 62 单','第 63 单','第 64 单','第 65 单','第 67 单','第 70 单','第 71 单','第 72 单','第 73 单','第 74 单','第 75 单','第 76 单','第 77 单','第 79 单','第 80 单','第 81 单','第 84 单','第 85 单','第 87 单','第 88 单','第 90 单','第 91 单','第 92 单','第 93 单','第 94 单','第 95 单','第 96 单','第 97 单','第 98 单','第 99 单','第 100 单','第 102 单','第 103 单','第 106 单','第 107 单','第 109 单','第 110 单','第 111 单','第 112 单','第 113 单','第 115 单','第 116 单','第 117 单',
+              '第 58 单','第 59 单','第 62 单','第 63 单','第 64 单','第 65 单','第 67 单','第 70 单','第 71 单','第 72 单','第 73 单','第 74 单','第 75 单','第 76 单','第 77 单','第 79 单','第 80 单','第 81 单','第 84 单','第 85 单','第 87 单','第 88 单','第 90 单','第 91 单','第 92 单','第 93 单','第 94 单','第 95 单','第 96 单','第 97 单','第 98 单','第 99 单','第 100 单','第 102 单','第 103 单','第 106 单','第 107 单','第 109 单','第 110 单','第 111 单','第 112 单','第 113 单','第 115 单','第 116 单','第 117 单','第 118 单',
               '闸四','闸五','闸十','闸十一','闸十二'];
   const 实有=[...new Set((自源.match(/(第 \d+ 单|闸[一二三四五六七八九十]+)·反向自查/g)||[])
                             .map(x=>x.replace('·反向自查','')))];
