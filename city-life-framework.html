@@ -428,7 +428,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v62</span>
+<span class="num dim" id="set-build">v63</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -1350,7 +1350,9 @@ const GOAL_DAYS=7;
    第一版拍脑袋的三条当场被读数打回：`focus` 6→**32**（自然摸鱼一天就 3–6 拍）、
    `window` 120→**45**（自然白天在家 idle 一周只有 24–49 拍）、`sky` 4→**5**（回到第 52 单的实测档）。 */
 const GOAL_TARGETS={ thrift:6, greet:23, sky:5, tidy:180, book:200, steady:0,
-                     focus:32, wrap:300, meal:14, dawn:1, snooze:1, window:35 };
+                     focus:32, wrap:300, meal:14, dawn:1, snooze:1, window:35,
+                     lantern:1,   // 第 63 单·节日专属：去过江边就算（一年一次，门槛只能这样）
+                     count:12 };  // 第 63 单·新的无用小事：在室外静着 ≥12 拍（≈2 小时；待定标）
 /* 第 53 单·前提破裂：**连续 6 小时（36 拍）**不成立才算"这件事眼下做不成"——
    防的是"别人的一拍状态"（比如同屋的人正睡着）把目标当场废掉。 */
 const GOAL_BREAK_TICKS=36;
@@ -1444,6 +1446,21 @@ const GOALS=[
     met:(w,ag,g)=>(g.n||0)>=GOAL_TARGETS.window,
     prog:(w,ag,g)=>Math.round((g.n||0)/6)+' 小时',
     done:'白天在窗边站了几回，什么也没想。', miss:'一忙起来，就忘了站一会儿。' },
+  /* —— 第 63 单·两条：一条**节日专属**（只在有江灯节的那一周出现），一条新的无用小事 —— */
+  { k:'lantern', label:'这周去江边看灯',            useful:1, knob:'fest', festOnly:1,
+    traits:[],              work:[],        why:'一年就这一晚，错过要等明年。',
+    tick:(w,ag,g)=>{ const lf=ag.lastFest;
+      if(lf&&isFinite(lf.t)&&lf.t>=g.born&&lf.t<g.until) g.n=1; },
+    met:(w,ag,g)=>(g.n||0)>=1,
+    prog:(w,ag,g)=>((g.n||0)?'去过了':'还没去'),
+    done:'江面上漂着好些灯，风一过全在晃。', miss:'那晚有别的事，没去成。' },
+  { k:'count',   label:'这周数一回天上的云',        useful:0, knob:null,
+    traits:[],              work:[],        why:'抬头这事，一想起来就很久没做了。',
+    tick:(w,ag,g)=>{ const a=String(ag.anchor||'');
+      if((a==='park_bench'||a==='river_walk'||a==='market')&&ag.activity.type!=='sleep') g.n=(g.n||0)+1; },
+    met:(w,ag,g)=>(g.n||0)>=GOAL_TARGETS.count,
+    prog:(w,ag,g)=>Math.round((g.n||0)/2)+' 分钟',
+    done:'在江边抬头看了一会儿，云走得比人快。', miss:'这一周都没往那片天上看。' },
 ];
 const GOAL_MAP=(()=>{ const m={}; for(const G of GOALS) m[G.k]=G; return m; })();
 function goalOf(ag){
@@ -1456,7 +1473,12 @@ function goalTagHit(G,ag){
   return G.traits.some(t=>tr.indexOf(t)>=0) || G.work.indexOf(ag.workKind)>=0;
 }
 function goalAssign(w,ag,上周信){
-  const 候选=GOALS.filter(G=>goalTagHit(G,ag));
+  /* 第 63 单：**节日专属目标只在"本周有江灯节"那一周进候选**——一年 52 周里只有 1 周能达成，
+     若常驻候选池，其余 51 周都会以"没做成"收场（那是噪声不是戏）。
+     判据：下一个周一批（＝本轮 `until`）之前会不会过节；`festAt(w)` 与 `nextGoalAt(w)` 比一下就够。 */
+  const 本届=thisYearFestAt(w), 下周一批=nextGoalAt(w);
+  const 本周有节=本届>w.t && 本届<下周一批;
+  const 候选=GOALS.filter(G=>(!G.festOnly||本周有节)&&goalTagHit(G,ag));
   const 池=候选.length?候选:GOALS;
   /* 选哪一条：**不摇世界 rng**，用「种子 ⊕ 人名 ⊕ 第几轮」算一个确定性下标。
      为什么不用 `w.rng()`（第一版就是那么写的，当场撞了墙）：四个人的派活时刻是同相的
@@ -1477,7 +1499,11 @@ function goalAssign(w,ag,上周信){
   const 信=(typeof 上周信==='string'&&上周信)?上周信:((ag.week&&ag.week.smsId)||'');
   const 偏=(信==='sleep')?'steady':((信==='eat')?'thrift':null);
   const 优先=偏?(池.find(G=>G.k===偏)||null):null;
-  const G=优先||池[h%池.length];
+  /* 第 63 单：有江灯节的那一周，**全城都惦记着看灯**（`lantern` 提到优先位）。
+     取舍照实登记：四人这一周会拿同一个目标——但它一年只有一周，而且"一年就这一晚，大家都惦记"
+     本来就是这件事该有的样子；其余 51 周随机不变。 */
+  const 节优先=本周有节?(池.find(G=>G.k==='lantern')||null):null;
+  const G=优先||节优先||池[h%池.length];
   const 到期=nextGoalAt(w);                                  // 第 53 单：一轮的目标活到**下一个周一 08:00**
   ag.goal={ k:G.k, born:w.t, until:到期, n:0, bad:0, wasStroll:false,
             base:{ money:Math.round(ag.money), relNotes:(ag.relNotes|0) } };
@@ -1609,7 +1635,8 @@ function goalKnob(ag,kind){
   // 为什么是 90 而不是 45：定标时实测 45 分钟几乎不改变"几点躺下"（自然中位 01:40，减 45 分还落在凌晨，
   // 熬夜计数只从 61 降到 59）；90 分钟才真的把这件事故意地拧出可见差别（见交付件第三章的 A/B）。
   // 第 60 单加第四个旋钮：focus＝把"摸鱼"那一次掷骰的门槛压低（0.25→0.12）
-  return kind==='social'?0.20:(kind==='out'?0.15:(kind==='sleep'?90:(kind==='focus'?0.13:0)));
+  // 第 63 单加第五个旋钮：fest＝"去看灯"那件惦记事，把当晚去江边的概率再抬一点（0.8→0.95）
+  return kind==='social'?0.20:(kind==='out'?0.15:(kind==='sleep'?90:(kind==='focus'?0.13:(kind==='fest'?0.15:0))));
 }
 /*GOAL-END*/
 /*NIGHTMKT-START*/
@@ -1687,6 +1714,9 @@ function morningFacts(w){
      按**日号**判，不按"节前后 1440 分钟"判——节是晚上 19:00，拿时刻开窗会把当天早上切在外面
      （第一版就是这么写的：晨报落在 `本` 之前 650 分钟，条件不成立，当天那句永远不出现）。 */
   if(PURE.dayOf(w.t)===PURE.dayOf(thisYearFestAt(w))) 条.push('今晚是'+FESTIVAL.name+'，江边放灯。');
+  // 第 63 单：前一天与后一天的晨报各提一句（气氛占住三天）
+  if(PURE.dayOf(w.t)===PURE.dayOf(thisYearFestAt(w))-1) 条.push('明晚是'+FESTIVAL.name+'，江边开始挂灯了。');
+  if(PURE.dayOf(w.t)===PURE.dayOf(thisYearFestAt(w))+1) 条.push('昨晚的'+FESTIVAL.name+'收了，江边还留着灯影。');
   if(wd===4){ 条.push('今晚发薪。'); 条.push('今晚有夜市——19:00 广场，别错过。'); }
   if(wd===6) 条.push('今天是街市日，广场从早上就热闹。');
   return 条;
@@ -1738,6 +1768,11 @@ function inFestival(w){
 function festivalStep(w){
   const 本=thisYearFestAt(w);
   if(w.festNext!==本){ w.festNext=本; w.festNotice=0; w.festCount=0; }
+  /* 第 63 单·前后一天的气氛：**提前一晚挂灯**、**次日收场**——一年一次的事要占住三天才像"过了一回节"。
+     两条都是世界级播报，故 `BACK_SUM` 里各有一桶。 */
+  const 日=PURE.dayOf(w.t), 节日=PURE.dayOf(本), mod=PURE.minuteOfDay(w.t);
+  if(日===节日-1 && mod===18*60 && w.festEve!==本){ w.festEve=本; logSys(w,'江边开始挂灯了，明晚是'+FESTIVAL.name+'。'); }
+  if(日===节日+1 && mod===10*60 && w.festAfter!==本){ w.festAfter=本; logSys(w,FESTIVAL.name+'的摊子收干净了，江边还留着灯影。'); }
   if(!w.festNotice && 本>w.t && 本-w.t<=FESTIVAL.noticeMin){
     w.festNotice=本;
     logSys(w,'今年的'+FESTIVAL.name+'在'+(FESTIVAL.month)+'月'+FESTIVAL.dayOfMonth+'日晚上 '+Math.floor(FESTIVAL.open/60)
@@ -1931,7 +1966,8 @@ function decide(w, ag){
   /* 第 56 单·周五夜市：夜市时段里，空闲的人多半去广场逛一趟——买份小吃（花钱、垫肚子），
      这是它跟"傍晚散步"的区别：有经济后果。上班／吃饭的钱／睡觉一概不碰；雨天照去（摊子有棚）。 */
   /* 第 62 单·江灯节：一年就这一晚，去的人最多（**节日优先于同一天的夜市**——两者撞上按节日走） */
-  if(inFestival(w) && (ag.flags.wantFest || w.rng()<FESTIVAL.p)){
+  // 第 63 单：拿到"这周去江边看灯"那条目标的人，当晚去得更坚决（0.8→0.95，上限 0.98）
+  if(inFestival(w) && (ag.flags.wantFest || w.rng()<Math.min(0.98,FESTIVAL.p+goalKnob(ag,'fest')))){
     delete ag.flags.wantFest;
     w.festCount=(w.festCount|0)+1;
     ag.money-=FESTIVAL.cost;
@@ -5016,6 +5052,8 @@ const BACK_SUM=[
   {k:'nmPlan', hit:(e,tx)=>e.type==='sys' && tx.indexOf('广场有夜市')>=0, line:n=>'城里预告过 '+n+' 回夜市。'},
   {k:'nmOpen', hit:(e,tx)=>e.type==='sys' && tx.indexOf('夜市开张了')>=0, line:n=>'夜市开了 '+n+' 回。'},
   {k:'nmDone', hit:(e,tx)=>e.type==='sys' && tx.indexOf('夜市收了')>=0, line:n=>'夜市收过 '+n+' 回摊。'},
+  {k:'festEve', hit:(e,tx)=>e.type==='sys' && tx.indexOf('江边开始挂灯')>=0, line:n=>'江边挂过 '+n+' 回灯。'},
+  {k:'festAfter', hit:(e,tx)=>e.type==='sys' && tx.indexOf('的摊子收干净了')>=0, line:n=>'节后收过 '+n+' 回场子。'},
   {k:'morning', hit:(e,tx)=>e.type==='sys' && tx.indexOf('云港晨报')>=0, line:n=>'收到 '+n+' 份云港晨报。'},
   // 第 62 单·江灯节的三条世界级播报（提前一周预告／开灯／收灯）——世界级播报必须各有桶
   {k:'festPlan', hit:(e,tx)=>e.type==='sys' && tx.indexOf('江灯节在')>=0, line:n=>'城里预告过 '+n+' 回江灯节。'},

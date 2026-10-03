@@ -2615,8 +2615,12 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
       }
     }
     ok(轮数>0&&错发===0,'第 52 单·行为侧：'+轮数+' 轮目标全部发给了相称的人（错发 '+错发+'）');
-    ok(Sim.GOALS.every(G=>(见[G.k]||0)>0),
-      '第 52 单·六条目标在这段样本里都出现过（'+Sim.GOALS.map(G=>G.k+':'+(见[G.k]||0)).join(' ')+'）');
+    /* 第 63 单改：口径收成**常驻目标**——节日专属目标（`festOnly`）只在有江灯节的那一周进池，
+       拿 30 天随机样本来要求它出现，等于要求一件一年只发生一周的事自己撞进窗口里。 */
+    const 常驻=Sim.GOALS.filter(G=>!G.festOnly);
+    ok(常驻.every(G=>(见[G.k]||0)>0),
+      '第 52 单·常驻目标在这段样本里都出现过（'+常驻.map(G=>G.k+':'+(见[G.k]||0)).join(' ')
+      +'；节日专属目标另由第 63 单按周构造验）');
   }
   // 确定性：同种子逐字可复现
   {
@@ -3130,10 +3134,13 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
    整体达成率落在"多数够得着、少数够不着"的宽带里；外加新旋钮 focus 的配对 A/B。 */
 {
   const ids=Sim.GOALS.map(G=>G.k);
-  ok(Sim.GOALS.length===12&&new Set(ids).size===12,
-     '第 60 单·池子十二条、键唯一（实测 '+Sim.GOALS.length+' 条：'+ids.join('/')+'）');
+  /* 第 63 单改：原来这里写死 `===12`，池子一动就假红——正是第 46／51／56／60 单那族
+     「闸自己硬编码旧写法」（第 60 单把旋钮那处改成从表推导，这里同样改成从表推导）。
+     被验的关系没变：**至少十二条**、键唯一、**至少一半是无用小事**。 */
+  ok(Sim.GOALS.length>=12&&new Set(ids).size===ids.length,
+     '第 60 单·池子至少十二条、键唯一（实测 '+Sim.GOALS.length+' 条：'+ids.join('/')+'）');
   const 无用=Sim.GOALS.filter(G=>!G.useful).length;
-  ok(无用===6,'第 60 单·**一半是无用小事**（硬口径）：实测 '+无用+'/12');
+  ok(无用*2>=Sim.GOALS.length,'第 60 单·**至少一半是无用小事**（硬口径）：实测 '+无用+'/'+Sim.GOALS.length);
   ok(Sim.GOALS.every(G=>typeof G.why==='string'&&G.why.length>=6&&typeof G.label==='string'&&G.label.length>=6),
      '第 60 单·每条都有 label 与 why（出生那条独白），没有空壳条目');
   ok(Sim.GOALS.filter(G=>G.knob).length>=4,
@@ -3155,8 +3162,9 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
         }
       }
     }
-    const 缺=ids.filter(k=>!(轮[k]>0));
-    ok(缺.length===0,'第 60 单·十二条都被派到过（没派到的：'+(缺.join('/')||'无')+'）');
+    // 第 63 单改：同样只数**常驻目标**（节日专属目标一年只进一周的池，见第 63 单那节）
+    const 缺=ids.filter(k=>{ const G=Sim.GOALS.find(x=>x.k===k); return !G.festOnly&&!(轮[k]>0); });
+    ok(缺.length===0,'第 60 单·常驻目标都被派到过（没派到的：'+(缺.join('/')||'无')+'）');
     const 率=成/(成+败);
     ok(率>=0.35&&率<=0.75,'第 60 单·整体达成率落在"多数够得着、少数够不着"的宽带里（实测 '+(率*100).toFixed(1)
        +'%，判据 35%–75%；'+成+' 成／'+败+' 败）');
@@ -3214,6 +3222,8 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
     ['雨停', /w\.weather\.rain=false; logSys\(w,'雨停了/],
     ['夜市换周/开张归零', /w\.nmNext=开; w\.nmNotice=0; w\.nmCount=0;/],
     ['晨报日号', /w\.morningDay=d;/],
+    ['江灯节换年归零（第 63 单补登记）', /w\.festNext=本; w\.festNotice=0; w\.festCount=0;/],
+    ['江灯节挂灯／收场的防重键（第 63 单新立，同样是"先判后写"）', /w\.festEve!==本\)\{ w\.festEve=本;[\s\S]{0,200}w\.festAfter!==本\)\{ w\.festAfter=本;/],
     ['周账快照→清账', /const snap=weekSnapshot\(ag\);/],
     ['剪辑日切', /clipClose\(w,sh\);/],
     ['pickV 跨天重置', /rec=sd\[k\]=\{d:day, used:\[\]\};/],
@@ -3270,7 +3280,9 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
         else if(t.indexOf('开灯了，江边')>0) 开灯++;
         else if(t.indexOf('收灯了')>0) 收灯++;
         else if(t.indexOf('在江边放了一盏灯')===0){ 放灯++; if(/¥5/.test(t)) 钱+=5; }
-        else if(t.indexOf('云港晨报')===0){ 晨总++; if(t.indexOf('江灯节')>=0) 晨节++; }
+        /* 第 63 单改：从"含江灯节"收成**当天那一句**（`今晚是江灯节`）——第 63 单给前一日／次日
+           各加了一句晨报，只要含三个字就会把这条判据从 1 顶到 3（假红）。 */
+        else if(t.indexOf('云港晨报')===0){ 晨总++; if(t.indexOf('今晚是江灯节')>=0) 晨节++; }
       }
     }
     ok(预告===1&&开灯===1&&收灯===1,'第 62 单·三条播报各恰一条（预告 '+预告+'／开灯 '+开灯+'／收灯 '+收灯+'）');
@@ -3291,6 +3303,132 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
     ok(Sim.festAt(w)>w.t+29*1440,'第 62 单·`festAt` 指向明年（下一个节在 29 天之外：'+(Sim.festAt(w)-w.t)+' 分钟）');
     // 反向自查：把 p 掰成 0 ⇒ 上面"至少两人去"当场判红
     ok(!(0>=2),'第 62 单·反向自查·拦得住：若节日概率为 0（没人去放灯），「至少两盏」这条判据当场判红');
+  }
+}
+
+// ═══ 第 63 单·江灯节前后气氛 ＋ 节日专属目标（v62 → v63）════════════════════════
+/* 被验的是生产源码与真值：
+     ①节前一天 18:00「挂灯」、节日次日 10:00「收场」各恰一条，且各有 `BACK_SUM` 桶
+       （新播报不登记取材表 = 第 62 单那条闸会漏，故这里两头都咬）；
+     ②前一日／当天／次日三条晨报各恰一句——**按日号判，不按时刻开窗**（第 62 单那个坑）；
+     ③`festOnly` 目标**只在有江灯节的那一周**进候选：常规 56 天里"节前"一轮都派不出，
+       节日那一周四人全拿（`goalAssign` 的优先位）并当场达成；
+     ④`fest` 旋钮的配对 A/B：同一颗种子、同一个人，挂「去看灯」vs 挂无旋钮目标。
+   反向自查：把 `festOnly` 抹掉 ⇒ 常规样本里立刻有"节前派发"（"0 次"不是恒真）。
+   口径注（A/B 为什么是"开灯后 40 分钟、200 颗种子"）：一晚里 `decide` 会反复走到这一支，
+   跑到天亮两档都会饱和到 100%（实测 40/40 vs 40/40，量不出差别）；**只跑头 4 拍**才看得到
+   0.8→0.95 这半步的差别（实测 193/200 vs 167/200，差 26、约 4.4σ）。 */
+{
+  const fs=require('fs'), path=require('path');
+  const src=fs.readFileSync(path.resolve(__dirname,'city-life-framework.html'),'utf8');
+  ok(/festOnly:\s*1/.test(src)&&/w\.festEve!==本/.test(src)&&/w\.festAfter!==本/.test(src),
+     '第 63 单·源码侧：`lantern` 带 `festOnly` 标，两条新播报各有防重键（festEve／festAfter）');
+  ok(/\{k:'festEve'/.test(src)&&/\{k:'festAfter'/.test(src),
+     '第 63 单·结构：两条新播报在回城弹窗取材表里各有桶（挂灯／收场）');
+  ok((src.match(/kind==='fest'\?0\.15/g)||[]).length===1,'第 63 单·结构：`fest` 旋钮只有一处（`goalKnob`）');
+  /* 构造：**节前一天 06:00** 起跑（＝本 − 37 小时），连跑四天——
+     这样挂灯（前一日 18:00）、开灯／收灯（当天）、收场（次日 10:00）与三条晨报全都落在窗口里。
+     （第 62 单那节从"当天 06:00"起跑，只够看当天与次日；本单要看的三天比它早一天。） */
+  const w=Sim.makeWorld(20260803), 本=Sim.thisYearFestAt(w);
+  w.t=本-37*60;
+  let 挂灯=0,收场=0,晨明晚=0,晨今晚=0,晨昨晚=0; const 次序=[];
+  let 已读=w.lidSeq;
+  for(let i=0;i<4*144;i++){
+    Sim.step(w,10);
+    for(const e of w.log){
+      if(e.lid<=已读) continue; 已读=e.lid;
+      const t=String(e.text||'');
+      if(t.indexOf('江边开始挂灯了')===0){ 挂灯++; 次序.push('挂灯'); }
+      else if(t.indexOf('的摊子收干净了')>0){ 收场++; 次序.push('收场'); }
+      else if(t.indexOf('开灯了，江边')>0) 次序.push('开灯');
+      else if(t.indexOf('收灯了')>0) 次序.push('收灯');
+      else if(t.indexOf('云港晨报')===0){
+        if(t.indexOf('明晚是江灯节')>=0) 晨明晚++;
+        else if(t.indexOf('今晚是江灯节')>=0) 晨今晚++;
+        else if(t.indexOf('昨晚的江灯节')>=0) 晨昨晚++;
+      }
+    }
+  }
+  ok(挂灯===1&&收场===1,'第 63 单·两条新播报各恰一条（挂灯 '+挂灯+'／收场 '+收场+'）');
+  ok(次序.join('>')==='挂灯>开灯>收灯>收场',
+     '第 63 单·四件事按真实次序发生（实测 '+(次序.join('>')||'（一条都没收到）')+'）');
+  ok(晨明晚===1&&晨今晚===1&&晨昨晚===1,
+     '第 63 单·三条晨报各恰一句（明晚 '+晨明晚+'／今晚 '+晨今晚+'／昨晚 '+晨昨晚+'——按日号判）');
+  // 常规样本：56 天 × 3 种子——一年一次 ⇒ 两条新播报各只出现一次；lantern 只在节前那一周起进池
+  {
+    let 挂=0,收=0,早派=0,节派=0,成=0;
+    for(const seed of [20260803,424242,777]){
+      const w2=Sim.makeWorld(seed);
+      const 本2=Sim.thisYearFestAt(w2), 批=本2-(PURE.weekday(本2)*1440+660);   // 节日那一周的周一 08:00
+      let 已=w2.lidSeq;
+      for(let i=0;i<56*144;i++){
+        Sim.step(w2,10);
+        for(const e of w2.log){
+          if(e.lid<=已) continue; 已=e.lid;
+          const t=String(e.text||'');
+          if(t.indexOf('江边开始挂灯了')===0) 挂++;
+          if(t.indexOf('的摊子收干净了')>0) 收++;
+          if(t.indexOf('这周想的事定下了：这周去江边看灯')===0){ if(e.t<批) 早派++; else 节派++; }
+          if(t.indexOf('这周想的事做到了：这周去江边看灯')===0) 成++;
+        }
+      }
+    }
+    ok(挂===3&&收===3,'第 63 单·56 天 × 3 种子：挂灯 '+挂+'／收场 '+收+'（一年一次 ⇒ 每颗种子恰一条）');
+    ok(早派===0&&节派>=8,'第 63 单·`lantern` 只在**有节的那一周**进池：节前派 '+早派+' 轮／节起派 '+节派+' 轮'
+       +'（节起上限＝4 人 × 1 周 × 3 种子＝12）');
+    ok(成>=8,'第 63 单·拿到「去看灯」的人当晚真去（56 天 × 3 种子达成 '+成+' 轮）');
+  }
+  // 节日那一周构造：四人同拍拿到同一条目标（优先位），当晚到场
+  {
+    const w3=Sim.makeWorld(20260803), 本3=Sim.thisYearFestAt(w3);
+    const 批=本3-(PURE.weekday(本3)*1440+660);
+    w3.t=批-10;
+    let 已=w3.lidSeq, 派=[], 成=[];
+    for(let i=0;i<6*144;i++){
+      Sim.step(w3,10);
+      for(const e of w3.log){
+        if(e.lid<=已) continue; 已=e.lid;
+        const t=String(e.text||'');
+        if(t.indexOf('这周想的事定下了：这周去江边看灯')===0) 派.push(e.agent);
+        if(t.indexOf('这周想的事做到了：这周去江边看灯')===0) 成.push(e.agent);
+      }
+    }
+    ok(派.length===4&&new Set(派).size===4,
+       '第 63 单·节日那一周四人全拿到「这周去江边看灯」（实测 '+派.length+' 人：'+派.join('/')+'）');
+    ok(成.length>=3,'第 63 单·拿了目标的人当晚真去放灯（达成 '+成.length+'/4；一年一次，判据只压 ≥3）');
+  }
+  // `fest` 旋钮的配对 A/B（口径见本节注）
+  {
+    const 去=(seed,挂)=>{ const w4=Sim.makeWorld(seed), a=w4.agents[0];
+      w4.t=Sim.thisYearFestAt(w4);
+      a.goal={k:挂?'lantern':'count',born:w4.t,until:1e9,n:0,bad:0,wasStroll:false,base:{money:0,relNotes:0}};
+      a.flags.goalNext=1e9;
+      const 起=w4.t;
+      for(let i=0;i<4;i++) Sim.step(w4,10);
+      return (a.lastFest&&a.lastFest.t>=起)?1:0; };
+    const 种子=Array.from({length:200},(_,i)=>1000+i*7);
+    const 挂=种子.reduce((s,x)=>s+去(x,true),0), 不挂=种子.reduce((s,x)=>s+去(x,false),0);
+    ok(挂>=不挂+10,'第 63 单·`fest` 旋钮真在动世界：挂「去看灯」的 200 颗种子里 '+挂
+       +' 人当晚到场，不挂 '+不挂+' 人（判据：至少多 10 人）');
+  }
+  // 反向自查：把 `festOnly` 抹掉 ⇒ 常规样本里立刻出现"节前派发"
+  {
+    const G=Sim.GOALS.find(x=>x.k==='lantern'), 原=G.festOnly; G.festOnly=0;
+    let 早派=0;
+    for(const seed of [20260803,424242,777]){
+      const w5=Sim.makeWorld(seed), 本5=Sim.thisYearFestAt(w5);
+      const 批=本5-(PURE.weekday(本5)*1440+660); let 已=w5.lidSeq;
+      for(let i=0;i<56*144;i++){
+        Sim.step(w5,10);
+        for(const e of w5.log){
+          if(e.lid<=已) continue; 已=e.lid;
+          if(String(e.text||'').indexOf('这周想的事定下了：这周去江边看灯')===0&&e.t<批) 早派++;
+        }
+      }
+    }
+    G.festOnly=原;
+    ok(早派>0,'第 63 单·反向自查·拦得住：把 `festOnly` 抹掉之后，节前也派出了 '+早派
+       +' 轮（生产原文应为 0）⇒ 「只在节日周进池」这条不是恒绿');
   }
 }
 
@@ -3920,32 +4058,44 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   const 晚枝=枝(/if\(mod>=18\.5\*60 && mod<21\*60[\s\S]{0,260}?\)\{/);
   ok(/WEEKEND_OUT\.eveStroll/.test(src)&&/RAIN_RULES\.eveWeekend/.test(晚枝)&&/RAIN_RULES\.eveWorkday/.test(晚枝),
      '闸十二·源码侧：傍晚散步按周末上调（工作日 0.3 不动）＋雨天两档另走 RAIN_RULES（改后仍是一处判定）');
-  // 行为侧：真跑 56 天，按星期分桶比「在外」占比（与 world-audit 同口径：不在家且不在岗）
+  /* 行为侧：真跑 56 天 × **8 颗种子**，按星期分桶比「**白天（10:00–17:00）**在外」占比。
+     第 63 单改口径（附理由，照第 58／60 单先例）：
+     ① 原口径是**全天**「不在家且不在岗」，把傍晚散步（第 46／47 单那一档）也算进"在外"，
+        量出来的差里混着两层东西；本闸的判据说的是"周六**白天**出门"，口径现在跟判据对齐。
+     ② 原口径只跑 3 颗种子，而基线实测 8 颗的跨度是 1.25～1.62（那 3 颗恰好抽到 1.46／1.46／1.62）
+        ⇒ 那是"选种选出来"的稳；目标池一动（第 63 单 12→14 条）就假红。现在改成 8 颗合并取值。
+     ③ 阈值 1.6 由**病态对照**定：把 `WEEKEND_OUT.dayOut` 归零 ⇒ 8 颗合并 **1.30**；健康版 **2.13**
+        （第 62 单基线 2.21）⇒ 两头都留出余量（周五仍剔除——第 56／57 单给它挂了夜市）。 */
   const 在宅=a=>/^(home_|bed)/.test(a||''), 在岗=a=>/^(desk|store_)/.test(a||'');
-  const 桶={};   // 'sat' / 'wd'
-  for(const seed of [20260803,424242,777]){
-    const w=Sim.makeWorld(seed);
-    for(let i=0;i<56*144;i++){
-      Sim.step(w,10);
-      const wd=PURE.weekday(w.t);
-      /* 第 58 单改口径（附理由）：工作日基准**剔除周五**——第 56／57 单给周五晚挂了夜市，
-         周五夜里"在外"的人本来就会多，再拿它当普通工作日会把这条判据的底抬高
-         （实测比值从 1.42 掉到 1.29 假红）。判据的用意没变：**周六比普通工作日更在外面**。 */
-      const k = wd===5 ? 'sat' : (wd<4 ? 'wd' : null);
-      if(!k) continue;
-      const b=桶[k]||(桶[k]={人拍:0,在外:0});
-      for(const ag of w.agents){ b.人拍++; if(!在宅(ag.anchor)&&!在岗(ag.anchor)) b.在外++; }
+  const 日窗=m=>m>=10*60&&m<17*60;
+  const 周末普查=种子=>{
+    const 桶={sat:{在:0,总:0},wd:{在:0,总:0}};
+    for(const seed of 种子){
+      const w=Sim.makeWorld(seed);
+      for(let i=0;i<56*144;i++){
+        Sim.step(w,10);
+        const wd=PURE.weekday(w.t);
+        const k = wd===5 ? 'sat' : (wd<4 ? 'wd' : null);
+        if(!k||!日窗(PURE.minuteOfDay(w.t))) continue;
+        const b=桶[k];
+        for(const ag of w.agents){ b.总++; if(!在宅(ag.anchor)&&!在岗(ag.anchor)) b.在++; }
+      }
     }
-  }
-  const sat=桶.sat.在外/桶.sat.人拍, wd=桶.wd.在外/桶.wd.人拍;
-  ok(sat>wd*1.3,'闸十二·行为侧：**周六「在外」占比 '+ (sat*100).toFixed(2) +'% 明显高于工作日（周一–周四）'
-     + (wd*100).toFixed(2) +'%**（判据：>1.3 倍；56 天 × 3 种子；周五已剔除——它现在有夜市）');
-  // 反向自查：把 dayOut 抹成 0 ⇒ 周六回落到工作日水平，行为判据当场判红
+    return {sat:桶.sat.在/桶.sat.总, wd:桶.wd.在/桶.wd.总};
+  };
+  const 种子8=[20260803,424242,777,1,2,3,4,5];
+  const 健=周末普查(种子8), 比=健.sat/健.wd;
+  ok(比>1.6,'闸十二·行为侧：**周六白天「在外」占比 '+(健.sat*100).toFixed(2)+'% 明显高于工作日（周一–周四）'
+     +(健.wd*100).toFixed(2)+'%＝'+比.toFixed(2)+' 倍**（判据 >1.6；56 天 × 8 种子；周五已剔除——它现在有夜市）');
+  /* 反向自查（第 63 单改）：旧版那两条是假的——`const sat0=wd` 恒成立，另一条只是把主断言抄了一遍。
+     现在**真跑病态版本**：把周六白天的出门概率归零，同一条判据必须当场判红。 */
   {
-    const 病态 = 桶;
-    const sat0 = wd;   // dayOut=0 时周六只剩"上班时段短"这一层，在外会比现在低得多；
-    ok(!(sat0>wd*1.3),'闸十二·反向自查：若周六白天不出门（dayOut=0），在外占比回落到工作日水平 ⇒ 行为判据当场判红');
-    ok(sat>wd*1.3,'闸十二·不误伤：生产原文照常放行（不是恒红）');
+    const 原=Sim.WEEKEND_OUT.dayOut;
+    Sim.WEEKEND_OUT.dayOut=0;
+    const 病=周末普查(种子8), 病比=病.sat/病.wd;
+    Sim.WEEKEND_OUT.dayOut=原;
+    ok(!(病比>1.6),'闸十二·反向自查·拦得住：把 `WEEKEND_OUT.dayOut` 归零（周六白天不出门）之后，'
+       +'同口径比值落到 '+病比.toFixed(2)+' 倍 ⇒ 这条判据不是恒绿');
   }
 }
 
