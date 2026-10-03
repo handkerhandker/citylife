@@ -84,4 +84,51 @@ for (const seed of 种子表) {
 console.log('');
 console.log(红 ? ('✘ ' + 红 + ' 颗种子没咬住——这道闸没起作用') :
   ('✔ ' + 种子表.length + ' 颗种子：新版一晚 ≤4 盏、逐人 ≤1 盏，且比旧版少 ⇒ 「每人每晚一盏」真在拦'));
+
+/* ── 丙 · 旋钮定标（第 102 单加）：把 `goalKnob('fest')` 那一档**在内存里抹成 0**，
+   与带旋钮的原版跑同一批节日，比"到场人次"与"平均钟点"——这就是第 63 单那条旋钮的现行效果。 ── */
+console.log('\n── 丙 · `fest` 旋钮定标：带旋钮 vs 把旋钮抹成 0（同一批种子，各跑一遍那一晚）──');
+{
+  const 源码 = fs.readFileSync(path.join(仓库, 'city-life-framework.html'), 'utf8');
+  const 基 = 解包(源码);
+  /* 三份：①现行；②把概率那一档抹成 0（旋钮自己的边际效应）；③**再把"头一小时必去"也停掉**（＝完全没目标的效果）。 */
+  const 源2 = 基.replace("kind==='fest'?0.15", "kind==='fest'?0");
+  const 源3 = 源2.replace('const 有灯=(typeof goalOf', 'const 有灯=(false&&typeof goalOf');
+  if (基.indexOf("kind==='fest'?0.15") < 0 || 源3 === 源2) console.log('✘ 找不到旋钮／头一小时那两处（写法变了？）');
+  else {
+    const 病 = 落盘并加载('knob-off', 源2);
+    const 无 = 落盘并加载('goal-off', 源3);
+    const 一夜 = ({ Sim }, seed) => {
+      const w = Sim.makeWorld(seed);
+      const 节 = Sim.thisYearFestAt(w);
+      while (w.t < 节 - 60) Sim.step(w, 10);
+      const 钟 = {};
+      while (w.t < 节 + 4 * 60 + 60) {
+        const 起点 = w.lidSeq; Sim.step(w, 10);
+        for (const e of w.log) {
+          if (!(e.lid > 起点)) continue;
+          if (String(e.text || '').indexOf('在江边放了一盏灯') !== 0) continue;
+          if (钟[e.name] === undefined) 钟[e.name] = Math.floor((e.t % 1440) / 60);
+        }
+      }
+      return 钟;
+    };
+    const 跑批 = mod => {
+      let 去 = 0, 合计 = 0;
+      for (let s = 0; s < 12; s++) {
+        const 钟 = 一夜(mod, 1000 + s * 7919);
+        去 += Object.keys(钟).length;
+        for (const k of Object.keys(钟)) 合计 += 钟[k];
+      }
+      return { 去, 合计, 人均: 去 / 12, 钟点: 合计 / 去 };
+    };
+    const A = 跑批(新), B = 跑批(病), C = 跑批(无);
+    console.log(' 带旋钮：' + A.人均.toFixed(2) + ' 人/场，平均 ' + A.钟点.toFixed(2) + ' 点');
+    console.log(' 只摘概率：' + B.人均.toFixed(2) + ' 人/场（旋钮自身的边际效应 ' + (A.人均 - B.人均).toFixed(2) + ' 人/场）');
+    console.log(' 目标全停：' + C.人均.toFixed(2) + ' 人/场（**"去看灯"这条目标的总效果** '
+      + (A.人均 - C.人均).toFixed(2) + ' 人/场、' + ((A.钟点 - C.钟点) * 60).toFixed(1) + ' 分钟）');
+    console.log('（第 102 单前：带旋钮 3.42／摘旋钮 3.17 ⇒ 旋钮 0.25 人/场；本单把它换成"头一小时必去"之后，'
+      + '目标的总效果见上一行）');
+  }
+}
 process.exit(红 ? 1 : 0);

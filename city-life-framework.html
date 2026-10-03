@@ -440,7 +440,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v93</span>
+<span class="num dim" id="set-build">v94</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -2543,7 +2543,15 @@ function decide(w, ag){
      这是它跟"傍晚散步"的区别：有经济后果。上班／吃饭的钱／睡觉一概不碰；雨天照去（摊子有棚）。 */
   /* 第 62 单·江灯节：一年就这一晚，去的人最多（**节日优先于同一天的夜市**——两者撞上按节日走） */
   // 第 63 单：拿到"这周去江边看灯"那条目标的人，当晚去得更坚决（0.8→0.95，上限 0.98）
-  if(inFestival(w) && (ag.flags.wantFest || w.rng()<Math.min(0.98,FESTIVAL.p+goalKnob(ag,'fest')))){
+  /* 第 102 单·定标复核后的重启（缘由：第 90 单"每人每晚一盏"落地后，这个旋钮几乎拧不动什么——
+     12 场 A/B 实测：带旋钮人均 3.42 人/场、平均 19.41 点；摘掉旋钮 3.17 人/场、19.45 点
+     ⇒ 只多 **0.25 人/场**、时间差 **2 分钟**。概率那条路（0.80→0.95）在 24 个拍里本来就已经"几乎必去"）。
+     治法：**拿了目标的人当晚"头一个小时必去"**（19:00–20:00 之间只要空着就出发）——把旋钮的效果从
+     "多一点点概率"换成"他真的是头一批到江边的"。判定排在 `w.rng()` **之前**、`inFestival` 之后，
+     与"玩家发短信叫他去"（`wantFest`）同一档优先级。 */
+  const 有灯=(typeof goalOf==='function'&&goalOf(ag)&&goalOf(ag).k==='lantern');
+  const 头一小时=有灯 && inFestival(w) && PURE.minuteOfDay(w.t)<FESTIVAL.open+60;
+  if(inFestival(w) && (ag.flags.wantFest || 头一小时 || w.rng()<Math.min(0.98,FESTIVAL.p+goalKnob(ag,'fest')))){
     delete ag.flags.wantFest;
     /* 第 90 单·每人每晚一盏（第 62 单登记的那条接受项）：原来一晚反复去——实测一晚 **11–12 盏来自 4 个人**
        （顾云帆／陆知秋各 4 盏），"一年一次"的日子读起来反而像在刷。现在：今晚已经放过的人不再去，
