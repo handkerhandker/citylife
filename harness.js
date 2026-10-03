@@ -4441,9 +4441,12 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
      &&Sim.GIFT.cost===8&&Sim.GIFT.open===Sim.BDAY.open&&Sim.GIFT.close===Sim.BDAY.close,
      '第 81 单·结构：`GIFT` 表**唯一一处定义**（¥'+Sim.GIFT.cost+'；窗口与生日蛋糕并齐 '
      +Sim.GIFT.open/60+':00–'+Sim.GIFT.close/60+':00）——按真值读，不锁表里的字面写法');
-  ok(/roomOf\(o\.anchor\)===roomOf\(ag\.anchor\)/.test(src)&&/ag\.giftYear!==年/.test(src)
+  /* 第 95 单改：原来这条锁的是 `ag.giftYear!==年`（一个人一年一个数）。
+     第 95 单把它改成**一对人一年一次**（`给过(ag, o.id, 年)`），这里跟着改口径——
+     断的是"有没有那道门"，不再是某一行的写法。 */
+  ok(/roomOf\(o\.anchor\)===roomOf\(ag\.anchor\)/.test(src)&&/!给过\(ag,o\.id,年\)/.test(src)
      &&/ag\.money-=GIFT\.cost/.test(src),
-     '第 81 单·结构：三条口径齐——同屋当面／每人每年至多一次／花自己的钱');
+     '第 81 单·结构：三条口径齐——同屋当面／**一对人一年一次**（第 95 单改）／花自己的钱');
   ok(/logAct\(w,ag,'给'\+寿星\.name\.replace|logAct\(w,ag,句/.test(src)&&/logAct\(w,寿星,'收下了'/.test(src),
      '第 81 单·结构：两条日志（送的人"带了…"／收的人"收下了…"）');
   ok(/gift:1\.2/.test(src)&&/gift:'b'/.test(src)&&/gift:'gift'/.test(src)&&/case 'gift'/.test(src),
@@ -4641,7 +4644,10 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
      &&/function 记欠账\(寿星, 送礼人, w\)\{[\s\S]{0,220}寿星\.giftRecv=q;/.test(src)
      &&!/\bag\.giftRecv=\{/.test(src),
      '第 87 单·结构：收到礼时把欠账记在**收礼人**（寿星）身上、不是送礼人身上（第 93 单改成排队，落点不变）');
-  ok(src.indexOf('第 87 单·先回礼')>0&&src.indexOf('第 87 单·先回礼')<src.indexOf('if(ag.giftYear!==年)'),
+  /* 第 95 单改：原来拿 `if(ag.giftYear!==年)` 当"送新礼那一支"的锚——第 95 单把那道门换成
+     `给过(ag,o.id,年)`、那一行没了，这里改成锚在"挑寿星"那一句（送新礼那一支的门面）。 */
+  ok(src.indexOf('第 87 单·先回礼')>0
+     &&src.indexOf('第 87 单·先回礼')<src.indexOf('const 寿星=w.agents.find(o=>o!==ag && inBirthday(w,o)'),
      '第 87 单·结构：回礼分支排在**送新礼之前**（欠着的人情优先于送新礼）');
   ok(/const 句='回了'\+GIFT\.thing\+'给'/.test(src),
      '第 87 单·结构：回礼那句的日志前缀固定在「回了…」（`CLIP_LOGCAT` 按前缀归类，不靠整句）');
@@ -4917,6 +4923,76 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
     Sim.HEART.at=原;
     ok(病.一交===0,'第 91 单·反向自查·拦得住：把门槛抬到不可能 ⇒ 同一构造下一条也不发生（实测 '
        +病.一交+' 条）⇒ 这条判据不是恒绿');
+  }
+}
+
+// ═══ 第 95 单·生日礼物：找不到人就走过去 ＋ 一对人一年一次 ═══════════════════════
+/* 第 94 单把"机会来了能兑现"修好了，可自然跑里 400 天仍只有 3–4 份礼——两个原因：
+     ① 机会全靠巧合（要有人恰好空闲着、又恰好在寿星那间屋）；
+     ② `ag.giftYear` 是**一个人一年一个数**：当年第一个过生日的人把三个人的礼都用掉了，
+        后面三个生日一份也没有（实测：礼物全落在当年第一个生日那天）。
+   本单两处：**还没送过的人会主动走到寿星那间屋**（到了下一拍，礼物那一支自然递出去）；
+   "一年一次"改成**一对人一年一次**（`ag.giftYears={对方id:年}`，旧档那个数字仍认）。
+   被验的是生产源码与真值：
+     ① 结构：`给过()`／`记给过()` 一处定义；走那一支用 `setActivity(…,20,null,…)`（**不摇 rng**）；
+     ② 行为（构造）：不同屋 ⇒ 他走到寿星那间屋（anchor 变成寿星的锚点）＋一条"去找…"日志，
+        而且**`rngState` 一个字节没动**；下一拍同屋 ⇒ 礼物递出去；
+     ③ 一对人一年一次：给过 A 之后 A 不再收，**B 照样收得到**；旧档那个数字旗 ⇒ 当年一律不再给；
+     ④ 反向自查：拿旧档那个数字旗当凭证 ⇒ 同一寿星一份也送不出去 ⇒ 这道门不是恒绿。 */
+{
+  const fs=require('fs'), path=require('path');
+  const src=fs.readFileSync(path.resolve(__dirname,'city-life-framework.html'),'utf8');
+  ok(/function 给过\(ag, id, 年\)\{/.test(src)&&/function 记给过\(ag, id, 年\)\{/.test(src)
+     &&/setActivity\(w,ag,寿\.anchor,'stroll','去找'\+寿\.name,20,null,'去找'\+寿\.name\);/.test(src),
+     '第 95 单·结构：`给过()`／`记给过()` 各一处定义；"去找…"那一步用死分钟数＋null 独白（**不摇 rng**）');
+  const 摆=(w,寿星,屋,giver,客屋)=>{
+    for(const a of w.agents){ a.anchor='home_table'; a.activity={type:'idle'}; a.busyUntil=0; a.hunger=30; a.energy=80; }
+    寿星.anchor=屋; 寿星.activity={type:'work',label:'看店'}; 寿星.busyUntil=w.t+120;
+    giver.anchor=客屋; giver.activity={type:'idle'}; giver.busyUntil=0; delete giver.giftYears; delete giver.giftYear;
+  };
+  {
+    const w=Sim.makeWorld(20260803), 寿星=w.agents[1], 客=w.agents[0];
+    w.t=Math.floor(Sim.thisYearBdayAt(w,寿星)/1440)*1440+18*60+30;
+    摆(w,寿星,'store_counter',客,'desk1');
+    const 前=w.rngState, 已=w.lidSeq;
+    Sim.decide(w,客);
+    const 走=客.anchor===寿星.anchor;
+    let 条=[]; for(const e of w.log){ if(e.lid<=已) continue; 条.push(e.name+'：'+e.text); }
+    ok(走&&条.length===1&&条[0].indexOf('去找')>0&&w.rngState===前,
+       '第 95 单·行为：不同屋 ⇒ 他走到寿星那间屋（'+条.join(' ／ ')+'），而且 `rngState` 一个字节没动（'
+       +前+'→'+w.rngState+'）');
+    const 已2=w.lidSeq;
+    客.activity={type:'idle'}; 客.busyUntil=0; Sim.decide(w,客);
+    let 礼=0; for(const e of w.log){ if(e.lid<=已2) continue; if(String(e.text).indexOf('带了')===0) 礼++; }
+    ok(礼===1,'第 95 单·行为：走到之后**下一拍**礼物就递出去了（实测 '+礼+' 份）');
+  }
+  {
+    const w=Sim.makeWorld(20260803), 寿星=w.agents[1], 客=w.agents[0], 另=w.agents[2];
+    const 日=Math.floor(Sim.thisYearBdayAt(w,寿星)/1440)*1440+18*60+30;
+    w.t=日; const 年=PURE.dayOf(w.t)-((PURE.dayOf(w.t)-1)%Sim.FESTIVAL.yearDays);
+    摆(w,寿星,'store_counter',客,'store_shelf');
+    客.giftYears={}; 客.giftYears['a2']=年;                          // 已经给过这位寿星了
+    const 已=w.lidSeq; Sim.decide(w,客);
+    let 礼=0; for(const e of w.log){ if(e.lid<=已) continue; if(String(e.text).indexOf('带了')===0) 礼++; }
+    ok(礼===0,'第 95 单·一对人一年一次：今年给过这位寿星 ⇒ 不再给（实测 '+礼+' 份）——"不刷礼"那条本意没变');
+    const w2=Sim.makeWorld(20260803), 寿2=w2.agents[1], 客2=w2.agents[0];
+    w2.t=日; 摆(w2,寿2,'store_counter',客2,'store_shelf');
+    客2.giftYears={}; 客2.giftYears['a3']=年;                          // 给过的是**别人**
+    const 已2=w2.lidSeq; Sim.decide(w2,客2);
+    let 礼2=0; for(const e of w2.log){ if(e.lid<=已2) continue; if(String(e.text).indexOf('带了')===0) 礼2++; }
+    ok(礼2===1,'第 95 单·一对人一年一次（正面）：给过的是**别人** ⇒ 这位寿星照收（实测 '+礼2+' 份）'
+       +'——老口径下这里会是 0（当年那一次已经用掉了）');
+  }
+  {
+    const w=Sim.makeWorld(20260803), 寿星=w.agents[1], 客=w.agents[0];
+    const 日=Math.floor(Sim.thisYearBdayAt(w,寿星)/1440)*1440+18*60+30;
+    w.t=日; const 年=PURE.dayOf(w.t)-((PURE.dayOf(w.t)-1)%Sim.FESTIVAL.yearDays);
+    摆(w,寿星,'store_counter',客,'store_shelf');
+    客.giftYear=年;                                                   // 旧档：只有一个数字
+    const 已=w.lidSeq; Sim.decide(w,客);
+    let 礼=0; for(const e of w.log){ if(e.lid<=已) continue; if(String(e.text).indexOf('带了')===0) 礼++; }
+    ok(礼===0,'第 95 单·反向自查·拦得住：老存档那个"那年给过"的**数字**旗（旧档兼容那一支）⇒ 当年一律不再给（实测 '
+       +礼+' 份）⇒ 这道门真在拦，不是恒绿');
   }
 }
 
@@ -5856,7 +5932,7 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   ok(恒绿===0,'第 66 单·闸二：`ok` 第一参数写死 true 的**读数型假断言**为 0 条（实测 '+恒绿+'；读数一律走 `读数()`）');
   // 闸三 · 反向自查登记（防整条被删）
   const 登记=['第 48 单','第 49 单','第 51 单','第 52 单','第 53 单','第 54 单','第 56 单','第 57 单',
-              '第 58 单','第 59 单','第 62 单','第 63 单','第 64 单','第 65 单','第 67 单','第 70 单','第 71 单','第 72 单','第 73 单','第 74 单','第 75 单','第 76 单','第 77 单','第 79 单','第 80 单','第 81 单','第 84 单','第 85 单','第 87 单','第 88 单','第 90 单','第 91 单','第 92 单','第 93 单','第 94 单',
+              '第 58 单','第 59 单','第 62 单','第 63 单','第 64 单','第 65 单','第 67 单','第 70 单','第 71 单','第 72 单','第 73 单','第 74 单','第 75 单','第 76 单','第 77 单','第 79 单','第 80 单','第 81 单','第 84 单','第 85 单','第 87 单','第 88 单','第 90 单','第 91 单','第 92 单','第 93 单','第 94 单','第 95 单',
               '闸四','闸五','闸十','闸十一','闸十二'];
   const 实有=[...new Set((自源.match(/(第 \d+ 单|闸[一二三四五六七八九十]+)·反向自查/g)||[])
                             .map(x=>x.replace('·反向自查','')))];

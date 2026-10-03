@@ -440,7 +440,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v87</span>
+<span class="num dim" id="set-build">v88</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -2153,6 +2153,20 @@ function 记欠账(寿星, 送礼人, w){
   q.push({ t:w.t, from:送礼人.id, fromName:送礼人.name });
   寿星.giftRecv=q;                                            // 写回数组（旧档那一条也一并归成数组）
 }
+/* ---------- 第 95 单·"一年一次"改成**一对人一年一次**（治第 81 单那面旗的连带后果）----------
+   原来 `ag.giftYear` 是**一个人一年一个数**：谁今年先过生日，另外三个人就把这一年的礼都用掉了，
+   后面三个生日一份礼都没有（实测：跑满 400 天只有 3–4 份礼，全落在当年第一个生日那天）。
+   改成 `ag.giftYears={ 对方id:年 }`——**每位寿星各一份**，"不刷礼"那条本意一字没改。
+   旧档兼容：老的 `giftYear` 是数字，只知道"那年他给过"，给过谁已不可考 ⇒ 当年一律不再给。 */
+function 给过(ag, id, 年){
+  const G=ag&&ag.giftYears;
+  if(G&&typeof G==='object'&&!Array.isArray(G)&&G[id]===年) return true;
+  return typeof ag.giftYear==='number' && ag.giftYear===年;
+}
+function 记给过(ag, id, 年){
+  if(!ag.giftYears||typeof ag.giftYears!=='object'||Array.isArray(ag.giftYears)) ag.giftYears={};
+  ag.giftYears[id]=年;
+}
 // 取或建记录——只在真发生"说话"时才建，不给全城凭空长表
 function relRec(ag, id){
   if(!ag.rel||typeof ag.rel!=='object'||Array.isArray(ag.rel)) ag.rel={};
@@ -2519,12 +2533,23 @@ function decide(w, ag){
         if(留.length) ag.giftRecv=留; else delete ag.giftRecv;
       }
     }
-    if(ag.giftYear!==年){
+    /* 第 95 单·找不到人就**走过去**：礼物要"当面"，那就别等巧合——今天还没送过的人（`giftYear` 那面旗）
+       在窗口里会主动去寿星待着的那间屋；到了下一拍，上面那一支自然就把东西递出去了。
+       **不掷骰子、不动 rng**（`setActivity` 传死分钟数、thought 传 null）：rng 流一字不差。
+       睡着的人不去打扰（与第 94 单那条"醒着就行"同一口径）。 */
+    {
+      const 寿=w.agents.find(o=>o!==ag && inBirthday(w,o) && 醒着(o) && !给过(ag,o.id,年));
+      if(寿 && roomOf(寿.anchor)!==roomOf(ag.anchor)){
+        setActivity(w,ag,寿.anchor,'stroll','去找'+寿.name,20,null,'去找'+寿.name);
+        return;
+      }
+    }
+    {
       const 寿星=w.agents.find(o=>o!==ag && inBirthday(w,o)
         && roomOf(o.anchor)===roomOf(ag.anchor)
-        && 醒着(o));
+        && 醒着(o) && !给过(ag,o.id,年));
       if(寿星){
-        ag.giftYear=年;
+        记给过(ag, 寿星.id, 年);
         ag.money-=GIFT.cost;
         /* 日志首段必须是**固定前缀**（归类表按前缀匹配，第 21 单那条覆盖率闸盯着）——
            故写作"带了…过去给‹名字›"，而不是"给‹名字›带了…"（后者的前缀会随名字变）。 */
@@ -2668,6 +2693,7 @@ const CLIP_LOGCAT=[
   ['miss',  ['翻到上次的短信']],   // 第 74 单·惦记（个人日志，不是世界级播报；列在这里只为归类覆盖率）
   ['gift',  ['带了', '收下了']],    // 第 81 单·生日礼物（两句都取**固定前缀**；列在这里既管覆盖率也管摘原文）
   ['gift',  ['回了']],              // 第 87 单·回礼那句也归这一类（前缀固定；不改上面的表是怕动到既有断言）
+  ['gift',  ['去找']],              // 第 95 单·"去找‹寿星›"那句也归这一类（前缀固定）——他去送东西的路上
   ['sleep', ['回卧室睡觉']],
   ['money', ['交了房租']],
   // 第 52／53 单：目标事件（定下／做到／没做成／**前提破裂**）与周记忆——只归类，不单独出卡。
