@@ -4793,6 +4793,9 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
     const 跑=(关)=>{
       const 原=[Sim.REL.bump,Sim.REL.bdayBump,Sim.REL.coldLose,Sim.REL.coldLine];
       if(关){ Sim.REL.bump=0; Sim.REL.bdayBump=0; Sim.REL.coldLose=0; Sim.REL.coldLine=0; }
+      /* 第 107 单（B 档②）改口径：**先把"关系能改行为的唯一通道"关掉**（`REL_CHAT_MUL` 全设 1），
+         这样才回到"关系只动自己那一个数"的 A 档前提；否则关系深了会改闲聊门槛 ⇒ 行为本就该不同。 */
+      const 原表={}; for(const k of Object.keys(Sim.REL_CHAT_MUL)){ 原表[k]=Sim.REL_CHAT_MUL[k]; Sim.REL_CHAT_MUL[k]=1; }
       const w=Sim.makeWorld(20260803), 迹=[];
       for(let i=0;i<30*144;i++){
         Sim.step(w,10);
@@ -4800,6 +4803,7 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
           +Math.round(a.hunger*100)+'|'+Math.round(a.energy*100)+'|'+Math.round(a.busyUntil));
       }
       Sim.REL.bump=原[0]; Sim.REL.bdayBump=原[1]; Sim.REL.coldLose=原[2]; Sim.REL.coldLine=原[3];
+      for(const k of Object.keys(原表)) Sim.REL_CHAT_MUL[k]=原表[k];
       return {w,迹};
     };
     const 开=跑(false), 关=跑(true);
@@ -4934,6 +4938,51 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
     Sim.HEART.at=原;
     ok(病.一交===0,'第 91 单·反向自查·拦得住：把门槛抬到不可能 ⇒ 同一构造下一条也不发生（实测 '
        +病.一交+' 条）⇒ 这条判据不是恒绿');
+  }
+}
+
+// ═══ 第 107 单·关系状态机 B 档②「熟的人更常凑一起」（同屋聊天的门槛按档位乘系数）════════════
+/* 方案：`docs/规划/关系状态机三期方案_B档_v1.md` 的第二件。口径（照方案与第 49 单先例）：
+   **只改比较阈值、不改抽签次数**——同屋那一支本来就摇一次，现在把门槛乘一个档位系数
+   （生疏／点头之交 ×1.00、熟 ×1.15、老友 ×1.30、家人一样 ×1.45，上限仍压 0.95）；
+   两个人**都认**才算数（取两半关系的较小值，照 `心级()` 先例）。
+   被验的是生产源码与真值：
+     ① 结构：`REL_CHAT_MUL` 一处定义、**键就是 `REL_TIERS` 的档位下限**（从表推导，不另抄一套边界）；
+        `熟缘()` 一处；聊天那一支仍只摇一次 `w.rng()`；
+     ② 行为：同一构造下把四对关系摁到「家人一样」⇒ 30 天闲聊**多于**生疏版（实测见下）；
+     ③ 反向自查：把系数表**全设 1** ⇒ 两版逐字相同 ⇒ 差异确实来自这张表（不是别的通道）。 */
+{
+  const fs=require('fs'), path=require('path');
+  const src=fs.readFileSync(path.resolve(__dirname,'city-life-framework.html'),'utf8');
+  ok(/const REL_CHAT_MUL=\{/.test(src)&&/function 熟缘\(ag, mate\)\{/.test(src)
+     &&Sim.REL_TIERS.every(t=>isFinite(Sim.REL_CHAT_MUL[t.lo]))
+     &&(src.match(/w\.rng\(\)<Math\.min\(0\.95,\(0\.35\+goalKnob\(ag,'social'\)\)\*熟缘\(ag,mate\)\)/g)||[]).length===1,
+     '第 107 单·结构：`REL_CHAT_MUL` 一处定义且**键＝档位表的下限**（'+Sim.REL_TIERS.map(t=>t.lo+'→'+Sim.REL_CHAT_MUL[t.lo]).join('／')
+     +'）；`熟缘()` 一处；聊天那一支仍**只摇一次**（只换比较的另一边）');
+  const 跑=(关系值)=>{
+    const w=Sim.makeWorld(20260803);
+    const 日=PURE.dayOf(w.t);
+    for(const a of w.agents) for(const b of w.agents) if(a!==b){ a.rel=a.rel||{}; a.rel[b.id]={v:关系值, day:日}; }
+    for(let i=0;i<30*144;i++) Sim.step(w,10);
+    let 闲聊=0; for(const k of Object.keys(w.stats.pair)) 闲聊+=w.stats.pair[k];
+    return 闲聊;
+  };
+  {
+    const 亲人=跑(60), 生人=跑(0);
+    ok(亲人>生人,'第 107 单·行为：把四对关系都摁到「家人一样」⇒ 30 天闲聊 '+亲人+' 次，多于生疏版 '+生人
+       +' 次（多 '+(亲人-生人)+' 次）——"熟的人更常凑一起"真在动世界');
+  }
+  {
+    /* 把**关系能改行为的三条通道**全关掉再比：①聊天的档位系数（本单）②交心那两场戏（第 91／96 单）
+       ③老友登门（第 106 单）。三条都掐掉之后，亲疏两版应当逐字相同——这才是"差异只来自这几处"的严格说法。 */
+    const 原表={}; for(const k of Object.keys(Sim.REL_CHAT_MUL)){ 原表[k]=Sim.REL_CHAT_MUL[k]; Sim.REL_CHAT_MUL[k]=1; }
+    const 原心=[Sim.HEART.at, Sim.HEART.at2, Sim.REL_TIERS[3].lo];
+    Sim.HEART.at=999; Sim.HEART.at2=999; Sim.REL_TIERS[3].lo=999;
+    const 甲=跑(60), 乙=跑(0);
+    Sim.HEART.at=原心[0]; Sim.HEART.at2=原心[1]; Sim.REL_TIERS[3].lo=原心[2];
+    for(const k of Object.keys(原表)) Sim.REL_CHAT_MUL[k]=原表[k];
+    ok(甲===乙,'第 107 单·反向自查·拦得住：把关系改行为的**三条通道全关掉**（系数表全设 1 ＋ 交心门槛抬走 ＋ '
+       +'登门门槛抬走）⇒ 亲疏两版逐字相同（'+甲+'／'+乙+'）⇒ 上面那点差异确实只来自这几处');
   }
 }
 
@@ -6389,7 +6438,7 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   ok(恒绿===0,'第 66 单·闸二：`ok` 第一参数写死 true 的**读数型假断言**为 0 条（实测 '+恒绿+'；读数一律走 `读数()`）');
   // 闸三 · 反向自查登记（防整条被删）
   const 登记=['第 48 单','第 49 单','第 51 单','第 52 单','第 53 单','第 54 单','第 56 单','第 57 单',
-              '第 58 单','第 59 单','第 62 单','第 63 单','第 64 单','第 65 单','第 67 单','第 70 单','第 71 单','第 72 单','第 73 单','第 74 单','第 75 单','第 76 单','第 77 单','第 79 单','第 80 单','第 81 单','第 84 单','第 85 单','第 87 单','第 88 单','第 90 单','第 91 单','第 92 单','第 93 单','第 94 单','第 95 单','第 96 单','第 97 单','第 98 单','第 99 单','第 100 单','第 102 单','第 103 单','第 106 单',
+              '第 58 单','第 59 单','第 62 单','第 63 单','第 64 单','第 65 单','第 67 单','第 70 单','第 71 单','第 72 单','第 73 单','第 74 单','第 75 单','第 76 单','第 77 单','第 79 单','第 80 单','第 81 单','第 84 单','第 85 单','第 87 单','第 88 单','第 90 单','第 91 单','第 92 单','第 93 单','第 94 单','第 95 单','第 96 单','第 97 单','第 98 单','第 99 单','第 100 单','第 102 单','第 103 单','第 106 单','第 107 单',
               '闸四','闸五','闸十','闸十一','闸十二'];
   const 实有=[...new Set((自源.match(/(第 \d+ 单|闸[一二三四五六七八九十]+)·反向自查/g)||[])
                             .map(x=>x.replace('·反向自查','')))];

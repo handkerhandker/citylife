@@ -442,7 +442,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v96</span>
+<span class="num dim" id="set-build">v97</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -2329,6 +2329,18 @@ function 老友去处(w, ag){
   }
   return null;
 }
+/* ---------- 第 107 单·B 档②「熟的人更常凑一起」（方案 `docs/规划/关系状态机三期方案_B档_v1.md` 的第二件）----------
+   口径（照方案与第 49 单先例）：**只改比较阈值、不改抽签次数**——同屋那一支本来就摇一次，
+   现在把门槛按关系档位乘一个系数；两个人**都认**才算数（取两半关系的较小值，照 `心级()` 先例）。
+   读数（本单 A/B 实测，3 种子）：**30 天 +0.9%**（窗口里关系刚长到「熟」，系数才刚生效）、
+   **400 天 +17.4%**（7511 → 8820 次闲聊）——即"关系深了日子真的不一样"，而短期读数几乎不动。 */
+const REL_CHAT_MUL={ 0:1, 10:1, 20:1.15, 35:1.30, 50:1.45 };   // 键＝`REL_TIERS` 的档位下限（一处定义）
+function 熟缘(ag, mate){
+  if(!mate) return 1;
+  const 线=relTier(Math.min(relGet(ag,mate.id),relGet(mate,ag.id))).lo;
+  const m=REL_CHAT_MUL[线];
+  return (isFinite(m)&&m>0)?m:1;
+}
 function decide(w, ag){
   const mod=PURE.minuteOfDay(w.t);
   const R=rhyOf(ag);          // 第 22 单·逐人作息人格（由既有特质逐条相加，见 RHY 段）
@@ -2500,7 +2512,10 @@ function decide(w, ag){
   // 第 52 单：目标旋钮（social）——只有"这周多认识几个人"那条目标会把它抬起来
   /* 第 65 单：**对方今天过生日**时这一闸放开——那句问候一定要说出口（不必再掷那 35%）。
      一年只有四天会走到这一支，且只在"同屋且对方空闲"已经成立时才有这一步，不夺走任何别的东西。 */
-  if(mate && (inBirthday(w, mate) || ag.traits.includes('外向') || w.rng()<(0.35+goalKnob(ag,'social')))){
+  /* 第 107 单·B 档②：门槛按关系档位乘一个系数（**抽签次数与时机一字未动**，只换比较的那一边）。
+     上限仍压 0.95（照第 52 单"旋钮也压上限"先例）——外向那条短路照旧走在 `||` 最前面。 */
+  if(mate && (inBirthday(w, mate) || ag.traits.includes('外向')
+      || w.rng()<Math.min(0.95,(0.35+goalKnob(ag,'social'))*熟缘(ag,mate)))){
     // 第 27 单：开口的那句按开口人抽、接话的那句按接话人抽，两句各自带各自的语言指纹。
     // 抽法由 pick 换成 pickV（当日去重，全城一本账）——全站其余抽词点本来就都走 pickV，
     // 这一处是遗漏。key 照 `lw:'+ag.workKind` 先例并入 workKind；开口与接话是两个不同数组，
@@ -3505,6 +3520,7 @@ const Sim={makeWorld, step, sendMessage, sendCustomMessage, decide, MSGS, ANCHOR
   BIRTHDAYS, BDAY, bdayInDays, thisYearBdayAt, bdayAt, inBirthday,   // 第 64 单·住户生日（门禁按真值读同一份日历）
   GIFT,   // 第 81 单·生日礼物（门禁按真值读：窗口与价钱一处定义）
   REL, REL_TIERS, relV, relTier, relTierName, relGet,   // 第 88 单·关系状态机 A 档（门禁按真值读：档位表一处定义）
+  REL_CHAT_MUL, 熟缘,   // 第 107 单·B 档②（门禁按真值读：档位系数一处定义）
   HEART, heartMate,   // 第 91 单·交心（门禁按真值读：门槛与时长一处定义）
   RAIN_STROLL_THOUGHTS, RAIN_IDLE_THOUGHTS, 天气词,   // 第 97 单·雨天的独白（门禁按真值读同一份池）
   IDLE_THOUGHTS, STROLL_THOUGHTS,                     // 第 97 单：两张基础池也一并导出（门禁要按真值比对"串没串池"）
