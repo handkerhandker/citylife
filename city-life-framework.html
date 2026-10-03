@@ -305,6 +305,14 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
     font:600 12px/1 system-ui,sans-serif; padding:8px 14px; border-radius:999px;
     cursor:pointer; box-shadow:0 4px 14px rgba(0,0,0,.35); }
   #fresh-hint:hover{ background:rgba(32,28,18,.96); }
+  /* 第 135 单·双开提示（与「有新版」同族：顶部居中、可点掉；刻意排在它下一行，两条同时出现也不叠）
+     注意：这条注释里不许写出本段那对标记的字面量，否则抓段的脚本会从这里就开始抓（照 FRESHGATE 先例）。 */
+  #multi-hint{ position:fixed; left:50%; transform:translateX(-50%);
+    top:calc(env(safe-area-inset-top,0px) + 48px); z-index:99; max-width:min(92vw,520px);
+    border:1px solid #e0a15c; background:rgba(38,24,12,.95); color:#f4c98a;
+    font:600 12px/1.45 system-ui,sans-serif; padding:8px 14px; border-radius:14px;
+    cursor:pointer; box-shadow:0 4px 14px rgba(0,0,0,.35); text-align:center; white-space:normal; }
+  #multi-hint:hover{ background:rgba(58,36,16,.96); }
 </style>
 </head>
 <body>
@@ -458,7 +466,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v114</span>
+<span class="num dim" id="set-build">v115</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -4921,6 +4929,66 @@ if(saveMode==='normal'){                                  // 试玩档（ephemer
   document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible') freshCheck(); });
 }
 /*FRESHGATE-END*/
+
+/*MULTITAB-START*/
+/* ---------- 第 135 单·双开提示：本机另一个标签页也开着时，把「会互相覆盖存档」说出来 -------------
+   背景（取证：tools/multitab-audit/probe.mjs）：两页同玩时，各自每 15 秒自动存档、发信/切走/关页也各存各的，
+   同一个 localStorage 键——**谁的档后写谁赢**。实测：A 页发一条短信（余额 3→2）后 10 秒内，B 页的旧档
+   （余额 3，世界时间还倒退 10 分钟）就把它覆盖掉，重开第三页看到的余额是 3——A 发过的短信没了；随后又翻回来。
+   本段射程：**只提示，不阻止、不改任何保存行为**；单写者/锁档那种强治理属改结构，留给决策者拍板。
+   检测两条腿（都只读、零 rng、零世界写入）：
+     ① 心跳键：每 4 秒写一次自己的 id；别人的心跳 <10 秒新 ⇒ 另一个活页在；自己 pagehide（关页/刷新）
+        时清掉自己的心跳，免得留下「幽灵页面」误报。
+     ② storage 事件：另一个页写存档键（每 15 秒必然发生）⇒ 立刻提示，不等计时器凑巧对上。
+   显示规则：提示可点掉；点掉后只要那个页还活着就不再弹（它走了/过期后重新武装）；另一个页不再活着 ⇒ 自动收起。 */
+const TAB_KEY='citylife-tab-heartbeat', TAB_BEAT_MS=4000, TAB_FRESH_MS=10000;
+const 本页id=String(Date.now())+'-'+String(Math.floor(performance.now()));
+let 多开闭过=false;
+function 多开心跳(){ try{ localStorage.setItem(TAB_KEY, JSON.stringify({id:本页id, at:Date.now()})); }catch(_){} }
+function 多开别页活着(){
+  try{
+    const s=localStorage.getItem(TAB_KEY);
+    if(!s) return false;
+    const o=JSON.parse(s);
+    return !!(o && typeof o.id==='string' && o.id!==本页id && isFinite(o.at) && (Date.now()-o.at)<TAB_FRESH_MS);
+  }catch(_){ return false; }
+}
+function 多开提示(show){
+  const el=document.getElementById('multi-hint');
+  if(show){
+    if(el) return;
+    const b=document.createElement('button');
+    b.id='multi-hint'; b.type='button'; b.setAttribute('data-fx','');
+    b.textContent='⚠ 另一个标签页也开着这个游戏：两页每 15 秒会互相覆盖存档，你在这页发的短信可能被那页抹掉。建议只留一个页面。';
+    b.addEventListener('click',()=>{ b.remove(); 多开闭过=true; });   // 点掉＝这一轮不再弹（别页走了再武装）
+    document.getElementById('app').appendChild(b);
+  }else if(el){ el.remove(); }
+}
+if(saveMode==='normal'){
+  try{ if(多开别页活着()) 多开提示(true); }catch(_){}
+  多开心跳();
+  setInterval(()=>{
+    const 活=多开别页活着();
+    if(活){ if(!多开闭过) 多开提示(true); }
+    else { 多开提示(false); 多开闭过=false; }
+    多开心跳();
+  }, TAB_BEAT_MS);
+  addEventListener('storage', e=>{
+    try{
+      if(!e || !e.key) return;
+      if(e.key===TAB_KEY && e.newValue){
+        const o=JSON.parse(e.newValue);
+        if(o && typeof o.id==='string' && o.id!==本页id && !多开闭过) 多开提示(true);
+      } else if(e.key===SAVE_KEY && !多开闭过){
+        多开提示(true);   // 别的页刚存过档 ⇒ 就是互相覆盖的现场
+      }
+    }catch(_){}
+  });
+  addEventListener('pagehide', ()=>{
+    try{ const s=localStorage.getItem(TAB_KEY); if(s && JSON.parse(s).id===本页id) localStorage.removeItem(TAB_KEY); }catch(_){}
+  });
+}
+/*MULTITAB-END*/
 
 /* ---------- AI 层：三级兜底链（Claude 直连 → 同源中转站 /relay → 模板），给三处最该有灵魂的地方换脑 ---------- */
 function hungerWord(h){ return h>65?'很饿':h>40?'有点饿':'不饿'; }
