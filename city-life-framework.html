@@ -442,7 +442,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v100</span>
+<span class="num dim" id="set-build">v101</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -1427,6 +1427,30 @@ const RAIN_RULES={
   indoorLabel:'在家听雨',   // 雨天在家那一段换个说法（角色页／角色卡上看得见；晴天仍是「在家待着」）
 };
 /*RAIN-END*/
+/*SEASONWX-START*/
+/* ---------- 第 113 单·四季行为二期：季节落进"日子" ----------
+   第 111／112 单把季节画进了画面（色罩、晨昏），本单让它落到**行为**上：夏天更常出门、冬天更宅。
+   治法照第 49 单那套最省的做法——**只把"出去玩"那三支的概率乘一个季节因子**
+   （周日街市／周六白天出门／傍晚散步），上班／吃饭／回家／睡觉一概不碰（不夺走收入，也不夺走饭点）；
+   **不新增任何 rng 调用**：每一支照旧只掷它自己那一次，换的只是比较用的阈值；再照第 52 单先例压上限。
+
+   口径与出处：**四个因子是拍的**（1.00／1.15／1.00／0.75，一处可调）——同类作品里没有可以逐字引的
+   "夏天多出门几个百分点"，这是对"长夏短冬"的常识化落法，故按第 63 单"阈值是拍的、登记清楚"的口径处理；
+   季节本身（一年四段、每段 90 天）是第 111 单从 12 个月 ×30 天推出来的那本日历。
+   **春与秋＝1.00**：开档头 90 天（春）行为**逐拍不变**——两枚指纹据此原样（第 24 单那条口径）。 */
+const SEASON_OUT=[1.00,1.15,1.00,0.75];   // 键＝一年的四段（春／夏／秋／冬）——只乘在"出去玩"那三支的概率上
+function seasonIdx(w){
+  const Y=FESTIVAL.yearDays, n=SEASON_OUT.length;     // 年＝日历里那一个数（360）；季数＝本表长度（4）
+  let d=Math.floor((PURE.dayOf(w.t)-1)%Y);
+  if(!isFinite(d)) d=0;
+  d=((d%Y)+Y)%Y;
+  return Math.max(0,Math.min(n-1,Math.floor(d/(Y/n))));
+}
+function seasonOutMul(w){
+  const m=SEASON_OUT[seasonIdx(w)];
+  return (isFinite(m)&&m>0)?m:1;
+}
+/*SEASONWX-END*/
 /*GOAL-START*/
 /* ---------- 第 52 单·目标系统·规则侧一期（零 AI、确定性可测）----------
    缘由（待办「下一单候选」第 3 条）：四个人每天只是"到点干什么"，**没有一件"这周想干成的事"**。
@@ -2598,13 +2622,14 @@ function decide(w, ag){
   // 第 49 单·雨回流进行为：**只把"出去玩"这三支的概率换成 RAIN_RULES 里的值**，
   // 上班／吃饭／回家那几支一个字不改（不夺走收入、也不夺走饭点）；每支仍只掷一次 rng。
   const raining=!!(w.weather&&w.weather.rain);
-  if(sunday && mod>=10*60 && mod<17*60 && w.rng()<(raining?RAIN_RULES.market:0.5)){
+  /* 第 113 单：三支"出去玩"各乘季节因子（夏 1.15／冬 0.75）——只换比较的那一边，rng 调用一字不动。 */
+  if(sunday && mod>=10*60 && mod<17*60 && w.rng()<Math.min(0.90,(raining?RAIN_RULES.market:0.5)*seasonOutMul(w))){
     setActivity(w,ag,'market','stroll','逛街市',tempoDur(w,ag,40),'人挤人，但热闹是真热闹。','去周日街市逛逛');
     return;
   }
   // 第 46 单后半：**周六**白天也出门（工作日到不了这一支：白天在上班或在家的那一支之前就返回了，
   // 而这里的 `dayOut` 在工作日为 0）。去处从 `WEEKEND_OUT.daySpots` 三选一，**独立掷一次**。
-  if(周末 && !sunday && mod>=10*60 && mod<17*60 && w.rng()<(raining?RAIN_RULES.dayOut:WEEKEND_OUT.dayOut)){
+  if(周末 && !sunday && mod>=10*60 && mod<17*60 && w.rng()<Math.min(0.90,(raining?RAIN_RULES.dayOut:WEEKEND_OUT.dayOut)*seasonOutMul(w))){
     const spots=WEEKEND_OUT.daySpots;                 // 表只有这一处取用（门禁按出现次数钉住）
     const spot=spots[Math.floor(w.rng()*spots.length)%spots.length];
     setActivity(w,ag,spot,'stroll','出门逛逛',tempoDur(w,ag,40),天气词(w,STROLL_THOUGHTS,RAIN_STROLL_THOUGHTS,ag,'lo'),'周末出门逛逛');
@@ -2765,7 +2790,7 @@ function decide(w, ag){
     return;
   }
   const eveClear=(周末?WEEKEND_OUT.eveStroll:0.3)+goalKnob(ag,'out');   // 晴天那一档（原值 0.3／0.45 原样保留）
-  if(mod>=18.5*60 && mod<21*60 && w.rng()<(raining?(周末?RAIN_RULES.eveWeekend:RAIN_RULES.eveWorkday):eveClear)){
+  if(mod>=18.5*60 && mod<21*60 && w.rng()<Math.min(0.95,(raining?(周末?RAIN_RULES.eveWeekend:RAIN_RULES.eveWorkday):eveClear)*seasonOutMul(w))){
     /* 第 106 单·B 档①：照旧先摇那一下（**次序与次数一字不动**），只是把落点换给老友。
        摇签不动 ⇒ 时长/后续决策逐拍不变，唯一变的是"他往哪儿走、日志写哪句"。 */
     const 掷=w.rng()<0.5?'park_bench':'river_walk';
@@ -3584,6 +3609,7 @@ const Sim={makeWorld, step, sendMessage, sendCustomMessage, decide, MSGS, ANCHOR
   REL, REL_TIERS, relV, relTier, relTierName, relGet,   // 第 88 单·关系状态机 A 档（门禁按真值读：档位表一处定义）
   REL_CHAT_MUL, 熟缘,   // 第 107 单·B 档②（门禁按真值读：档位系数一处定义）
   BDAY_CO, 陪过,   // 第 110 单·生日有人陪（门禁按真值读：时长与独白一处定义、一年一对人一次）
+  SEASON_OUT, seasonIdx, seasonOutMul,   // 第 113 单·四季行为二期（门禁按真值读：因子表一处定义＋三支调用）
   HEART, heartMate,   // 第 91 单·交心（门禁按真值读：门槛与时长一处定义）
   RAIN_STROLL_THOUGHTS, RAIN_IDLE_THOUGHTS, 天气词,   // 第 97 单·雨天的独白（门禁按真值读同一份池）
   IDLE_THOUGHTS, STROLL_THOUGHTS,                     // 第 97 单：两张基础池也一并导出（门禁要按真值比对"串没串池"）
