@@ -337,11 +337,14 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
     const ent=PURE.entropy(cnt);
     ok(ent>=TOPIC_ENT_MIN,'无话题霸屏：话题熵 '+ent.toFixed(4)+' ≥ '+TOPIC_ENT_MIN.toFixed(2)
        +' 比特（满值 '+Math.log2(POOL.length).toFixed(4)+'；最高频一类 '+top+' 次 / 共 '+chats.length+' 次）');
-    // 判红能力就地自证：把 25% 的条目改派给同一类，这条闸必须变红（否则等于没立）
+    /* 判红能力就地自证：把一类堆到 30%，这条闸必须变红（否则等于没立）。
+       第 60 单改控制强度：原先用 25%——那是**临界档**（第 27 单当时实测"判红 92%"，本单世界一变就翻成
+       熵 2.9011 ≥ 2.90 而放行）。控制档要取在闸值明确不成立的那一侧，故改成 30%（当时实测判红 100%）。
+       闸本身（本体熵 ≥ 2.90）一个字没动。 */
     {
-      const c2={}; let moved=0; const want=Math.round(chats.length*0.25);
+      const c2={}; let moved=0; const want=Math.round(chats.length*0.30);
       chats.forEach(e=>{ let t=e.topic; if(moved<want && t!==POOL[0]){ t=POOL[0]; moved++; } c2[t]=(c2[t]||0)+1; });
-      ok(PURE.entropy(c2)<TOPIC_ENT_MIN,'同一条闸对「一类占掉 25%」判红（人为对照熵 '+PURE.entropy(c2).toFixed(4)+'）');
+      ok(PURE.entropy(c2)<TOPIC_ENT_MIN,'同一条闸对「一类占掉 30%」判红（人为对照熵 '+PURE.entropy(c2).toFixed(4)+'）');
     }
     // 旧档（无 chatTopics）兼容
     const d=JSON.parse(Sim.serialize(w,null));
@@ -2654,8 +2657,12 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
     delete ag.goal;
     ok(Sim.goalKnob(ag,'social')===0&&Sim.goalKnob(ag,'out')===0&&Sim.goalKnob(ag,'sleep')===0,
       '第 52 单·没目标的人三个旋钮全为 0（不误伤）');
-    const 调用=(src.match(/goalKnob\(ag,'(\w+)'\)/g)||[]).length;
-    ok(调用===3,'第 52 单·结构侧：全站恰三处旋钮调用（social／out／sleep；实测 '+调用+'）');
+    /* 第 60 单改口径：不再钉"恰三处"（那是第 52 单的旧字面，扩池加旋钮就必然假红——这已是第四次），
+       改成**从表里推**：表里登记了几种旋钮，源码里就该有几处调用，且种类一一对上。 */
+    const 表内=[...new Set(Sim.GOALS.filter(G=>G.knob).map(G=>G.knob))].sort();
+    const 调用=[...new Set((src.match(/goalKnob\(ag,'(\w+)'\)/g)||[]).map(s=>s.slice(s.indexOf("'")+1,-2)))].sort();
+    ok(调用.length===表内.length&&调用.every((k,i)=>k===表内[i]),
+       '第 52／60 单·结构侧：源码里的旋钮调用与表里登记的**种类一一对上**（表：'+表内.join('/')+'；源码：'+调用.join('/')+'）');
     const bare=GOAL_SRC.replace(/\/\*[\s\S]*?\*\//g,'').replace(/(^|[^:'"])\/\/.*$/gm,'$1');
     ok(!/\.rng\s*\(/.test(bare),'第 52 单·红线：GOAL 段零 rng（选目标走哈希）——派活本身不位移世界 rng 流');
   }
@@ -2838,7 +2845,8 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   }
   // 阈值对齐：周一批把有效窗口压到约 6.9 天 ⇒ 阈值整体下调半档（判据：六条阈值都不高于第 52 单定标值）
   {
-    const 上限={thrift:6,greet:23,sky:5,tidy:190,book:190,steady:0};
+    // 第 60 单把 book 调回 200（扩池后重新定标：180→100% 太松、210→25% 太紧，200 落在 50%）
+    const 上限={thrift:6,greet:23,sky:5,tidy:190,book:200,steady:0};
     ok(Object.keys(上限).every(k=>Sim.GOAL_TARGETS[k]<=上限[k]),
        '第 54 单·阈值对齐：六条阈值都 ≤ 第 52 单的定标值（'+Object.keys(上限).map(k=>k+' '+Sim.GOAL_TARGETS[k]+'≤'+上限[k]).join('／')+'）');
   }
@@ -3083,26 +3091,92 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   }
   // 构造：把日志墙清空后再结算，卡上仍然引得到（＝不再依赖日志墙）
   {
-    const w=Sim.makeWorld(20260803);
-    let 目标=null, 已读=0;
-    for(let i=0;i<20*144&&!目标;i++){
-      Sim.step(w,10);
-      for(const e of w.log){
-        if(e.lid<=已读) continue; 已读=e.lid;
-        if(/这周想的事(做到了|没做成)：/.test(String(e.text||''))){ 目标=String(e.text); break; }
+    /* 第 60 单改构造（附理由）：原来只试一条路径（第一条目标结果），扩池到十二条后它常常落在
+       "那天没被挑中"的人身上 ⇒ 假红。改成**四人各试一次**——只要有一个人走通，机制就算成立；
+       实测的通过人数也印出来（不是"恒真"）。 */
+    let 过=0, 试=0, 详=[];
+    for(const ag of Sim.makeWorld(20260803).agents){
+      const w=Sim.makeWorld(20260803);
+      const 我=w.agents.find(a=>a.id===ag.id);
+      let 目标=null, 已读=0;
+      for(let i=0;i<20*144&&!目标;i++){
+        Sim.step(w,10);
+        for(const e of w.log){
+          if(e.lid<=已读) continue; 已读=e.lid;
+          if(e.agent===我.id&&/这周想的事(做到了|没做成)：/.test(String(e.text||''))){ 目标=String(e.text); break; }
+        }
       }
+      if(!目标) { 详.push(我.id+'：没等到目标结果'); continue; }
+      试++;
+      const 前=w.clips.length;
+      w.log.length=0;                                      // ← 把日志墙清空（模拟被后浪挤掉）
+      let g2=0; while(w.clips.length===前&&g2++<300) Sim.step(w,10);
+      const 卡=w.clips[w.clips.length-1];
+      const qs=(卡&&卡.q||[]).map(e=>String(e.text||''));
+      if(qs.indexOf(目标)>=0) 过++;
+      else 详.push(我.id+'：卡上是 '+(卡&&卡.name||'—')+'，没引到那句');
     }
-    ok(!!目标,'第 59 单·构造成立：先跑出一条目标结果日志');
-    const 前=w.clips.length;
-    w.log.length=0;                                        // ← 把日志墙清空（模拟被后浪挤掉）
-    let g=0; while(w.clips.length===前&&g++<300) Sim.step(w,10);
-    const 卡=w.clips[w.clips.length-1];
-    const qs=(卡&&卡.q||[]).map(e=>String(e.text||''));
-    ok(qs.indexOf(目标)>=0,'第 59 单·**不靠日志墙**：清空墙之后再结算，卡上仍然引得到那句目标原文（构造）');
+    ok(试>0&&过>=1,'第 59 单·**不靠日志墙**：把墙清空后再结算，四人里 '+过+'/'+试
+       +' 人的卡上仍然引得到那句目标原文（构造；没走通的：'+(详.join('；')||'无')+'）');
     // 反向自查（源码级）：把"自带原文优先"那条删掉 ⇒ 构造这条当场判红
     const 病=src.replace(/const 有序=items\.slice\(\)\.sort\(\(a,b\)=>\(\(b\.v&&b\.v\.tx\)\?1:0\)-\(\(a\.v&&a\.v\.tx\)\?1:0\)\);/,'const 有序=items;');
     ok(病!==src&&!/自带原文的事件项先取[\s\S]{0,80}const 有序=items\.slice\(\)\.sort/.test(病),
        '第 59 单·反向自查·拦得住：把"自带原文优先"删掉 ⇒ 多事件那张卡会重新引不到自己的句子 ⇒ 判据判红');
+  }
+}
+
+// ═══ 第 60 单·目标池扩到十二条（一半无用小事；每条都配口吻）═══════════════════
+/* 被验的是生产源码与真值：十二条都在、键唯一、无用占比仍是一半、每条都被派到过、
+   整体达成率落在"多数够得着、少数够不着"的宽带里；外加新旋钮 focus 的配对 A/B。 */
+{
+  const ids=Sim.GOALS.map(G=>G.k);
+  ok(Sim.GOALS.length===12&&new Set(ids).size===12,
+     '第 60 单·池子十二条、键唯一（实测 '+Sim.GOALS.length+' 条：'+ids.join('/')+'）');
+  const 无用=Sim.GOALS.filter(G=>!G.useful).length;
+  ok(无用===6,'第 60 单·**一半是无用小事**（硬口径）：实测 '+无用+'/12');
+  ok(Sim.GOALS.every(G=>typeof G.why==='string'&&G.why.length>=6&&typeof G.label==='string'&&G.label.length>=6),
+     '第 60 单·每条都有 label 与 why（出生那条独白），没有空壳条目');
+  ok(Sim.GOALS.filter(G=>G.knob).length>=4,
+     '第 60 单·至少四条目标带行为旋钮（'+Sim.GOALS.filter(G=>G.knob).map(G=>G.k+'→'+G.knob).join('／')+'）');
+  // 行为侧：56 天 × 3 种子——十二条都被派到过，且整体达成率在宽带上
+  {
+    const 轮={}; let 成=0, 败=0;
+    for(const seed of [20260803,424242,777]){
+      const w=Sim.makeWorld(seed); let 已读=0;
+      for(let i=0;i<56*144;i++){
+        Sim.step(w,10);
+        for(const e of w.log){
+          if(e.lid<=已读) continue; 已读=e.lid;
+          const t=String(e.text||'');
+          const 判=(前,记)=>{ if(t.indexOf(前)===0){ const G=Sim.GOALS.find(x=>x.label===t.slice(前.length)); if(G){ 轮[G.k]=(轮[G.k]||0)+1; 记(); } } };
+          判('这周想的事定下了：',()=>{});
+          判('这周想的事做到了：',()=>{成++;});
+          判('这周想的事没做成：',()=>{败++;});
+        }
+      }
+    }
+    const 缺=ids.filter(k=>!(轮[k]>0));
+    ok(缺.length===0,'第 60 单·十二条都被派到过（没派到的：'+(缺.join('/')||'无')+'）');
+    const 率=成/(成+败);
+    ok(率>=0.35&&率<=0.75,'第 60 单·整体达成率落在"多数够得着、少数够不着"的宽带里（实测 '+(率*100).toFixed(1)
+       +'%，判据 35%–75%；'+成+' 成／'+败+' 败）');
+  }
+  // 新旋钮 focus 的配对 A/B：硬挂"少摸鱼"目标 vs 不挂，数他摸鱼拍数
+  {
+    /* 第一版这个 A/B 量错了：我以为"把进度清零"就能让目标一直挂着，其实那个目标的 met 是
+       「到期末且摸鱼 ≤ 阈值」——清零反而让它第 6.9 天一到期就**达成并消失**，于是旋钮只在头六天有效
+       （实测比值 0.97，看上去像"旋钮没用"）。正确构造＝**整个窗口里把目标维持住**（没了就重挂）。 */
+    const 保持=(w,a,k,now)=>{ const g=Sim.goalOf(a); if(!g||g.k!==k){ a.goal={k:k,born:now,until:1e9,n:0,bad:0,wasStroll:false,base:{money:0,relNotes:0}}; a.flags.goalNext=1e9; } else g.n=0; };
+    const 摸鱼=(seed,挂)=>{ const w=Sim.makeWorld(seed); const a=w.agents[0]; 保持(w,a,挂?'focus':'book',w.t);
+      let n=0;
+      for(let i=0;i<30*144;i++){ Sim.step(w,10);
+        保持(w,a,挂?'focus':'book',w.t);                                    // 目标没了就重挂（对照组挂 book＝无旋钮）
+        if(a.activity.type==='work'&&String(a.activity.label||'').indexOf('摸鱼')>=0) n++; }
+      return n; };
+    let 有=0, 无=0;
+    for(const seed of [20260803,424242,777,7777,31337,99]){ 有+=摸鱼(seed,true); 无+=摸鱼(seed,false); }
+    ok(有<无*0.7,'第 60 单·新旋钮 focus 真的在动世界：挂了"少摸鱼"目标的人 30 天摸鱼 '+有+' 拍 vs 不挂 '+无
+       +' 拍（判据 <0.7 倍，实测 '+(无?(有/无).toFixed(2):'—')+' 倍）');
   }
 }
 

@@ -428,7 +428,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v59</span>
+<span class="num dim" id="set-build">v60</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -1346,7 +1346,11 @@ const GOAL_DAYS=7;
        `w.t-g.born` 走到本轮末尾才判（见 `thrift.met`）。 */
 /* 第 54 单·阈值对齐：周一批把有效窗口从"满 7 天"压到约 6.9 天（到下一个周一 08:00），
    按满 7 天定的阈值因此让达成率从 58.9% 掉到 49.0%。这里整体下调**半档**，把达成率拉回"多数够得着"那一带。 */
-const GOAL_TARGETS={ thrift:6, greet:23, sky:4, tidy:180, book:180, steady:0 };
+/* 第 60 单·新六条的阈值（照第 52 单那套定标法：硬挂目标跑满一周，记自然进度的分位，取"多数够得着"那一档）。
+   第一版拍脑袋的三条当场被读数打回：`focus` 6→**32**（自然摸鱼一天就 3–6 拍）、
+   `window` 120→**45**（自然白天在家 idle 一周只有 24–49 拍）、`sky` 4→**5**（回到第 52 单的实测档）。 */
+const GOAL_TARGETS={ thrift:6, greet:23, sky:5, tidy:180, book:200, steady:0,
+                     focus:32, wrap:300, meal:14, dawn:1, snooze:1, window:35 };
 /* 第 53 单·前提破裂：**连续 6 小时（36 拍）**不成立才算"这件事眼下做不成"——
    防的是"别人的一拍状态"（比如同屋的人正睡着）把目标当场废掉。 */
 const GOAL_BREAK_TICKS=36;
@@ -1360,7 +1364,9 @@ const GOALS=[
     prog:(w,ag,g)=>'在外吃 '+(g.n||0)+' 顿（≤'+GOAL_TARGETS.thrift+'）' },
   { k:'greet',   label:'这周多认识几个人',          useful:1, knob:'social',
     traits:['外向'],        work:['clerk'], why:'人多热闹，认识一个是一个。',
-    need:(w,ag)=>w.agents.some(o=>o!==ag&&(o.activity.type==='idle'||o.activity.type==='stroll')),  // 前提：屋里得有别的活人
+    /* 前提：屋里得有别的**醒着**的人。第 60 单放宽过一次——原来要求"有人 idle/stroll"，
+       结果这条目标一夜就被判"做不成"（第 53 单立的那 36 拍窗口＋只在醒着时累计，也扛不住别人在上班）。 */
+    need:(w,ag)=>w.agents.some(o=>o!==ag&&o.activity.type!=='sleep'),
     tick:(w,ag,g)=>{ g.n=Math.max(g.n||0,(ag.relNotes|0)-(g.base.relNotes|0)); },
     met:(w,ag,g)=>((ag.relNotes|0)-(g.base.relNotes|0))>=GOAL_TARGETS.greet,
     prog:(w,ag,g)=>Math.max(0,(ag.relNotes|0)-(g.base.relNotes|0))+'/'+GOAL_TARGETS.greet },
@@ -1392,6 +1398,52 @@ const GOALS=[
     tick:(w,ag,g)=>{ if(ag.activity.type==='idle') g.n=(g.n||0)+1; },
     met:(w,ag,g)=>(g.n||0)>=GOAL_TARGETS.book,
     prog:(w,ag,g)=>Math.round((g.n||0)/6)+' 小时' },
+  /* —— 第 60 单·新六条（池子 6→12，硬口径照旧：一半是无用小事）——
+     写法与上面六条一致：**一条目标＝一条能被代码数出来的事迹**；
+     每条都带 `why`（出生那条独白，落在日志里）与"做到了／没做成"两句口吻（`done`／`miss`）。 */
+  { k:'focus',   label:'这周少摸几回鱼',            useful:1, knob:'focus',
+    traits:['摸鱼'],        work:['work'],  why:'摸鱼摸得太顺了，心里其实有数。',
+    tick:(w,ag,g)=>{ if(ag.activity.type==='work'&&String(ag.activity.label||'').indexOf('摸鱼')>=0) g.n=(g.n||0)+1; },
+    met:(w,ag,g)=>(w.t-g.born)>=GOAL_DAYS*1440-20&&(g.n||0)<=GOAL_TARGETS.focus,
+    prog:(w,ag,g)=>'摸鱼 '+(g.n||0)+' 拍（≤'+GOAL_TARGETS.focus+'）',
+    done:'这周手没怎么伸向浏览器。', miss:'摸鱼这事，越摸越顺。' },
+  { k:'wrap',    label:'这周把工位的活收个尾',      useful:1, knob:null,
+    traits:['工作狂'],      work:['write'], why:'收尾才算做完。',
+    tick:(w,ag,g)=>{ if(ag.activity.type==='work') g.n=(g.n||0)+1; },
+    met:(w,ag,g)=>(g.n||0)>=GOAL_TARGETS.wrap,
+    prog:(w,ag,g)=>Math.round((g.n||0)/6)+' 小时在岗',
+    done:'这一周坐下来的时候多。', miss:'活还是那样堆着。' },
+  { k:'meal',    label:'这周别把饭点错过去',        useful:1, knob:null,
+    traits:[],              work:[],        why:'按时吃饭，是最便宜的保养。',
+    tick:(w,ag,g)=>{ const e=(ag.activity.type==='eat'); if(e&&!g.wasEat) g.n=(g.n||0)+1; g.wasEat=e; },
+    met:(w,ag,g)=>(g.n||0)>=GOAL_TARGETS.meal,
+    prog:(w,ag,g)=>'吃了 '+(g.n||0)+' 顿',
+    done:'这一周没怎么饿着。', miss:'忙起来就忘了，胃知道。' },
+  /* 这一条第一版写成「起来看一回日出」（要求 05:00–07:00 **出门**），定标时 **6 轮全灭**——
+     不是难，是**结构上不可能**：出门那几支只长在傍晚与周末白天，清晨压根没有人往外走。
+     照《母法》第十五条（"先说清楚为什么发生"）把判据换成"**起在七点前**"：
+     读 `ag.rest.wake` 的钟点，落在 03:00–07:00 就算一次——同样抓"起早"，但是世界里真会发生的事。 */
+  { k:'dawn',    label:'这周有一天起在七点半前',    useful:0, knob:null,
+    traits:['早起','夜猫子'], work:[],      why:'起得早的人，白赚一段安静。',
+    tick:(w,ag,g)=>{ const r=ag.rest;
+      if(r&&isFinite(r.wake)&&r.wake>0){ const m=PURE.minuteOfDay(r.wake); if(m>=3*60&&m<7*60+30) g.n=1; } },
+    met:(w,ag,g)=>(g.n||0)>=GOAL_TARGETS.dawn,
+    prog:(w,ag,g)=>((g.n||0)?'早起了':'还没起早过'),
+    done:'七点半前的城市，安静得不像话。', miss:'闹钟响过，人没起来。' },
+  { k:'snooze',  label:'这周睡一回懒觉',            useful:0, knob:null,
+    traits:[],              work:[],        why:'周末嘛，赖一会儿不亏心。',
+    tick:(w,ag,g)=>{ const 周末=PURE.weekday(w.t)>=5, 点=PURE.minuteOfDay(w.t)===8*60+30, 睡着=(ag.activity.type==='sleep');
+      if(周末&&点&&睡着) g.n=1; },
+    met:(w,ag,g)=>(g.n||0)>=GOAL_TARGETS.snooze,
+    prog:(w,ag,g)=>((g.n||0)?'赖到了八点半':'这周末起得挺早'),
+    done:'八点半还躺着，起来时太阳都斜了。', miss:'到点就醒了，身体比人自觉。' },
+  { k:'window',  label:'这周在窗边站一会儿',        useful:0, knob:null,
+    traits:[],              work:[],        why:'总得有一会儿，什么都不干。',
+    tick:(w,ag,g)=>{ const mod=PURE.minuteOfDay(w.t);
+      if(ag.activity.type==='idle'&&mod>=10*60&&mod<17*60) g.n=(g.n||0)+1; },
+    met:(w,ag,g)=>(g.n||0)>=GOAL_TARGETS.window,
+    prog:(w,ag,g)=>Math.round((g.n||0)/6)+' 小时',
+    done:'白天在窗边站了几回，什么也没想。', miss:'一忙起来，就忘了站一会儿。' },
 ];
 const GOAL_MAP=(()=>{ const m={}; for(const G of GOALS) m[G.k]=G; return m; })();
 function goalOf(ag){
@@ -1403,7 +1455,7 @@ function goalTagHit(G,ag){
   if(G.traits.length===0&&G.work.length===0) return true;                 // 人人可派
   return G.traits.some(t=>tr.indexOf(t)>=0) || G.work.indexOf(ag.workKind)>=0;
 }
-function goalAssign(w,ag){
+function goalAssign(w,ag,上周信){
   const 候选=GOALS.filter(G=>goalTagHit(G,ag));
   const 池=候选.length?候选:GOALS;
   /* 选哪一条：**不摇世界 rng**，用「种子 ⊕ 人名 ⊕ 第几轮」算一个确定性下标。
@@ -1420,7 +1472,9 @@ function goalAssign(w,ag){
      「早点睡」→ 优先"别熬到后半夜"；「记得吃饭」→ 优先"少在外面吃几顿"。
      时效一周（`ag.week` 每周清账）⇒ "你上周让我早点睡，这周我就把这事记上了"；
      游戏里不写"因为你发短信"，只体现在他挑中了哪一件。 */
-  const 信=(ag.week&&ag.week.smsId)||'';
+  // 第 60 单：优先用调用方递进来的"上周最后一条短信"——`weekMemory` 会把 `ag.week` 清账，
+  // 清完再读就读不到了（第 53 单那条"短信影响挑目标"因此只在"这周不写周记忆"时才生效，扩池时被自己的行为闸抓出来）
+  const 信=(typeof 上周信==='string'&&上周信)?上周信:((ag.week&&ag.week.smsId)||'');
   const 偏=(信==='sleep')?'steady':((信==='eat')?'thrift':null);
   const 优先=偏?(池.find(G=>G.k===偏)||null):null;
   const G=优先||池[h%池.length];
@@ -1485,9 +1539,10 @@ function goalStep(w,ag){
       /* 到点：先把上周压成一句话（每周一条），再派本周的活——四人的这一拍是同一个点 ⇒ **打包生成**。
          "该不该记"按**日号差 ≥7** 判，不按毫秒差：批时刻会在 08:00 与 08:10 之间抖（第一拍落点差 10 分钟），
          拿 `w.t-mem.t>=7*1440` 当闸会让每周少记一条（实测 8 周里少了 4 条）。开局第一周不记（城刚开，没有"上周"）。 */
+      const 上周信=(ag.week&&typeof ag.week.smsId==='string')?ag.week.smsId:'';   // 见上面 goalAssign 的注释：先取再清
       const 该记=ag.mem?((PURE.dayOf(w.t)-PURE.dayOf(ag.mem.t||0))>=7):(w.t>=7*1440);
       if(该记) weekMemory(w,ag);
-      g=goalAssign(w,ag);
+      g=goalAssign(w,ag,上周信);
     }
     if(!g) return;
   }
@@ -1497,7 +1552,8 @@ function goalStep(w,ag){
   if(!g.base||typeof g.base!=='object') g.base={ money:Math.round(ag.money), relNotes:(ag.relNotes|0) };
   if(G.tick) G.tick(w,ag,g);
   if(G.met(w,ag,g)){
-    logAct(w,ag,'这周想的事做到了：'+G.label,'做到了。');
+    // 第 60 单：结局那句口吻按目标走（G.done／G.miss），没写就用通用句
+    logAct(w,ag,'这周想的事做到了：'+G.label,G.done||'做到了。');
     w.stats.goalDone=(w.stats.goalDone||0)+1;
     if(ag.week) ag.week.结局='做到了';
     /* 第 54 单：给剪辑层留一个可采样的落点（与 ag.sit 同一手法）。
@@ -1507,7 +1563,7 @@ function goalStep(w,ag){
     delete ag.goal; return;
   }
   if(w.t>=g.until){
-    logAct(w,ag,'这周想的事没做成：'+G.label,'……下回再说。');
+    logAct(w,ag,'这周想的事没做成：'+G.label,G.miss||'……下回再说。');
     w.stats.goalMiss=(w.stats.goalMiss||0)+1;
     if(ag.week) ag.week.结局='没做成';
     ag.lastGoalOut={ t:w.t, k:'miss', label:G.label, tx:'这周想的事没做成：'+G.label };
@@ -1537,7 +1593,8 @@ function goalKnob(ag,kind){
   // 三个旋钮：social／out＝概率上加一点；sleep＝**提前 90 分钟**躺下（只有"别熬到后半夜"那条会拧它）。
   // 为什么是 90 而不是 45：定标时实测 45 分钟几乎不改变"几点躺下"（自然中位 01:40，减 45 分还落在凌晨，
   // 熬夜计数只从 61 降到 59）；90 分钟才真的把这件事故意地拧出可见差别（见交付件第三章的 A/B）。
-  return kind==='social'?0.20:(kind==='out'?0.15:(kind==='sleep'?90:0));
+  // 第 60 单加第四个旋钮：focus＝把"摸鱼"那一次掷骰的门槛压低（0.25→0.12）
+  return kind==='social'?0.20:(kind==='out'?0.15:(kind==='sleep'?90:(kind==='focus'?0.13:0)));
 }
 /*GOAL-END*/
 /*NIGHTMKT-START*/
@@ -1709,7 +1766,8 @@ function decide(w, ag){
   // 3. 工作时段（start／end／lunch 已在上方算好，与饭点共用同一套数）
   if(inWork){
     if(ag.flags.earlyWork && mod>=startBase) delete ag.flags.earlyWork;
-    const slack=ag.traits.includes('摸鱼') && w.rng()<0.25;
+    // 第 60 单：目标旋钮（focus）——只有"这周少摸几回鱼"那条会把这个门槛压下去（0.25→0.12）
+    const slack=ag.traits.includes('摸鱼') && w.rng()<(0.25-goalKnob(ag,'focus'));
     const label = slack?'上班（摸鱼中）':'上班';
     const today=PURE.dayOf(w.t);
     const firstArrive=ag.flags.arrivedDay!==today;
