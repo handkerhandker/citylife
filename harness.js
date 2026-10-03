@@ -2440,8 +2440,12 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
     }
     // 病态 3a · 把兜底路径的 actChip 调用删掉（＝「素材没就位就没指示器」那种做法）
     {
-      // 第 32 单：兜底路的指示器改吃 nameChip 的返回值（分道抬高时跟着抬），病态改写的靶子随之换字
-      const sick=AGENTLOOP.replace(/\n\s*\/\/ 第 31 单：素材未就位[\s\S]*?actChip\(px, nt, ag\);/,'');
+      // 第 32 单：兜底路的指示器改吃 nameChip 的返回值（分道抬高时跟着抬），病态改写的靶子随之换字。
+      // 第 51 单：气泡又把兜底路那一行包了一层（`sayBubble(px, actChip(...), ag)`），
+      // 故这里不再按字面匹配，直接**删掉含 actChip 的最后一行**（＝兜底路那一行）。
+      const 行=AGENTLOOP.split('\n');
+      const 末=行.map((l,i)=>[l,i]).filter(([l])=>l.includes('actChip(')).pop()[1];
+      const sick=行.filter((_,i)=>i!==末).join('\n');
       ok(sick!==AGENTLOOP,'反向·闸三：病态改写命中了生产原文');
       ok(g3fb(sick)===0 && g3pix(sick)===1,'反向·闸三：兜底路径的调用点被删掉 ⇒ 「那条路也有 1 个调用点」当场判红');
     }
@@ -2478,6 +2482,91 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
       const bare=ICON_SRC.replace(/\/\*[\s\S]*?\*\//g,'').replace(/(^|[^:'"])\/\/.*$/gm,'$1');
       ok(!/\.rng\s*\(|\bfetch\s*\(/.test(bare),'反向不误伤·闸二：合规写法下源码侧判据照常放行（注释里提到 rng／fetch 不算数）');
     }
+  }
+}
+
+// ═══ 第 51 单·气泡一期（把「这个人此刻在做什么」写成一句话挂在他头顶）═════════
+/* 被验的是生产源码原文：BUBBLE-START…BUBBLE-END 整块抠出来，在一个只记账不作画的假 ctx 上跑
+   （照第 31 单 iconLab／第 33 单 skyLab 先例）。四条闸 ＋ 结构／红线：
+     闸一 · 定义落地：一块短文本 ＋ 一个朝下的尾巴 ＋ 整块排在上一层**之上** ＋ 登记进房间名让位表；
+     闸二 · 一期射程：**只给选中的那一个角色画**（未选中者一笔不画、原样返回下边缘）；
+     闸三 · 认不出就不画：label 缺失／不是字符串／空白 ⇒ 一笔不画；超长文本截断到 maxChars＋「…」；
+     闸四 · 反向自查：把「只画选中者」那道守卫掰掉 ⇒ 闸二当场判红；再喂生产原文，必须不误伤。 */
+{
+  const fs=require('fs'), path=require('path');
+  const src=fs.readFileSync(path.resolve(__dirname,'city-life-framework.html'),'utf8');
+  const grab=(re,name)=>{ const m=src.match(re); if(!m){ ok(false,'源码抽取失败:'+name); return ''; } return m[0]; };
+  const BUBBLE_SRC=grab(/\/\*BUBBLE-START\*\/[\s\S]*?\/\*BUBBLE-END\*\//,'BUBBLE 段');
+  const AGENTLOOP2=grab(/for\(const en of ents\)\{[\s\S]*?\n  \/\/ 雨幕/,'draw 的人物绘制段');
+  // 假 ctx：只记账不作画；measureText 每个码位记 1 个字宽
+  function bubbleLab(mut){
+    const rec={text:[],fill:0,stroke:0,path:0};
+    const ctx={
+      set font(v){ ctx._f=String(v); }, get font(){ return ctx._f||''; },
+      fillStyle:'', strokeStyle:'', lineWidth:1, textAlign:'', textBaseline:'',
+      measureText(s){ return {width:[...String(s)].length*13}; },
+      beginPath(){ rec.path++; }, moveTo(){}, lineTo(){}, quadraticCurveTo(){}, closePath(){},
+      fill(){ rec.fill++; }, stroke(){ rec.stroke++; },
+      fillText(s,x,y){ rec.text.push({s:String(s),x,y,fill:ctx.fillStyle,font:ctx.font}); },
+      fillRect(){}, strokeRect(){}, save(){}, restore(){},
+    };
+    const state={selected:'a1'};
+    const labelBlockBoxes=[];
+    const code=(mut?mut(BUBBLE_SRC):BUBBLE_SRC)+'\nreturn {BUBBLE,bubbleText,sayBubble,labelBlockBoxes};';
+    const M=new Function('ctx','state','labelBlockBoxes','Object','String','Math',code)(ctx,state,labelBlockBoxes,Object,String,Math);
+    return {M,rec,state,labelBlockBoxes};
+  }
+  const 人=(id,label)=>({id,activity:{type:'idle',label}});
+  // 闸一
+  {
+    const L=bubbleLab();
+    const top=L.M.sayBubble(100,200,人('a1','在便利店就餐'));
+    const 盒高=L.M.BUBBLE.size+L.M.BUBBLE.padY*2;
+    ok(L.rec.path===1&&L.rec.fill===1&&L.rec.stroke===1&&L.rec.text.length===1,
+      '第 51 单·闸一：选中者画出一块气泡（path '+L.rec.path+' ／ fill '+L.rec.fill+' ／ stroke '+L.rec.stroke+' ／ 文本 '+L.rec.text.length+' 笔）');
+    ok(L.rec.text[0].s==='在便利店就餐','第 51 单·闸一：气泡里的字就是 activity.label 原文（'+L.rec.text[0].s+'）');
+    ok(top<200&&top+盒高+L.M.BUBBLE.tail<=200,
+      '第 51 单·闸一：整块（含朝下的尾巴）排在上一层之上（盒顶 '+top.toFixed(1)+' ＜ 下边缘 200）');
+    ok(L.labelBlockBoxes.length===1&&L.labelBlockBoxes[0].b<=200,
+      '第 51 单·闸一：气泡盒登记进「房间名让位」表（第 42 单那套），房间名会给它让位');
+  }
+  // 闸二
+  {
+    const L=bubbleLab();
+    const top=L.M.sayBubble(100,200,人('a2','上班'));
+    ok(L.rec.text.length===0&&L.rec.fill===0&&L.rec.path===0&&top===200,
+      '第 51 单·闸二：**没被选中的人一笔不画**，原样返回下边缘（一期只给跟随的那一个画）');
+  }
+  // 闸三
+  {
+    const L=bubbleLab();
+    const 空=[L.M.bubbleText(null),L.M.bubbleText({activity:{label:123}}),L.M.bubbleText({activity:{label:'   '}}),L.M.bubbleText({})].join('|');
+    ok(空==='|||','第 51 单·闸三：畸形输入（null／数字／空白／缺 activity）一律得到空串，不抛错');
+    ok(L.M.bubbleText(人('a1','在便利店就餐'))==='在便利店就餐','第 51 单·闸三：短文本原样返回（6 字）');
+    const 长=L.M.bubbleText(人('a1','一二三四五六七八九十一二三四五'));
+    ok(长==='一二三四五六七八九十一二'+'…','第 51 单·闸三：超长文本截断到 maxChars＋「…」（'+长.length+' 字：「'+长+'」）');
+    const L2=bubbleLab();
+    ok(L2.M.sayBubble(100,200,人('a1',''))===200&&L2.rec.text.length===0,'第 51 单·闸三：label 为空 ⇒ 一笔不画');
+  }
+  // 闸四·反向自查
+  {
+    const sick=s=>s.replace('if(!state.selected || !ag || ag.id!==state.selected) return yBottom;','');
+    ok(sick(BUBBLE_SRC)!==BUBBLE_SRC,'第 51 单·反向自查构造成立：病态改写命中了生产原文');
+    const L=bubbleLab(sick);
+    L.M.sayBubble(100,200,人('a2','上班'));
+    ok(L.rec.text.length>0,'第 51 单·反向自查·拦得住：掰掉「只画选中者」那道守卫后，没被选中的人也画了一块 ⇒ 闸二当场判红');
+    ok(bubbleLab().M.sayBubble(100,200,人('a2','上班'))===200,'第 51 单·反向不误伤：合规写法下未选中者照常一笔不画');
+  }
+  // 结构侧 ＋ 红线
+  {
+    const 调用=(AGENTLOOP2.match(/sayBubble\(/g)||[]).length;
+    ok(调用===2,'第 51 单·结构侧：`sayBubble` 恰两处调用（像素素材路 ＋ 色块兜底路各一处；实测 '+调用+'）');
+    ok((BUBBLE_SRC.match(/bubbleText\(/g)||[]).length===2,
+      '第 51 单·结构侧：`bubbleText` 定义 1 处 ＋ 取用 1 处（实测 '+(BUBBLE_SRC.match(/bubbleText\(/g)||[]).length+' 处）');
+    const bare=BUBBLE_SRC.replace(/\/\*[\s\S]*?\*\//g,'').replace(/(^|[^:'"])\/\/.*$/gm,'$1');
+    ok(!/\.rng\s*\(|\bfetch\s*\(|\bMath\.random\b/.test(bare),'第 51 单·红线：BUBBLE 段零 rng／零 Math.random／零出网');
+    ok(!/\bw\.\w|\bSim\.\w/.test(bare),'第 51 单·红线：BUBBLE 段对世界零引用（`w.`／`Sim.` 都不出现）');
+    ok((bare.match(/labelBlockBoxes\.push/g)||[]).length===1,'第 51 单·结构侧：气泡盒的登记恰好一处');
   }
 }
 
@@ -3009,22 +3098,22 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
     const iSky  =X.indexOf('skyPaint(state.cvW');
     const nPush =(X.match(/labelBlockBoxes\.push/g)||[]).length;
     return iQueue>=0 && iEnts>=0 && iOut>iEnts && iOut<iSky
-        && nPush===3
+        && nPush===4
         && /盒相交=\(a,b\)=>/.test(X)
         && /if\(labelBlockBoxes\.some\(k=>盒相交\(k,b\)\)\) continue;/.test(X)
         && /function nameChipReset\(\)\{ nameChipBoxes=\[\]; labelBlockBoxes=\[\]; \}/.test(X);
   };
   ok(判据(src),'闸十·源码侧：房间名先入队、在**人物与雨幕之后**出队绘制，出队时带「遮挡盒相交则不画」判据'
-     +'（三张表：遮挡盒登记 3 处＝名牌 1 ＋ 精灵两条路各 1；nameChipReset 每帧清两张表）');
+     +'（遮挡盒登记 4 处＝名牌 1 ＋ 精灵两条路各 1 ＋ 气泡 1〔第 51 单〕；nameChipReset 每帧清两张表）');
   // 逐条拆开印，便于日后定位是哪一条松了
   ok(/const roomLabelQueue=\[\];/.test(src),'闸十·房间名改成「先登记不画」（原先是就地 chip）');
   ok(/for\(const L of roomLabelQueue\)/.test(src) && src.indexOf('for(const L of roomLabelQueue)')>src.indexOf('for(const en of ents)'),
      '闸十·绘制次序：房间名的出队循环排在人物段**之后**（人先画，房间名后画且会让位）');
   ok(src.indexOf('for(const L of roomLabelQueue)')<src.indexOf('skyPaint(state.cvW'),
      '闸十·房间名仍在天色**之前**画 —— 夜里它照样被夜色染色，与改前的观感一致（不是新开一层）');
-  ok((src.match(/labelBlockBoxes\.push/g)||[]).length===3,
-     '闸十·遮挡盒三处登记齐：名牌盒（nameChip 内）＋ 精灵盒（像素素材路）＋ 精灵盒（色块兜底路）'
-     +'—— 少一处就有一条路的角色挡不住房间名');
+  ok((src.match(/labelBlockBoxes\.push/g)||[]).length===4,
+     '闸十·遮挡盒四处登记齐：名牌盒（nameChip 内）＋ 精灵盒（像素素材路）＋ 精灵盒（色块兜底路）'
+     +'＋ 气泡盒（第 51 单 sayBubble 内）—— 少一处就有一条路的角色挡不住房间名');
   // 反向自查：把让位判据删掉，判据必须当场判红；再喂生产原文，必须不误伤
   {
     const sick=src.replace('if(labelBlockBoxes.some(k=>盒相交(k,b))) continue;','');

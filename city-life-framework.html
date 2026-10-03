@@ -428,7 +428,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v51</span>
+<span class="num dim" id="set-build">v52</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -3670,7 +3670,7 @@ function actIcon(ag){
 // yBottom＝牌子的下边缘（调用处传名牌盒顶）。认不出活动就一笔都不画。
 function actChip(x, yBottom, ag){
   const g=actIcon(ag);
-  if(!g) return;
+  if(!g) return yBottom;                       // 第 51 单：没画就原样返回下边缘，气泡据此继续往上排
   ctx.font=ACT_CHIP.size+'px '+ACT_CHIP.font;
   const w=ctx.measureText(g).width+ACT_CHIP.padX*2, h=ACT_CHIP.size+ACT_CHIP.padY*2;
   ctx.fillStyle=ACT_CHIP.bg;
@@ -3678,8 +3678,61 @@ function actChip(x, yBottom, ag){
   ctx.fillStyle=ACT_CHIP.fg;
   ctx.textAlign='center'; ctx.textBaseline='middle';
   ctx.fillText(g, x, yBottom-h/2);
+  return yBottom-h;                            // 第 51 单：返回牌顶（气泡再往上排一层）
 }
 /*ACTICON-END*/
+/*BUBBLE-START*/
+/* ---------- 第 51 单·气泡一期：把「这个人此刻在做什么」写成一句话挂在他头顶 ----------
+   定义（本仓第一次把「气泡」写成**可验收的定义**，办待办里第 31 单那条「下一次真要做气泡，先定义再开工」）：
+     气泡 ＝ **一块短文本**（超过 `maxChars` 字就以「…」截断）
+           ＋ **一个指向该角色的三角尾巴**（尖朝下，落在文本盒底边中点），
+           排在「名牌 → 头顶指示器」之上的**下一层**。
+     数据源**只有一处**：`ag.activity.label`——代码派定、必然为真、零 AI、零新字段、零 rng。
+
+   射程（一期刻意压到最小）：
+     · **只给当前选中（跟随）的那一个角色画**——屏幕同一时刻最多一块气泡，
+       故「多人错让」这一档留给二期（那需要一套独立的排队／避让排版，定义清楚之前不做）。
+     · **认不出就不画**：`label` 缺失或不是字符串 ⇒ 一笔不画（照 `ACT_ICON` 先例）。
+     · **登记进「房间名让位」表**（第 42 单那套）：气泡和名牌一样属于「人物」，房间名要让位。
+
+   调研出处（2026-10-03 实测可访问，详见交付件第二章）：
+     · 星露谷 wiki：emote「will also show the emote over the players head in a **thought bubble**」；
+     · 萌娘百科：星露谷「能量消耗到 0 或以下……此时玩家头上出现 X 的**气泡对话框**」；
+     · Nookipedia：动森的 'thought' emotion——村民会停下、头顶显示表情。
+   红线：纯渲染层——零 SIM 写入、零素材、零 rng、零新增存档字段。 */
+const BUBBLE={ size:10, font:'system-ui,sans-serif', padX:6, padY:4, gap:6, maxChars:12, tail:5,
+               fill:'rgba(14,17,26,.88)', ink:'#ece5d0', edge:'rgba(236,229,208,.35)' };
+// 文本：只认 activity.label；超长截断。纯函数——门禁直接喂畸形输入（null／数字／超长）测它。
+function bubbleText(ag){
+  const raw=(ag && ag.activity && typeof ag.activity.label==='string') ? ag.activity.label.trim() : '';
+  if(!raw) return '';
+  return raw.length>BUBBLE.maxChars ? raw.slice(0,BUBBLE.maxChars)+'…' : raw;
+}
+// yBottom＝上一层的下边缘（调用处传头顶指示器的盒顶）。返回本块气泡的盒顶；没画就原样返回。
+function sayBubble(x, yBottom, ag){
+  if(!state.selected || !ag || ag.id!==state.selected) return yBottom;   // 一期：只有选中者说话
+  const t=bubbleText(ag);
+  if(!t) return yBottom;
+  ctx.font=BUBBLE.size+'px '+BUBBLE.font;
+  const w=ctx.measureText(t).width+BUBBLE.padX*2, h=BUBBLE.size+BUBBLE.padY*2;
+  const top=yBottom-BUBBLE.gap-h, l=x-w/2, r=x+w/2, rr=4, bot=top+h;
+  ctx.beginPath();
+  ctx.moveTo(l+rr,top);
+  ctx.lineTo(r-rr,top); ctx.quadraticCurveTo(r,top,r,top+rr);
+  ctx.lineTo(r,bot-rr);  ctx.quadraticCurveTo(r,bot,r-rr,bot);
+  ctx.lineTo(x+BUBBLE.tail,bot); ctx.lineTo(x,bot+BUBBLE.tail); ctx.lineTo(x-BUBBLE.tail,bot);   // 尾巴：尖朝下
+  ctx.lineTo(l+rr,bot);  ctx.quadraticCurveTo(l,bot,l,bot-rr);
+  ctx.lineTo(l,top+rr);  ctx.quadraticCurveTo(l,top,l+rr,top);
+  ctx.closePath();
+  ctx.fillStyle=BUBBLE.fill; ctx.fill();
+  ctx.strokeStyle=BUBBLE.edge; ctx.lineWidth=1; ctx.stroke();
+  ctx.fillStyle=BUBBLE.ink;
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText(t, x, top+h/2);
+  labelBlockBoxes.push({l, r, t:top, b:bot+BUBBLE.tail});   // 第 42 单：房间名给人物让位
+  return top;
+}
+/*BUBBLE-END*/
 /* ---------- 云港城市总规 B 案骨架（第 16 单）：广场／江面／岸线的几何常量集中登记 ----------
    数字以《云港城市总规》（docs/云港城市总规.md）B 图为准绳；房区几何与其余锚点零移动。
    本组常量只供渲染层放样消费（SIM 不读），二期·室外篇铺装接手时以此为底图坐标。 */
@@ -4213,7 +4266,9 @@ function draw(now){
       }
       ctx.drawImage(img,(dir*6+fi)*fw,(ci*2+(walking?1:0))*fh,fw,fh,dx0,dy0,dw,dh);
       const nt=nameChip(px, dy0-4, tag);             // 第 32 单：名牌分道，返回盒顶
-      actChip(px, nt, ag);                           // 第 31 单：指示器画在名牌之上（盒底＝名牌盒顶）；分道抬高时跟着一起抬，仍不碰下方金框
+      // 第 31 单：指示器画在名牌之上（盒底＝名牌盒顶）；分道抬高时跟着一起抬，仍不碰下方金框
+      const at=actChip(px, nt, ag);
+      sayBubble(px, at, ag);                         // 第 51 单：气泡再往上排一层（一期只画选中者）
       continue;
     }
     const R=Math.max(4, s*0.42);
@@ -4230,7 +4285,7 @@ function draw(now){
     // 第 31 单：素材未就位／`pix.on` 关掉的兜底路径**照出指示器**。理由：这条路上人物退化成一个纯色方块，
     // 连走／站都分不出来，「在干什么」比有素材时更没有别的地方可看；而符号本身零素材依赖（canvas 画的字），
     // 出不出与素材加载成败无关。两条路的调用点各一处，harness 结构侧逐条钉住。
-    actChip(px, nt, ag);
+    sayBubble(px, actChip(px, nt, ag), ag);          // 第 31 单的指示器 ＋ 第 51 单的气泡（兜底路径同样两支都有）
   }
   // 雨幕
   if(state.world.weather.rain && !state.reduceMotion){
