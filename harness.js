@@ -2668,6 +2668,128 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   }
 }
 
+// ═══ 第 53 单·目标系统·换脑一期（周打包 ＋ 周记忆 ＋ 前提破裂 ＋ 短信输入）══════
+/* 被验的是生产源码与真值：周一批的时点（`nextGoalAt` 纯函数 ＋ 行为侧四人都落在周一）、
+   周记忆（每周每人一条、随存档往返）、玩家短信作为正式输入（发「早点睡」⇒ 下周他挑中"别熬到后半夜"）、
+   前提破裂与"每人每日至多一次重开"，以及三条反向自查。 */
+{
+  const fs=require('fs'), path=require('path');
+  const src=fs.readFileSync(path.resolve(__dirname,'city-life-framework.html'),'utf8');
+  const GOAL_SRC=(src.match(/\/\*GOAL-START\*\/[\s\S]*?\/\*GOAL-END\*\//)||[''])[0];
+  // 闸一 · 周一批的时点：纯函数
+  {
+    const w=Sim.makeWorld(20260803);                 // 开局＝周一 08:00（D1 t=0 起算）
+    const 试=(t)=>{ const ww=Object.assign({},w,{t}); return Sim.nextGoalAt(ww); };
+    // 判据按**属性**断言（不写死秒数）：返回值必须是"未来的、周一 08:00、且不超过 7 天后的 08:00"
+    const 合规=t=>{ const r=试(t);
+      return r>t && PURE.weekday(r)===0 && PURE.minuteOfDay(r)===8*60 && r-t<=7*1440; };
+    ok(合规(w.t),'第 53 单·`nextGoalAt`：开局那一拍（周一 08:00）⇒ 返回下周一 08:00（实测 t='+w.t+' → '+试(w.t)+'）');
+    ok(合规(w.t+9*60),'第 53 单·`nextGoalAt`：周一过了 08:00 ⇒ 下周一（实测 → '+试(w.t+9*60)+'）');
+    ok(合规(w.t+2*1440+8*60),'第 53 单·`nextGoalAt`：周三 08:00 ⇒ 下周一（实测 → '+试(w.t+2*1440+8*60)+'）');
+    const 落=试(w.t+9*60); 
+    ok(PURE.weekday(落)===0 && PURE.minuteOfDay(落)===8*60,
+       '第 53 单·`nextGoalAt` 落点校验：周'+PURE.weekday(落)+'（0＝周一）／'+String(Math.floor(PURE.minuteOfDay(落)/60)).padStart(2,'0')
+       +':'+String(PURE.minuteOfDay(落)%60).padStart(2,'0')+' —— 第一版算错一天（落在周二），这条就是为它立的');
+    ok(Sim.GOAL_BREAK_TICKS===36,'第 53 单·前提破裂的窗口＝连续 36 拍（6 小时；实测 '+Sim.GOAL_BREAK_TICKS+'）');
+  }
+  // 闸二 · 行为侧：8 周里所有人的目标都生在"周一 08:00–08:10"这一拍上（或"当天重开"那一次）
+  {
+    const w=Sim.makeWorld(20260803); let 批=0, 偏离=0, 重开=0, 忆=0;
+    let 已读=0;
+    for(let i=0;i<56*144;i++){
+      Sim.step(w,10);
+      for(const e of w.log){
+        if(e.lid<=已读) continue; 已读=e.lid;
+        const t=String(e.text||'');
+        if(t.indexOf('这周想的事定下了：')===0){
+          const wd=PURE.weekday(e.t), mod=PURE.minuteOfDay(e.t);
+          if(wd===0 && mod>=8*60 && mod<=8*60+20) 批++;
+          else if(String(e.thought||'').indexOf('先记着')>=0) 偏离++;   // 出生文案兜底句＝不是周一批
+          else 偏离++;
+        }
+        if(t.indexOf('本来想做的事，眼下做不成了：')===0) 重开++;
+        if(t.indexOf('上周的日子记一笔：')===0) 忆++;
+      }
+    }
+    // 允许的"偏离"只有一种：前提破裂当天的重开（那不是周一批，是"这件事眼下做不成"的补救）。
+    // 故判据写成**偏离数 ≤ 破裂次数**——多出来的任何一轮都说明有人没走周一那条路。
+    ok(批>=20 && 偏离<=重开,'第 53 单·行为侧：'+批+' 轮目标生在周一 08:00–08:10，非周一批的只有 '+偏离
+       +' 轮（＝破裂当天的重开 '+重开+' 次以内）');
+    ok(忆>=24,'第 53 单·周记忆：8 周 × 4 人 ≈ 32 条，实测 '+忆+' 条（开局第一周不记）');
+    ok(重开<=8,'第 53 单·前提破裂：56 天里 '+重开+' 次（应远少于轮数——前提只在"真做不成"时破裂）');
+  }
+  // 闸三 · 周记忆的内容与存档往返
+  {
+    const w=Sim.makeWorld(424242); let 样本='';
+    let 已读=0;
+    for(let i=0;i<15*144;i++){
+      Sim.step(w,10);
+      for(const e of w.log){ if(e.lid<=已读) continue; 已读=e.lid;
+        if(!样本 && String(e.text||'').indexOf('上周的日子记一笔：')===0) 样本=String(e.text); }
+    }
+    ok(/上了 \d+ 天班、和人聊了 \d+ 次、出门 \d+ 次/.test(样本),'第 53 单·周记忆含着三样数得出来的事：「'+样本.slice(0,60)+'…」');
+    ok(/你发来 \d+ 条短信|你一条短信也没发/.test(样本),'第 53 单·周记忆如实写了玩家短信（这一周没发就写没发）');
+    const 谁=w.agents.find(a=>a.mem&&a.mem.text);
+    ok(!!谁,'第 53 单·周记忆挂在人身上（`ag.mem`，供角色卡与角色页读）');
+    const str=Sim.serialize(w,{selected:'a1',lastReflectDay:0,at:1});
+    const back=Sim.hydrate(str);
+    ok(!!back && back.world.agents.every(a=>!a.mem||typeof a.mem.text==='string'),
+       '第 53 单·周记忆随存档往返（旧档没有 mem 字段也不判坏档）');
+  }
+  // 闸四 · 玩家短信是目标生成的正式输入（影子机制）
+  {
+    const w=Sim.makeWorld(20260803);
+    w.agents[0].inbox.push({id:'sleep',label:'早点睡'});      // 给顾云帆（夜猫子，池里有 steady）发一条
+    for(let i=0;i<2;i++) Sim.step(w,10);                      // 让他读到短信（week.smsId 记下）
+    ok(w.agents[0].week && w.agents[0].week.smsId==='sleep','第 53 单·构造成立：短信已记进周账（smsId=sleep）');
+    for(let i=0;i<8*144;i++) Sim.step(w,10);                  // 跑到下周一 08:00 的批
+    const g=Sim.goalOf(w.agents[0]);
+    ok(!!g && g.k==='steady','第 53 单·**短信是正式输入**：上周收到「早点睡」⇒ 这周他挑中了"别熬到后半夜"（实测 '+(g&&g.k)+'）');
+    // 反向：没发那条短信的人不受影响（不误伤）
+    const w2=Sim.makeWorld(20260803);
+    for(let i=0;i<9*144;i++) Sim.step(w2,10);
+    const g2=Sim.goalOf(w2.agents[0]);
+    ok(g2 && ['thrift','greet','steady','sky','tidy','book'].indexOf(g2.k)>=0,
+       '第 53 单·反向不误伤：没收到短信的人照常从自己的候选里挑（实测 '+(g2&&g2.k)+'）');
+  }
+  // 闸五 · 前提破裂与"每人每日至多一次重开"
+  {
+    const w=Sim.makeWorld(777);
+    const ag=w.agents[0];
+    const 原钱=ag.money; ag.money=10;                         // 前提（≥50）不成立
+    ag.goal={k:'thrift',born:w.t,until:Sim.nextGoalAt(w),n:0,bad:0,base:{money:10,relNotes:ag.relNotes|0}};
+    ag.flags.goalNext=Sim.nextGoalAt(w);
+    const 前=w.stats.goalBroke||0;
+    for(let i=0;i<40;i++) Sim.step(w,10);
+    ok((w.stats.goalBroke||0)===前+1,'第 53 单·前提破裂：钱不够「少在外吃」连续 36 拍后判"做不成"，落一次账（实测 +'
+       +((w.stats.goalBroke||0)-前)+'）');
+    ok(ag.flags.goalRedoDay===PURE.dayOf(w.t),'第 53 单·破裂当天记了"已经重开过一次"（goalRedoDay='+ag.flags.goalRedoDay+'）');
+    // 同一天再来一次：配额已用 ⇒ 不再重开，等下周一
+    ag.money=10;
+    ag.goal={k:'thrift',born:w.t,until:Sim.nextGoalAt(w),n:0,bad:0,base:{money:10,relNotes:ag.relNotes|0}};
+    const 中=w.stats.goalBroke||0;
+    for(let i=0;i<40;i++) Sim.step(w,10);
+    ok((w.stats.goalBroke||0)===中+1,'第 53 单·**每人每日至多一次重开**：同一天第二次破裂照样记账，但**不再重开**（等下周一批）');
+    ok(!Sim.goalOf(ag)&&ag.flags.goalNext>=PURE.dayOf(w.t)*1440+8*60,'第 53 单·配额用完后目标空着、下次派活排到了下周一 08:00');
+    ag.money=原钱;
+  }
+  // 闸六 · 结构 ＋ 红线 ＋ 反向自查
+  {
+    ok((GOAL_SRC.match(/function nextGoalAt\(/g)||[]).length===1,'第 53 单·结构：`nextGoalAt` 只有一处定义（门禁与生产调同一份日历）');
+    ok(/ag\.flags\.goalNext=到期/.test(GOAL_SRC),'第 53 单·结构：派活时把下次时间设成"下一个周一 08:00"（一处算）');
+    ok(/goalRedoDay!==今天/.test(GOAL_SRC),'第 53 单·结构：破裂重开有"当天一次"的闸门');
+    ok(/==='sleep'\)\?'steady'/.test(GOAL_SRC)&&/==='eat'\)\?'thrift'/.test(GOAL_SRC),
+       '第 53 单·结构：玩家短信→目标的映射只认两条（sleep→steady／eat→thrift）');
+    const bare=GOAL_SRC.replace(/\/\*[\s\S]*?\*\//g,'').replace(/(^|[^:'"])\/\/.*$/gm,'$1');
+    ok(!/\.rng\s*\(|\bfetch\s*\(/.test(bare),'第 53 单·红线：GOAL 段零 rng／零出网（周打包与周记忆都是纯计算）');
+    // 反向自查（源码级）：把"当天一次"的闸门与"按日号差"的记忆闸门删掉 ⇒ 结构判据当场判红
+    const s1=GOAL_SRC.replace(/if\(ag\.flags\.goalRedoDay!==今天\)\{ ag\.flags\.goalRedoDay=今天; ag\.flags\.goalNext=w\.t; \}/,'ag.flags.goalNext=w.t;');
+    ok(s1!==GOAL_SRC && !/goalRedoDay!==今天/.test(s1),'第 53 单·反向自查·拦得住：把"每人每日一次"删掉 ⇒ 结构判据当场判红');
+    const s2=GOAL_SRC.replace(/const 该记=ag\.mem\?\(\(PURE\.dayOf\(w\.t\)-PURE\.dayOf\(ag\.mem\.t\|\|0\)\)>=7\):\(w\.t>=7\*1440\);/, 'const 该记=true;');
+    ok(s2!==GOAL_SRC,'第 53 单·反向自查：把"按日号差"的记忆闸门删掉 ⇒ 改写命中生产原文（每周重开会重复记）');
+  }
+}
+
 // ═══ 第 33 单·天色昼夜（把「现在几点」画到画面上）═════════════════════════════
 /* 被验的是生产源码原文：SKYTINT-START…SKYTINT-END 整块抠出来，在一个只记账不作画的假 ctx 上跑
    （照第 31 单 iconLab、第 32 单 chipLab 先例）。四条闸：

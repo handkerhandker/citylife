@@ -428,7 +428,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v53</span>
+<span class="num dim" id="set-build">v54</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -1343,15 +1343,20 @@ const GOAL_DAYS=7;
      · **"上限型"目标（少做某事）不能每拍判**——开局就满足、当场完成，故一律要求
        `w.t-g.born` 走到本轮末尾才判（见 `thrift.met`）。 */
 const GOAL_TARGETS={ thrift:6, greet:23, sky:5, tidy:190, book:190, steady:0 };
+/* 第 53 单·前提破裂：**连续 6 小时（36 拍）**不成立才算"这件事眼下做不成"——
+   防的是"别人的一拍状态"（比如同屋的人正睡着）把目标当场废掉。 */
+const GOAL_BREAK_TICKS=36;
 const GOALS=[
   { k:'thrift',  label:'这周少在外面吃几顿',        useful:1, knob:null,
     traits:['节俭'],        work:['trade'], why:'钱是一点点省出来的。',
+    need:(w,ag)=>ag.money>=50,          // 前提：兜里得还有点钱，"少在外吃"才谈得上
     tick:(w,ag,g)=>{ const L=(ag.activity&&ag.activity.label)||''; const 外=(L==='便利店就餐'||L==='逛吃街市');
       if(外&&!g.wasOut) g.n=(g.n||0)+1; g.wasOut=外; },
     met:(w,ag,g)=>(w.t-g.born)>=GOAL_DAYS*1440-20 && (g.n||0)<=GOAL_TARGETS.thrift,
     prog:(w,ag,g)=>'在外吃 '+(g.n||0)+' 顿（≤'+GOAL_TARGETS.thrift+'）' },
   { k:'greet',   label:'这周多认识几个人',          useful:1, knob:'social',
     traits:['外向'],        work:['clerk'], why:'人多热闹，认识一个是一个。',
+    need:(w,ag)=>w.agents.some(o=>o!==ag&&(o.activity.type==='idle'||o.activity.type==='stroll')),  // 前提：屋里得有别的活人
     tick:(w,ag,g)=>{ g.n=Math.max(g.n||0,(ag.relNotes|0)-(g.base.relNotes|0)); },
     met:(w,ag,g)=>((ag.relNotes|0)-(g.base.relNotes|0))>=GOAL_TARGETS.greet,
     prog:(w,ag,g)=>Math.max(0,(ag.relNotes|0)-(g.base.relNotes|0))+'/'+GOAL_TARGETS.greet },
@@ -1360,6 +1365,7 @@ const GOALS=[
      夜猫子熬夜到后半夜。口径：**睡着的时刻落在 01:00–05:00 之间记一晚**（一天只记一次）。 */
   { k:'steady',  label:'这周别熬到后半夜',          useful:1, knob:'sleep',
     traits:['夜猫子'],      work:[],        why:'熬一次，第二天整天都是钝的。',
+    need:(w,ag)=>ag.energy>25,          // 前提：人都累垮了，先别谈早睡
     tick:(w,ag,g)=>{ // **只数"躺下那一刻"**（边沿检测）：不然一觉跨过 04:00 会被记两次（第一版就是这么错的）
       const 睡=(ag.activity&&ag.activity.type==='sleep');
       if(睡&&!g.wasSleep){ const m=PURE.minuteOfDay((ag.rest&&ag.rest.bed>0)?ag.rest.bed:w.t);
@@ -1406,21 +1412,79 @@ function goalAssign(w,ag){
   const id=String(ag.id||'');
   for(let i=0;i<id.length;i++) h=Math.imul(h^(id.charCodeAt(i)),0x85EBCA6B);
   h=(h^(h>>>13))>>>0;
-  const G=池[h%池.length];
-  ag.goal={ k:G.k, born:w.t, until:w.t+GOAL_DAYS*1440, n:0, bad:0, wasStroll:false,
+  /* 第 53 单·**玩家短信是目标生成的正式输入**（影子机制）：只认两条最自然的对应——
+     「早点睡」→ 优先"别熬到后半夜"；「记得吃饭」→ 优先"少在外面吃几顿"。
+     时效一周（`ag.week` 每周清账）⇒ "你上周让我早点睡，这周我就把这事记上了"；
+     游戏里不写"因为你发短信"，只体现在他挑中了哪一件。 */
+  const 信=(ag.week&&ag.week.smsId)||'';
+  const 偏=(信==='sleep')?'steady':((信==='eat')?'thrift':null);
+  const 优先=偏?(池.find(G=>G.k===偏)||null):null;
+  const G=优先||池[h%池.length];
+  const 到期=nextGoalAt(w);                                  // 第 53 单：一轮的目标活到**下一个周一 08:00**
+  ag.goal={ k:G.k, born:w.t, until:到期, n:0, bad:0, wasStroll:false,
             base:{ money:Math.round(ag.money), relNotes:(ag.relNotes|0) } };
-  ag.flags.goalNext=ag.goal.until;
+  ag.flags.goalNext=到期;
   ag.flags.goalRound=轮+1;
   logAct(w,ag,'这周想的事定下了：'+G.label, G.why||'先记着。');
   return ag.goal;
 }
 // 每拍一次：出生 → 记账 → 达成／到期。畸形目标就地丢弃（绝不判坏档、绝不抛错）。
+/* 第 53 单·"下一个周一 08:00"（世界时间戳）——周目标**打包生成**的那一个点。
+   缺省（`goalNext` 缺失，例如旧档）= 0 ⇒ 下一拍立刻补一条，兼容性照旧。 */
+function nextGoalAt(w){
+  const d=PURE.dayOf(w.t), wd=PURE.weekday(w.t), mod=PURE.minuteOfDay(w.t);
+  let days=(7-wd)%7;                       // 到下一个周一还有几天（今天就是周一时为 0）
+  if(days===0 && mod>=(8*60)) days=7;      // 本周一 08:00 已过 ⇒ 排到下周一
+  /* 用**时间戳运算**而不是 `d*1440+480`：`PURE.dayOf` 是 1 起算、日界在 04:00，
+     拿它当"第几天 × 一天"会整体错一天（第一版就是这么错的：目标被派在**周二** 08:00，
+     门禁那条"四人都落在周一"当场把它抓出来）。`w.t-mod` ＝ 当日日界（04:00），再 +480 ＝ 当日 08:00。 */
+  return (w.t-mod+8*60)+days*1440;
+}
+/* 第 53 单·周记账（零 AI、**零日志依赖**）：上班（按天去重）／闲聊（关系数差值）／出门（边沿）／收到的短信。
+   为什么不从 `w.log` 里数：日志墙封 400 条、一周前的条目早被裁掉了（第 41 单浸泡实测过 400 封顶）。 */
+function weekTick(w,ag){
+  const k=ag.week=(ag.week&&typeof ag.week==='object')?ag.week:{};
+  if(typeof k.relBase!=='number'||!isFinite(k.relBase)) k.relBase=(ag.relNotes|0);
+  if(!k.workDays||typeof k.workDays!=='object') k.workDays={};
+  if(typeof k.班!=='number'||!isFinite(k.班)) k.班=0;
+  if(typeof k.出!=='number'||!isFinite(k.出)) k.出=0;
+  if(typeof k.信!=='number'||!isFinite(k.信)) k.信=0;
+  const 工作=(ag.activity&&ag.activity.type==='work');
+  if(工作&&!k.wasWork){ const d=PURE.dayOf(w.t); if(!k.workDays[d]){ k.workDays[d]=1; k.班++; } }
+  k.wasWork=工作;
+  const 出门=(ag.activity&&ag.activity.type==='stroll');
+  if(出门&&!k.wasStroll) k.出++;
+  k.wasStroll=出门;
+}
+/* 第 53 单·周记忆压缩（零 AI）：把上一周**数得出来的东西**压成一句话，留给角色卡与日志墙。
+   玩家短信是它的正式输入之一（条数 ＋ 最近一条的标题），这是"影子机制"那一半：如实写进记忆，但不做成玩法提示。 */
+function weekMemory(w,ag){
+  const k=(ag.week&&typeof ag.week==='object')?ag.week:{};
+  const 聊=Math.max(0,(ag.relNotes|0)-((typeof k.relBase==='number')?k.relBase:(ag.relNotes|0)));
+  const 信=k.信|0, 最近=k.smsLabel||'', 结局=k.结局||'';
+  const 句='上了 '+(k.班|0)+' 天班、和人聊了 '+聊+' 次、出门 '+(k.出|0)+' 次'
+    +(信?('；你发来 '+信+' 条短信（最近一条「'+最近+'」）'):'；你一条短信也没发')
+    +(结局?('；那件想做的事，'+结局):'');
+  ag.mem={ t:w.t, text:句, 班:k.班|0, 聊, 出:k.出|0, 信, 结局 };
+  logAct(w,ag,'上周的日子记一笔：'+句, null);
+  ag.week={ relBase:(ag.relNotes|0), workDays:{}, 班:0, 出:0, 信:0, smsLabel:'', smsId:'', 结局:'', wasWork:false, wasStroll:false };
+  return ag.mem;
+}
+// 每拍一次：周结算（记忆＋派活）→ 记账 → 达成／到期／前提破裂。畸形目标就地丢弃（绝不判坏档、绝不抛错）。
 function goalStep(w,ag){
+  weekTick(w,ag);
   let g=goalOf(ag);
   if(!g){
     if(ag.goal) delete ag.goal;
     const 下次=(typeof ag.flags.goalNext==='number'&&isFinite(ag.flags.goalNext))?ag.flags.goalNext:0;
-    if(w.t>=下次) g=goalAssign(w,ag);
+    if(w.t>=下次){
+      /* 到点：先把上周压成一句话（每周一条），再派本周的活——四人的这一拍是同一个点 ⇒ **打包生成**。
+         "该不该记"按**日号差 ≥7** 判，不按毫秒差：批时刻会在 08:00 与 08:10 之间抖（第一拍落点差 10 分钟），
+         拿 `w.t-mem.t>=7*1440` 当闸会让每周少记一条（实测 8 周里少了 4 条）。开局第一周不记（城刚开，没有"上周"）。 */
+      const 该记=ag.mem?((PURE.dayOf(w.t)-PURE.dayOf(ag.mem.t||0))>=7):(w.t>=7*1440);
+      if(该记) weekMemory(w,ag);
+      g=goalAssign(w,ag);
+    }
     if(!g) return;
   }
   const G=GOAL_MAP[g.k];
@@ -1431,12 +1495,28 @@ function goalStep(w,ag){
   if(G.met(w,ag,g)){
     logAct(w,ag,'这周想的事做到了：'+G.label,'做到了。');
     w.stats.goalDone=(w.stats.goalDone||0)+1;
+    if(ag.week) ag.week.结局='做到了';
     delete ag.goal; return;
   }
   if(w.t>=g.until){
     logAct(w,ag,'这周想的事没做成：'+G.label,'……下回再说。');
     w.stats.goalMiss=(w.stats.goalMiss||0)+1;
+    if(ag.week) ag.week.结局='没做成';
+    delete ag.goal; return;
+  }
+  /* 前提检查器 v1：只认现存变量（钱／体力／屋里有没有活人）。**连续 GOAL_BREAK_TICKS 不成立**才算破裂，
+     而且只在**他醒着**的时候累计——第一版没加这个门，结果"屋里得有别的活人"这条每到夜里必然连续 6 小时不成立，
+     一夜就把目标废掉（实测 greet 七轮全部是"中途换了"）。睡着不算"做不成"，这是常识也是口径。 */
+  const 醒着=!!(ag.activity&&ag.activity.type!=='sleep');
+  if(typeof G.need==='function' && 醒着 && !G.need(w,ag,g)) g.broke=(g.broke||0)+1; else g.broke=0;
+  if((g.broke||0)>=GOAL_BREAK_TICKS){
+    logAct(w,ag,'本来想做的事，眼下做不成了：'+G.label,'……换个目标吧。');
+    w.stats.goalBroke=(w.stats.goalBroke||0)+1;
+    if(ag.week) ag.week.结局='中途换了';
     delete ag.goal;
+    const 今天=PURE.dayOf(w.t);
+    if(ag.flags.goalRedoDay!==今天){ ag.flags.goalRedoDay=今天; ag.flags.goalNext=w.t; }  // 每人每日至多重开一次
+    else ag.flags.goalNext=nextGoalAt(w);                                                 // 配额用过 ⇒ 等下周一批
   }
 }
 // 目标 → 行为旋钮（**唯一一处编译层**）：只给"空闲时间"那两个分支加一点偏移——
@@ -1463,6 +1543,8 @@ function decide(w, ag){
     if(m.id==='late') ag.flags.earlyWork=true;
     if(m.id==='sleep') ag.flags.sleepEarly=true;
     if(m.id==='eat' && ag.hunger>40) ag.flags.wantEat=true;
+    // 第 53 单：短信进"周记账"（周记忆压缩与目标生成的正式输入，影子机制）
+    if(ag.week&&typeof ag.week==='object'){ ag.week.信=(ag.week.信|0)+1; ag.week.smsId=m.id; ag.week.smsLabel=m.label||''; }
     ag.busyUntil=w.t+10;
     return;
   }
@@ -1708,7 +1790,7 @@ const CLIP_LOGCAT=[
   ['stroll',['出门散步','街市逛逛','周末出门逛逛']],   // 第 46 单后半新增的一句（第 21 单那条覆盖率断言当场抓到了它）
   ['sleep', ['回卧室睡觉']],
   ['money', ['交了房租']],
-  ['goal',  ['这周想的事']],   // 第 52 单：目标系统的三条事件（定下／做到／没做成）——只归类，不单独出卡
+  ['goal',  ['这周想的事','上周的日子记一笔']],   // 第 52／53 单：目标事件（定下／做到／没做成）与周记忆——只归类，不单独出卡
 ];
 const CLIP_CATNAME={eat:'吃饭', work:'上班', nap:'小憩', stroll:'散步', sleep:'睡觉', chat:'闲聊', goal:'目标'};
 // 丙级只数这几类。刻意不含 chat：闲聊次数已由甲级 social_burst 按同一个数出活，
@@ -2262,6 +2344,7 @@ const Sim={makeWorld, step, sendMessage, sendCustomMessage, decide, MSGS, ANCHOR
   WEEK_RULES, workWindow, WEEKEND_OUT,   // 第 46 单·星期进入世界（门禁调同一份算法，不另写一套）
   RAIN_RULES,   // 第 49 单·雨回流进行为（门禁按真值断言，不另抄一份概率）
   GOALS, GOAL_MAP, GOAL_TARGETS, GOAL_DAYS, goalOf, goalKnob, goalTagHit, goalAssign,   // 第 52 单·目标系统（门禁与诊断工具按真值读）
+  GOAL_BREAK_TICKS, nextGoalAt, weekMemory, weekTick,   // 第 53 单·周打包／周记忆／前提破裂（门禁按真值读，不另抄一套日历）
   CATCHUP_MIN_PER_MIN, CATCHUP_MAX_DAYS, REFLECT_MIN, SMS_NOREPLY,
   catchUpPlan, catchUp, reflectFallback, clipTopDay,
   DIARY_FB, DIARY_FB_RECENT, CHAT_FB_OPEN, CHAT_FB_REPLY, pickV, pickFresh, diaryFallback,   // 第 27 单·兜底文案扩池
@@ -2767,6 +2850,11 @@ function goalText(ag){
   const p=(typeof G.prog==='function')?G.prog(state.world,ag,g):'';
   return G.label+(p?('（'+p+'）'):'');
 }
+// 第 53 单·周记忆外显：角色页那一行（周结算时由代码压成一句话）
+function memText(ag){
+  const m=ag&&ag.mem;
+  return (m&&typeof m.text==='string'&&m.text)?('上周：'+m.text):'（还没有记录）';
+}
 function buildRoles(){
   $('#roles-grid').innerHTML=state.world.agents.map(ag=>
     '<div class="card" data-role="'+ag.id+'">'
@@ -2777,6 +2865,7 @@ function buildRoles(){
     +'<div class="kv"><span>心愿</span><span>✨ '+esc(ag.want)+'</span></div>'
     +'<div class="kv"><span>担忧</span><span class="rr-fear"></span></div>'
     +'<div class="kv"><span>目标</span><span class="rr-goal"></span></div>'
+    +'<div class="kv"><span>上周</span><span class="rr-mem"></span></div>'
     +'<div class="kv"><span>正在</span><span class="rr-act"></span></div>'
     +'<div class="row" style="margin-top:.4rem"><span class="faint" style="font-size:.72rem">饱食</span><span class="bar"><i class="rr-h"></i></span></div>'
     +'<div class="row" style="margin-top:.25rem"><span class="faint" style="font-size:.72rem">体力</span><span class="bar"><i class="rr-e" style="background:var(--blue)"></i></span></div>'
@@ -2795,6 +2884,7 @@ function renderRoles(){
     const loc=Sim.ANCHORS[ag.anchor];
     c.querySelector('.rr-fear').textContent='⚠ '+((ag.money<300)?'凑不齐下个月房租':ag.fear);
     const gEl=c.querySelector('.rr-goal'); if(gEl) gEl.textContent=goalText(ag);   // 第 52 单·目标外显
+    const mEl=c.querySelector('.rr-mem'); if(mEl) mEl.textContent=memText(ag);     // 第 53 单·周记忆外显
     c.querySelector('.rr-act').textContent=ag.activity.label+' · '+(loc?loc.label:'路上');
     c.querySelector('.rr-h').style.width=(100-ag.hunger)+'%';
     c.querySelector('.rr-e').style.width=ag.energy+'%';
@@ -3220,10 +3310,13 @@ function agentCard(ag, hook){
   const mood=sit?(SIT_MOOD[sit.k]||''):'';
   // 第 52 单·目标外显到角色卡：只写"他这周想干什么"这一句（进度不上卡——档位与内容分离的既有口径）
   const goalG=Sim.goalOf(ag), goalLine=goalG?('｜这周想:「'+Sim.GOAL_MAP[goalG.k].label+'」'):'';
+  // 第 53 单·周记忆上卡（同样只写"数得出来的事实"，不给事件原文）
+  const memLine=(ag.mem&&typeof ag.mem.text==='string'&&ag.mem.text)?('｜上周:「'+ag.mem.text+'」'):'';
   return ag.name+'（'+ag.job+'）｜特质:'+ag.traits.join('/')+'｜心愿:'+ag.want+'｜担忧:'+fear
     +'｜钱包:¥'+Math.round(ag.money)+'｜'+hungerWord(ag.hunger)+'、体力'+Math.round(ag.energy)
     +'｜正在:'+ag.activity.label
     +goalLine
+    +memLine
     +(mood?'｜今天的心境:'+mood+'（这只定语气，不是内容：不许把这句话写进你说的话或写的字里，也不许解释自己今天为什么这样）':'')
     +'｜说话方式:'+(AI_VOICE[ag.id]||ag.voice)
     +styleAssign(ag, hook)

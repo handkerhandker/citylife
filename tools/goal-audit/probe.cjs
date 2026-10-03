@@ -18,8 +18,8 @@ const SEEDS = [20260803, 424242, 777];
 function 跑(appPath) {
   delete require.cache[require.resolve(appPath)];
   const { PURE, Sim } = require(appPath);
-  const r = { 轮: {}, 达成: {}, 失败: {}, 在用: {}, 人轮: {}, 进度: { 达成: [], 失败: [] }, 分类进度: {},
-              社交: 0, 散步: 0, 目标数: 0, 达成数: 0, 失败数: 0 };
+  const r = { 轮: {}, 达成: {}, 失败: {}, 中断: {}, 在用: {}, 人轮: {}, 进度: { 达成: [], 失败: [] }, 分类进度: {},
+              社交: 0, 散步: 0, 目标数: 0, 达成数: 0, 失败数: 0, 中断数: 0, 记忆条数: 0 };
   for (const seed of SEEDS) {
     const w = Sim.makeWorld(seed);
     let 已读 = 0;
@@ -71,6 +71,15 @@ function 跑(appPath) {
           const G = Sim.GOALS.find(x => x.label === label);
           const k = G ? G.k : '?';
           r.失败[k] = (r.失败[k] || 0) + 1;
+        } else if (t.indexOf('本来想做的事，眼下做不成了：') === 0) {
+          r.中断数++;
+          const label = t.slice('本来想做的事，眼下做不成了：'.length);
+          const G = Sim.GOALS.find(x => x.label === label);
+          const k = G ? G.k : '?';
+          r.中断[k] = (r.中断[k] || 0) + 1;
+          记进度('失败');
+        } else if (t.indexOf('上周的日子记一笔：') === 0) {
+          r.记忆条数++;
         } else if (e.type === 'chat') r.社交++;
         else if (e.type === 'act' && /出门散步|周末出门逛逛|逛街市/.test(t)) r.散步++;
       }
@@ -84,10 +93,11 @@ const A = 跑(生产);
 console.log('种子 ' + SEEDS.join('/') + '，各 ' + DAYS + ' 天（生产写法）\n');
 console.log('目标轮次 ' + A.r.目标数 + '（达成 ' + A.r.达成数 + ' ／ 失败 ' + A.r.失败数 + '，达成率 '
   + (A.r.目标数 ? (A.r.达成数 / (A.r.达成数 + A.r.失败数) * 100).toFixed(1) : '—') + '%）');
-console.log('目标类型   轮次   达成   失败   达成率');
+console.log('  周记忆 ' + A.r.记忆条数 + ' 条（应 ≈ 人数 × 周数）· 前提破裂重开 ' + A.r.中断数 + ' 次');
+console.log('目标类型   轮次   达成   失败   中断   达成率');
 for (const G of A.Sim.GOALS) {
-  const 轮 = A.r.轮[G.k] || 0, 成 = A.r.达成[G.k] || 0, 败 = A.r.失败[G.k] || 0;
-  console.log('  ' + G.k.padEnd(8) + String(轮).padStart(4) + String(成).padStart(7) + String(败).padStart(7)
+  const 轮 = A.r.轮[G.k] || 0, 成 = A.r.达成[G.k] || 0, 败 = A.r.失败[G.k] || 0, 中 = A.r.中断[G.k] || 0;
+  console.log('  ' + G.k.padEnd(8) + String(轮).padStart(4) + String(成).padStart(7) + String(败).padStart(7) + String(中).padStart(6)
     + '   ' + (成 + 败 ? (成 / (成 + 败) * 100).toFixed(0) : '—') + '%'
     + '   ' + (G.useful ? '有后果' : '无用小事') + '   目标位:' + (G.knob || '—'));
 }
