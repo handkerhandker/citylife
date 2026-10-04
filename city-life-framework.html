@@ -513,7 +513,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v152</span>
+<span class="num dim" id="set-build">v153</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -4575,6 +4575,16 @@ function dishText(ag){
   const 手=ag.dishes[n-1];
   return '「'+手+'」'+(n>1?('（已琢磨 '+n+' 道）'):'（第 1 道）');
 }
+/* 第 188 单·菜谱本（《无心云志》卡 05 那句"成功的菜谱……以后还能照着做"的落点）：
+   第 170 单把"试新菜"做进了世界（`ag.dishes` 逐人一本、零重样），可玩家在角色页只看得见
+   **最新一道**——整本藏在字段里。这里把它摆出来（纯只读；旧档没有这个字段就照实说"还是空的"，
+   照第 67 单"空账照实说"先例）。零写操作、零 rng、零世界改动。 */
+function cookbookRow(ag){
+  const 本=(ag && Array.isArray(ag.dishes)) ? ag.dishes : [];
+  if(!本.length) return '<div class="kv"><span>菜谱本</span><span class="dim">还是空的——先从家常菜开始</span></div>';
+  const 片=本.map(x=>'<span class="chip">'+esc(x)+'</span>').join(' ');
+  return '<div class="kv"><span>菜谱本</span><span style="display:flex;flex-wrap:wrap;gap:.3rem;justify-content:flex-end">'+片+'</span></div>';
+}
 /* ---------- 第 79 单·云港日历（把"接下来会发生什么"摆出来）----------
    出处（2026-10-03 实测可访问）：星露谷 wiki·Festivals／Birthdays——村民的生日与节日都挂在**日历**上，
    玩家靠"看日历"安排；Nookipedia·Event 同理（动森的公告栏提前贴出活动）。
@@ -4699,6 +4709,7 @@ function openAgentDialog(id){
     +'<div class="kv"><span>关系</span><span>'+esc(relText(state.world, ag))+'（累计 '+(ag.relNotes|0)+' 次来往）</span></div>'
     +'<div class="kv"><span>和你</span><span>'+esc(relYouText(ag))+'</span></div>'
     +'<div class="kv"><span>拿手菜</span><span>'+esc(dishText(ag))+'</span></div>'
+    +cookbookRow(ag)                       /* 第 188 单·菜谱本（整本摆出来；空账照实说） */
     /* 第 99 单·「此刻」：把活动里那半句独白（`ag.activity.think`）摆出来——空闲独白从此看得见。
        没有独白的活动（走路、交心之类直接挂活动的）就不出这一行，不做样子。 */
     +(ag.activity&&ag.activity.think?'<div class="kv"><span>此刻</span><span>「'+esc(ag.activity.think)+'」</span></div>':'')
