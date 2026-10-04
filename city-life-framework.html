@@ -470,7 +470,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v133</span>
+<span class="num dim" id="set-build">v134</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -5802,12 +5802,14 @@ function 分名牌道(屏x, 屏y){
       else lane=旧;
     } else delete 名牌降时[a.id];
     道[a.id]=lane;
-    // 浮道：朝目标道**限速**滑过去——每帧最多 0.25 道（卡帧时也不许瞬移，探针实测过这一条）
+    // 浮道：朝目标道**限速**滑过去——第 166 单起每帧最多 0.125 道（卡帧时也不许瞬移；探针实测过这一条）
     const cur=(名牌浮道[a.id]===undefined)?lane:名牌浮道[a.id];
-    /* 步长按**时间**算（第 165 单：3 道/秒；第 125 单立时为 6 道/秒）、每帧再压 0.25 道：
+    /* 步长按**时间**算（第 165 单：3 道/秒；第 125 单立时为 6 道/秒）、每帧再压 0.125 道：
        60/120/30fps 与卡帧三种情形下，50ms 采样的最大位移都远低于探针硬上限 0.6 道——
-       这是"卡帧也不许瞬移"的那道保险，也是"滑得更柔"的来源。 */
-    const gap=lane-cur, maxStep=Math.min(0.25, Math.max(0.02, dt*3));   // 第 165 单：6→3 道/秒（只放柔滑动；提前量维持 151 单的 T+6、迟滞维持 149 单的 T+20、降时维持 125 单的 1.2 秒）
+       这是"卡帧也不许瞬移"的那道保险，也是"滑得更柔"的来源。
+       第 166 单把每帧上限 0.25→0.125 道：一次卡帧（dt 大到吃满上限）最多推 2.25px，
+       气泡顶"逐帧 ≤5px"的判据再也不会被"浮道 4.5px ＋盒高缓动"叠出去。 */
+    const gap=lane-cur, maxStep=Math.min(0.125, Math.max(0.02, dt*3));   // 第 165 单：6→3 道/秒；第 166 单：每帧上限 0.25→0.125 道
     const step=Math.abs(gap)<=maxStep ? gap : Math.sign(gap)*maxStep;
     const nv=cur+step;
     名牌浮道[a.id]=(nv===lane)?lane:nv;
@@ -6040,7 +6042,11 @@ function sayBubble(x, yBottom, ag){
   if(气泡显高===null || state.reduceMotion || !isFinite(气泡显高)) 气泡显高=h;
   else{
     const k=Math.min(1, dtFrame*6);
-    气泡显高+=(h-气泡显高)*k;
+    /* 第 166 单·单帧步进上限：卡帧时指数逼近会一步走 5–12px；压到每帧 ≤2px
+       （60fps 的常规步 ≈1.2px 不受影响）——与浮道的 0.125 道上限合起来，
+       气泡顶任意单帧位移 ≤ ~4.3px，"逐帧 ≤5px"判据不再被卡帧叠出去。 */
+    const 步=(h-气泡显高)*k, 限=Math.min(2, Math.max(0.6, dtFrame*90));
+    气泡显高 += Math.abs(步)<=限 ? 步 : Math.sign(步)*限;
     if(Math.abs(h-气泡显高)<0.4) 气泡显高=h;
   }
   const h画=气泡显高;
@@ -7134,7 +7140,10 @@ function draw(now){
     ctx.fillRect(px-R-1,py-R-1,R*2+2,R*2+2);
     ctx.fillStyle=ag.color;
     ctx.fillRect(px-R,py-R,R*2,R*2);
-    雨伞画(ag, px-R, py-3*R, 2*R, 4*R);   // 第 139 单：兜底路径同样撑伞（盒按精灵比例 1:2，杆末端落在方块肩位）
+    // 第 139 单：兜底路径同样撑伞；第 166 单修：兜底路的名牌盒底只比方块高 3px，
+    // 原尺寸（2R×4R）的伞面整个落在名牌**背后**被盖住 ⇒ 缩到 0.85 档、落进"名牌底～方块顶"那道缝里
+    // （比例仍是 1:2，杆末端仍落在方块肩位；探针实测伞面 0→16 像素、不再被名牌吃掉）
+    雨伞画(ag, px-0.85*R, py-R-4, 1.7*R, 3.4*R);
     const nt=nameChip(px, py-R-4, tag, 本帧道[ag.id], 名牌浮道[ag.id]);   // 第 32 单：名牌分道（第 125 单：道号先算、浮道缓动）
     // 第 31 单：素材未就位／`pix.on` 关掉的兜底路径**照出指示器**。理由：这条路上人物退化成一个纯色方块，
     // 连走／站都分不出来，「在干什么」比有素材时更没有别的地方可看；而符号本身零素材依赖（canvas 画的字），

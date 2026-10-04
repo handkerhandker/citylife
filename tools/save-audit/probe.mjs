@@ -6,7 +6,9 @@
 //   ④ 再试一串坏码 ⇒ 只出「这串码读不出来」、**不重载、不崩**。
 // B 段·离线补算＋回城弹窗：
 //   ① 先立即存档，把存档信封的 `at` 改成"两天前"再刷新 ⇒ 城市自己补过两天（t 前进 ≈2 天）；
-//   ② **补算期间零 AI**：`state.llm.calls === 0`、`llm.on` 仍为真、日志里没有那条"已就地关闭本局 AI"；
+//   ② **补算期间零 AI**：**load 一回来**读 `state.llm.calls === 0`（补算窗口＝boot 里那一段；
+//      第 166 单·口径修：原来算到"开机后 1.5 秒"，正常玩起来的第一笔 AI 调用会被误算成补算期调用）、
+//      `llm.on` 仍为真、日志里没有那条"已就地关闭本局 AI"；
 //   ③ 回城弹窗当场弹出（含"你不在的时候"），关得掉。
 // 用法：node tools/save-audit/probe.mjs [输出目录]   （要 CITYLIFE_CHROME）
 import http from 'http';
@@ -120,7 +122,11 @@ const 世界读数 = p => p.evaluate(() => {
     return 'ok';
   });
   await page.goto(URL_, { waitUntil: 'load' });
-  await page.waitForTimeout(1500);                   // 补算是同步的，这一小会儿足够
+  /* 第 166 单·口径修：**补算窗口只到"开机那一刻"**——catch-up 在 boot 里同步跑完，
+     load 一回来先读一次 calls（补算后即刻）；原写法把"开机后 1.5 秒"也算进窗口，
+     正常玩起来后的第一笔 AI 调用会被算成"补算期调用"（全量冒烟实测 calls=1 的假红）。 */
+  const 补算后 = await page.evaluate(() => ({ calls: window.__pv.state.llm.calls }));
+  await page.waitForTimeout(1500);                   // 等 UI（弹窗/日志）起来再读其余项
   const 回来 = await page.evaluate(() => {
     const S = window.__pv.state, w = S.world;
     return {
@@ -135,8 +141,8 @@ const 世界读数 = p => p.evaluate(() => {
   });
   判('B① 离线两天：城市自己补过 ≈2 天', 改档 === 'ok' && 回来.t - 离开前.t >= 2 * 1440 && 回来.t - 离开前.t <= 2 * 1440 + 120,
     { 离开前: 离开前.t, 回来: 回来.t, 差: 回来.t - 离开前.t });
-  判('B② 补算期间零 AI：calls=0、AI 没被关、没有告警', 回来.calls === 0 && 回来.on === true && !回来.关了AI && 回来.补算旁白,
-    { calls: 回来.calls, on: 回来.on, 关了AI: 回来.关了AI, 补算旁白: 回来.补算旁白 });
+  判('B② 补算期间零 AI：补算后即刻 calls=0、AI 没被关、没有告警', 补算后.calls === 0 && 回来.on === true && !回来.关了AI && 回来.补算旁白,
+    { 补算后即刻calls: 补算后.calls, '1.5秒后calls': 回来.calls, on: 回来.on, 关了AI: 回来.关了AI, 补算旁白: 回来.补算旁白 });
   判('B③ 回城弹窗当场弹出', 回来.弹窗, { 弹窗: 回来.弹窗 });
   const 关掉 = await page.evaluate(() => {
     const b = document.querySelector('#dialog-root [data-close]');

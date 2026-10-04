@@ -12,6 +12,7 @@
 //     ③ 零 pageerror。
 // 场景：与名牌稳定性探针同一颗种子同一时段（seed 20261004、D45 19:30、1× 速度），
 //   speed=1 让人物照常活动（行数才会切换）。
+//   第 166 单起：**换场后先等 1.5 秒再起录**——时间跳变那几帧是"到场"不是"播放中的瞬跳"。
 // 用法：node tools/bubble-audit/probe.mjs [输出目录]          （要 CITYLIFE_CHROME）
 //   对照跑旧版：--改前=<git-ref>（旧版行数切换处应有 >5px 的瞬跳 ⇒ 判红）
 import http from 'http';
@@ -57,6 +58,12 @@ await page.waitForTimeout(2200);
 await page.evaluate(() => {
   const st = __pv.state, w = st.world;
   w.t = 64530; w.weather.rain = false; st.llm.on = false; w.speed = 1;
+});
+/* 第 166 单：先把"换场那一瞬"放过去再开录——时间从别处跳到 D45 19:30 后，
+   相机/显示位/名牌浮道/盒高缓动都要走几帧才到位；那几帧的位移是**换场**不是"播放中的瞬跳"。
+   等 1.5 秒（≈90 帧）再起录；行数切换在 24 秒里仍会出现，判据不空转。 */
+await page.waitForTimeout(1500);
+await page.evaluate(() => {
   window.__rec = [];
   (function loop() {
     if (typeof window.__bubTop === 'number') window.__rec.push([performance.now(), window.__bubTop, window.__bubLines]);
