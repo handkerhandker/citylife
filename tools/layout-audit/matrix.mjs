@@ -21,7 +21,7 @@ fs.mkdirSync(OUT, { recursive: true });
 
 const raw = fs.readFileSync(path.join(REPO, 'city-life-framework.html'), 'utf8');
 const html = raw.replace(/\}\)\(\);\s*<\/script>/,
-  'window.__pv={get chips(){return nameChipBoxes},get state(){return state},get vis(){return state.vis}};\n})();\n</script>');
+  'window.__pv={get chips(){return nameChipBoxes},get 名盒高(){return 名盒高()},get state(){return state},get vis(){return state.vis}};\n})();\n</script>');
 if (html === raw) { console.error('注入点没找到'); process.exit(2); }
 const PORT = 18948;
 const srv = http.createServer((q, r) => {
@@ -65,10 +65,14 @@ async function 跑一档(browser, 名, 视口, 设置) {
         return r.top >= -1 && r.bottom <= window.innerHeight + 1 && r.left >= -1 && r.right <= window.innerWidth + 1;
       });
       const chips = window.__pv.chips || [];
+      /* 第 181 单·口径对齐（与第 149 单的立法一致）："名字盒重叠"要求 **x、y 两轴都近** ——
+         只判 x 会把"同一道但上下差出盒高、视觉根本不叠"的对子误判成重叠（真机/大视口下实测到：
+         dx=16、dy=99 也被算重叠）。判据仍不许松：同一道 ＋ x 相触 ＋ y 差小于一个盒高 = 真叠。 */
+      const 盒高 = window.__pv.名盒高 || 15;
       let 重叠 = 0;
       for (let i = 0; i < chips.length; i++) for (let j = i + 1; j < chips.length; j++) {
         const a = chips[i], b = chips[j];
-        if (a.lane === b.lane && Math.abs(a.x - b.x) < (a.w + b.w) / 2) 重叠++;
+        if (a.lane === b.lane && Math.abs(a.x - b.x) < (a.w + b.w) / 2 && Math.abs(a.y - b.y) < 盒高) 重叠++;
       }
       return {
         视口读数: (document.querySelector('#set-viewport') || {}).textContent || '',

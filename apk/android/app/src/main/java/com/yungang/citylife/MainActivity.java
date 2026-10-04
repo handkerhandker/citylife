@@ -14,7 +14,9 @@ import android.view.ViewGroup;
 import android.view.Window;
 import android.view.WindowInsets;
 import android.view.WindowManager;
+import android.webkit.JavascriptInterface;
 import android.widget.FrameLayout;
+import androidx.core.view.WindowInsetsCompat;
 import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
 import com.getcapacitor.BridgeActivity;
@@ -29,8 +31,9 @@ import com.getcapacitor.BridgeActivity;
       "透明→底色"渐隐贴在手势区上沿——不让系统蒙层的硬边切在画面中间。 */
 public class MainActivity extends BridgeActivity {
     private static final int 底色 = 0xFF171C26;      // ＝ 游戏的 --bg0，与 styles.xml 一致
+    private static final String 全屏开关键 = "citylife-immersive";   // '1'＝沉浸（藏系统栏）；空/其它＝铺满
     private int 上, 下, 左, 右;
-    private View 顶渐隐, 底渐隐;
+    private View 顶渐隐;
     private int 推过上 = -1, 推过下 = -1, 推过左 = -1, 推过右 = -1;
 
     @Override
@@ -38,11 +41,62 @@ public class MainActivity extends BridgeActivity {
         super.onCreate(savedInstanceState);
         边缘到边缘();
         量insets();
-        建渐隐层();
+        建顶渐隐();
         推值();
+        挂全屏开关();
         for (long t : new long[] { 120, 400, 1200, 2500 }) {     // 页面加载完前几次推送会落空，补几拍
             getWindow().getDecorView().postDelayed(this::推值, t);
         }
+    }
+
+    @Override
+    public void onDestroy() {
+        try { if (getBridge() != null && getBridge().getWebView() != null) getBridge().getWebView().removeJavascriptInterface("SZGOShell"); } catch (Throwable ignored) { }
+        super.onDestroy();
+    }
+
+    /** 第 181 单·全屏开关：页面里的「全屏方式」写 localStorage，也直接叫这里一声（同一台设备，两处都记）。 */
+    private void 挂全屏开关() {
+        try {
+            if (getBridge() == null || getBridge().getWebView() == null) return;
+            getBridge().getWebView().addJavascriptInterface(new Object() {
+                @JavascriptInterface
+                public void setImmersive(final int on) {
+                    getWindow().getDecorView().post(() -> 应用沉浸(on == 1));
+                }
+                @JavascriptInterface
+                public int getImmersive() { return 沉浸中 ? 1 : 0; }
+            }, "SZGOShell");
+            // 开机读一次页面里存的选择（页面还没加载完就再补几拍）
+            for (long t : new long[] { 600, 1500, 3000 }) {
+                getWindow().getDecorView().postDelayed(this::读页面开关, t);
+            }
+        } catch (Throwable ignored) { }
+    }
+
+    private boolean 沉浸中 = false;
+
+    private void 读页面开关() {
+        try {
+            if (getBridge() == null || getBridge().getWebView() == null) return;
+            getBridge().getWebView().evaluateJavascript(
+                "(function(){try{return localStorage.getItem('" + 全屏开关键 + "')||''}catch(e){return ''}})();",
+                v -> 应用沉浸(v != null && v.indexOf("1") >= 0));
+        } catch (Throwable ignored) { }
+    }
+
+    private void 应用沉浸(boolean on) {
+        沉浸中 = on;
+        try {
+            WindowInsetsControllerCompat c = WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
+            if (c == null) return;
+            if (on) {
+                c.setSystemBarsBehavior(WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+                c.hide(WindowInsetsCompat.Type.systemBars());
+            } else {
+                c.show(WindowInsetsCompat.Type.systemBars());
+            }
+        } catch (Throwable ignored) { }
     }
 
     @Override
@@ -113,35 +167,25 @@ public class MainActivity extends BridgeActivity {
         调渐隐();
     }
 
-    private void 建渐隐层() {
+    /* 第 181 单：**去掉底部渐隐层**——真机反馈它把底部 UI（页签栏／提示条）糊住了。
+       底部那条系统蒙层改走"换深色主题 + 沉浸开关"这条路（见 styles.xml 与页面里的全屏方式）。 */
+    private void 建顶渐隐() {
         ViewGroup 根;
         try { 根 = findViewById(android.R.id.content); } catch (Throwable e) { return; }
         if (根 == null) return;
         顶渐隐 = new 渐隐层(true);
-        底渐隐 = new 渐隐层(false);
         根.addView(顶渐隐, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0,
             android.view.Gravity.TOP));
-        根.addView(底渐隐, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0,
-            android.view.Gravity.BOTTOM));
     }
 
     private void 调渐隐() {
         if (顶渐隐 != null) {
-            int h = 上 > 0 ? 上 + dp(12) : 0;
+            int h = 上 > 0 ? 上 : 0;                    // 只盖住状态栏那一条，绝不下探到 UI 上
             ViewGroup.LayoutParams lp = 顶渐隐.getLayoutParams();
             lp.height = h;
             顶渐隐.setLayoutParams(lp);
             顶渐隐.setVisibility(h > 0 ? View.VISIBLE : View.GONE);   // 判据是"栏在不在"，不是横竖屏
             顶渐隐.invalidate();
-        }
-        if (底渐隐 != null) {
-            int h = 下 > 0 ? dp(90) : 0;
-            FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) 底渐隐.getLayoutParams();
-            lp.height = h;
-            lp.bottomMargin = 下;                                     // 下沿正贴系统蒙层上沿
-            底渐隐.setLayoutParams(lp);
-            底渐隐.setVisibility(h > 0 ? View.VISIBLE : View.GONE);
-            底渐隐.invalidate();
         }
     }
 

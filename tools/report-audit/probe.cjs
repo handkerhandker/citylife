@@ -8,6 +8,8 @@
 //   ③ 采访日的锚点落在 REPORT_SPOTS 三处之一；
 //   ④ 非采访日仍见过 home_desk（对照：采访不是"到处乱跑"）；
 //   ⑤ 活动类型始终 work（只换地点与文案，不改活动种类）。
+//   ⑥【第 180 单】报道进剪辑层：落稿件落 `ag.lastReport`（带题面与原文）——白一鸣当天**当主角**的卡里
+//     会出现 `report` 项，且"摘原文"引的就是那条报道日志本身（落笔抄录；没当主角的日子不算，符合剪辑层口径）。
 // 用法：node tools/report-audit/probe.cjs [--天=400] [--种子=20260803,424242,777]
 const path = require('path');
 const { Sim } = require(path.resolve(__dirname, '../../app.js'));
@@ -26,6 +28,7 @@ function 跑一遍(seed){
   const a4 = w.agents.find(a => a.id === 'a4');
   let 水位 = 0;
   const 采访天 = [], 报道 = [];
+  const 进卡 = [];          // 第 180 单：剪辑卡里的 report 项（带引到的原文）
   let 非采访日见家 = false, 采访日点ok = true, 类型乱 = 0;
   let 当天见点 = null, 当天见家 = false;
   for (let d = 1; d <= 天; d++) {
@@ -52,8 +55,16 @@ function 跑一遍(seed){
     const 今采访 = 采访天.length > 0 && 采访天[采访天.length - 1].d === d;
     if (今采访 && !当天见点) 采访日点ok = false;
     if (!今采访 && 当天见家) 非采访日见家 = true;
+    /* 第 180 单：当天的卡（结算在凌晨 4 点的剪辑日；这里按"卡的主人＋卡里有的项"收） */
+    for (const c of (w.clips || [])) {
+      if (c.__收过) continue;
+      c.__收过 = 1;
+      const 项 = (c.items || []).filter(it => String(it.id) === 'report');
+      if (!项.length) continue;
+      进卡.push({ d: c.d, 主角: c.name || c.id, 引: (c.q || []).map(x => String(x.text || '')).filter(t => t.indexOf('把采访写成了报道') >= 0) });
+    }
   }
-  return { 采访天, 报道, 非采访日见家, 采访日点ok, 类型乱 };
+  return { 采访天, 报道, 进卡, 非采访日见家, 采访日点ok, 类型乱 };
 }
 
 for (const seed of 种子表) {
@@ -71,6 +82,17 @@ for (const seed of 种子表) {
     稿齐, { 前三天: 一.报道.slice(0, 3) });
   判('[' + seed + '] 非采访日仍见过 home_desk（对照）＋活动类型未新增', 一.非采访日见家 && 一.类型乱 === 0,
     { 非采访日见家: 一.非采访日见家, 类型乱: 一.类型乱 });
+  /* 第 180 单：报道进剪辑层——每条 report 项都要引到自己那条原文 */
+  /* 口径：卡里出现 report 项 ⇒ 摘原文里**必有**那条报道原文（题面是本报这叠里的某一个）。
+     允许同一句被别的条目"就近引用"再出现一次（那是既有摘原文机制，不是重复上卡）。 */
+  const 报题 = new Set(一.报道.map(x => x.题));
+  const 引对 = 一.进卡.every(x => x.引.length >= 1
+    && x.引.every(t => {
+        const m = /^把采访写成了报道：《(.+)》$/.exec(t);
+        return !!m && 报题.has(m[1]);
+      }));
+  判('[' + seed + '] 报道进剪辑卡（' + 一.进卡.length + ' 张）且"摘原文"引的就是那条报道',
+    一.进卡.length >= 1 && 引对, { 进卡样例: 一.进卡.slice(0, 2), 引对: 引对 });
 }
 console.log('\n出门采访：' + (红 ? (红 + ' 条不过') : '全绿'));
 process.exit(红 ? 1 : 0);

@@ -12,7 +12,9 @@
     <!-- 第 180 单·全屏铺满（沉浸式）：窗口底色改成游戏的深色 #171c26，状态栏/手势条透明，
          内容画到系统栏下面（配合 HTML 里已有的 viewport-fit=cover ＋ safe-area 内边距，
          不遮字）。为什么要改：默认主题窗口底是白的 ⇒ 竖屏上下、横屏三边露白边。 -->
-    <style name="AppTheme.NoActionBar" parent="Theme.AppCompat.DayNight.NoActionBar">
+    <!-- 第 181 单：父主题从 DayNight 换成**深色**（isLightTheme=false）——系统栏那层"对比蒙层"的颜色
+         跟着主题亮暗走：浅色主题给它盖 ~59% 白（深色游戏上就是一条白杠，真机实测）。 -->
+    <style name="AppTheme.NoActionBar" parent="Theme.AppCompat.NoActionBar">
         <item name="windowActionBar">false</item>
         <item name="windowNoTitle">true</item>
         <item name="android:background">@null</item>

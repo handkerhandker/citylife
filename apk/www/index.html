@@ -179,8 +179,21 @@ h2.sec:first-child{ margin-top:0; }
 /* ============================================================
    3. 现场（画布）+ 浮层
    ============================================================ */
-#live-wrap{ position:absolute; inset:0; }
-#cv{ position:absolute; inset:0; width:100%; height:100%; display:block; touch-action:none; }
+/* 第 181 单·真全屏铺满：**画布提到最底层、按整个窗口铺**（含系统栏与挖孔那一条），
+   UI 面板浮在它上面、各自按 --sa-* 内缩。这样横屏时地图会一直铺到挖孔边，
+   而不是"留一条同色边"（真机反馈：那条边看着就是没铺满）。
+   触摸不能断：内容层整条链 pointer-events:none，只让画布与各浮层/面板自己收回 auto。 */
+#live-wrap{ position:absolute; inset:0; pointer-events:none; }
+#cv{ position:fixed; inset:0; width:100%; height:100%; display:block; touch-action:none; z-index:0; pointer-events:auto; }
+#content{ pointer-events:none; }
+.screen{ pointer-events:auto; }
+#scr-live{ pointer-events:none; }
+#live-wrap>*{ pointer-events:auto; }
+#topbar,#tabbar,#hintbar,#rail,#side{ position:relative; z-index:2; }
+#content{ position:relative; z-index:1; }
+#content{ background:transparent; }
+.screen{ background:var(--bg0); }
+#scr-live{ background:transparent; }
 .overlay{ position:absolute; background:color-mix(in srgb, var(--bg1) 88%, transparent);
   border:2px solid var(--line); border-radius:var(--r); padding:var(--sp2) var(--sp3);
   backdrop-filter:blur(2px); max-width:min(70%, 20rem); min-width:0; }
@@ -484,7 +497,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v145</span>
+<span class="num dim" id="set-build">v147</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -500,6 +513,13 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
         </span>
       </div>
       <h2 class="sec">视口调试</h2>
+      <div class="set-row">
+        <span class="lbl">全屏方式<small>装进手机 App 才有区别：铺满＝内容铺到系统栏下面（默认）；沉浸＝把系统栏藏起来（从边缘上滑可临时唤出）。哪样好看，在真机上二选一。</small></span>
+        <span class="row" style="gap:.4rem">
+          <button class="btn small" id="set-fs-edge" data-fx>铺满</button>
+          <button class="btn small" id="set-fs-immersive" data-fx>沉浸</button>
+        </span>
+      </div>
       <div class="set-row"><span class="lbl">实时读数</span><span class="num dim" id="set-viewport">—</span></div>
       <p class="faint" style="font-size:.72rem;margin:var(--sp4) 0 0">美术素材：Modern Interiors / Modern Exteriors by LimeZu（limezu.itch.io）</p>
     </section>
@@ -2683,7 +2703,10 @@ function decide(w, ag){
     const W=workWindow(w,ag);
     if(PURE.dayOf(w.t)>采日 || mod>=W.end){
       ag.reportDay=采日;
-      logAct(w,ag,'把采访写成了报道：《'+采访题(采日)+'》','署名发走了。');
+      const 题=采访题(采日), 稿='把采访写成了报道：《'+题+'》';
+      logAct(w,ag,稿,'署名发走了。');
+      /* 第 180 单：报道也走"事件型"通道进剪辑层（照第 73 单夜谈先例：落笔抄录 ＋ 每个采访日至多一条） */
+      ag.lastReport={ t:w.t, topic:题, tx:稿 };
     }
   }
   // 1. 睡觉（第 22 单：起床时刻＝躺下时刻＋今晚该睡多久，入睡那一刻定死，不再是逐分钟固定的参数）
@@ -3148,6 +3171,7 @@ const CLIP_W={
   fest_lamp:2.6,                                  // 第 62 单·江灯节放灯（甲级：一年一次，值得当天的卡）
   bday_cake:2.6,                                  // 第 64 单·生日蛋糕（甲级：一年一次的个人日，与江灯节同档——"值得当天的卡"）
   talk_go:1.0,                                    // 第 73 单·去了一趟夜谈角（乙级弱信号，与夜市 `mkt_go` 同档）
+  report:1.2,                                     // 第 180 单·把采访写成了署名报道（乙级上档：与 `gift` 同档——一件"做完的事"）
   gift:1.2,                                       // 第 81 单·给寿星带了点东西（乙级上档：它是"两个人之间的事"）
   bday_co:1.4,                                    // 第 110 单·生日坐下来陪一会儿（乙级上档：比"带了东西"再深一层——"人在"）
   rel_up:1.6,                                     // 第 88 单·关系升到新档（甲级：不是每天都有的事，值得当天的卡）
@@ -3160,7 +3184,7 @@ const CLIP_W={
   hunger_nomeal:2.6, hunger_peak:2.0, hunger_high:1.5, worn_out:2.2, worn_low:1.6,
   freq:0.2,
 };
-const CLIP_TIER={sit_flat:'b', sit_none:'b', money_debt:'b', freq:'c', mkt_go:'b', talk_go:'b', gift:'b',
+const CLIP_TIER={sit_flat:'b', sit_none:'b', money_debt:'b', freq:'c', mkt_go:'b', talk_go:'b', report:'b', gift:'b',
                  bday_co:'b', rel_cold:'b'};   // 第 88 单·冷线归乙级（第 110 单·陪坐同归乙级）；未列者一律甲级（rel_up 走甲级）
 // 日志正文 → 类目。取的是 decide() 实际写出的字串（harness 有覆盖率断言：30 天里
 // 每条 act 条目都必须归到某一类，谁改了 logText 那条断言即红）。
@@ -3199,6 +3223,7 @@ const CLIP_QCAT={sit:'work', money:'money', social:'chat', sleep:'sleep', wake:'
                  bday:'bday',  // 第 64 单：生日蛋糕那条日志归在 bday 类
                  bday_co:'bday',  // 第 110 单：陪坐那句也归 bday ⇒ 摘原文就引"陪着…"那条
                  talk_go:'talk',  // 第 73 单：夜谈那条日志单开一类 ⇒ 摘原文就引它
+                 report:'work',   // 第 180 单：报道那条日志归 work 类（兜底用；正路是 `tx` 落笔抄录）
                  gift:'gift',     // 第 81 单：礼物那两句单开一类 ⇒ 摘原文引"带了…"那句
                  rel_up:'rel', rel_cold:'rel',   // 第 88 单：关系两句同归一"关系"类 ⇒ 摘原文引那条日志
                  heart:'heart'};                 // 第 91 单：`heart` 单开一类（与 `rel` 分开——摘原文要引的正是"交心："那两句）
@@ -3337,6 +3362,12 @@ function clipSample(w,sh){
       r.talkT=lt.t; r.talkTopic=(typeof lt.topic==='string')?lt.topic:'';
       r.talkTx0=(typeof lt.tx==='string')?lt.tx:'';
     }
+    // 第 180 单·署名报道：与上面同一套事件通道（`reportDay` 已保证每个采访日至多一条）
+    const lrep=ag.lastReport;
+    if(lrep && typeof lrep==='object' && isFinite(lrep.t) && lrep.t>=t0 && lrep.t<t1 && r.repT!==lrep.t){
+      r.repT=lrep.t; r.repTopic=(typeof lrep.topic==='string')?lrep.topic:'';
+      r.repTx0=(typeof lrep.tx==='string')?lrep.tx:'';
+    }
     // 第 81 单·生日礼物：同上（`giftYear` 已保证每人每年至多一条）
     /* 变量名不能叫 `lg`——同段里 `lg` 已经给 `lastGoalOut` 用了（第一次写就撞了重名，`node --check` 当场抓住） */
     const lgf=ag.lastGift;
@@ -3390,6 +3421,7 @@ function clipMake(w,sh,ent,ag,sum,base){
   if(r.festT) push('fest_lamp',{spent:r.festSpent, tx:r.festTx0},r.festT);   // 第 62 单·放灯（每人每年至多一条；落笔抄录）
   if(r.bdayT) push('bday_cake',{spent:r.bdaySpent, tx:r.bdayTx0},r.bdayT);   // 第 64 单·生日蛋糕（每人每年至多一条；落笔抄录）
   if(r.talkT) push('talk_go',{topic:r.talkTopic, tx:r.talkTx0},r.talkT);     // 第 73 单·夜谈（每人每周至多一条；落笔抄录）
+  if(r.repT) push('report',{topic:r.repTopic, tx:r.repTx0},r.repT);         // 第 180 单·署名报道（每个采访日至多一条；落笔抄录）
   if(r.giftT) push('gift',{to:r.giftTo, tx:r.giftTx0},r.giftT);              // 第 81 单·生日礼物（每人每年至多一条；落笔抄录）
   if(r.bdayCoT) push('bday_co',{to:r.bdayCoTo, tx:r.bdayCoTx0},r.bdayCoT);   // 第 110 单·生日有人陪（一对人一年至多一条；落笔抄录）
   if(r.relUpT)   push('rel_up',  {to:r.relUpTo, tier:r.relUpTier, v:r.relUpV, tx:r.relUpTx0}, r.relUpT);   // 第 88 单·关系升档
@@ -3466,6 +3498,7 @@ function clipItemText(it){
     case 'fest_lamp':  return '江灯节 · 放了一盏灯：花了 ¥'+(v.spent||0)+'（一年一次）';
     case 'bday_cake':  return '生日 · 给自己买了块蛋糕：花了 ¥'+(v.spent||0)+'（一年一次）';
     case 'talk_go':    return '夜谈 · 去坐了一晚：聊「'+(v.topic||'')+'」';
+    case 'report':     return '报道 · 写成了《'+(v.topic||'')+'》（署名发走了）';
     case 'gift':       return '生日 · 给'+(v.to||'人')+'带了点东西';
     case 'bday_co':    return '生日 · 陪'+(v.to||'人')+'坐了会儿';
     case 'rel_up':     return '关系 · 升到「'+(v.tier||'新档')+'」：和'+(v.to||'人')+'（'+(v.v|0)+'）';
@@ -5743,6 +5776,27 @@ $('#set-llm').addEventListener('click',()=>{
   $('#set-llm-relay-clear').addEventListener('click',清);
   框.addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); 存(); } });
 })();
+/* 第 181 单·全屏方式：铺满（默认）／沉浸（藏系统栏）。页面只负责**记**与**通知壳**——
+   真去藏系统栏的是安卓壳里的 SZGOShell.setImmersive（网页版没有它，按钮点了只记下选择）。
+   为什么要有这个开关：真机（鸿蒙＋卓易通）实测"藏系统栏"有时会被宿主用黑杠填上，
+   铺满 vs 沉浸哪个好看只有真机能判；两档都留着，决策者自己 A/B。 */
+(function(){
+  const 键='citylife-immersive';
+  const 读=()=>{ try{ return localStorage.getItem(键)==='1'; }catch(_){ return false; } };
+  const 画=()=>{
+    const e=$('#set-fs-edge'), i=$('#set-fs-immersive'); if(!e||!i) return;
+    const 沉=读();
+    e.style.opacity=沉?'.5':'1'; i.style.opacity=沉?'1':'.5';
+    e.textContent=沉?'铺满':'铺满 ✓'; i.textContent=沉?'沉浸 ✓':'沉浸';
+  };
+  const 设=on=>{
+    try{ localStorage.setItem(键, on?'1':'0'); }catch(_){}
+    try{ if(window.SZGOShell&&window.SZGOShell.setImmersive) window.SZGOShell.setImmersive(on?1:0); }catch(_){}
+    画();
+  };
+  const e=$('#set-fs-edge'), i=$('#set-fs-immersive');
+  if(e&&i){ e.addEventListener('click',()=>设(false)); i.addEventListener('click',()=>设(true)); 画(); }
+})();
 
 /* ---------- 像素画风：LimeZu 素材运行时侧载（样板间试点：公寓底图＋四住户行走帧，素材缺席自动回落） ---------- */
 const ASSET_BASE='assets';   // 可调：素材基址＝同源相对路径（成品随仓库一起部署，第 10 单补充指令二授权）；改回独立素材站只改本行
@@ -5842,7 +5896,10 @@ function standSpot(ag){
 /* ---------- 画布：DPR 适配 + 等比取景 + 屏幕空间文字 ---------- */
 const cv=$('#cv'), ctx=cv.getContext('2d');
 function resizeCanvas(){
-  const box=$('#live-wrap').getBoundingClientRect();
+  /* 第 181 单：画布按**整个窗口**算（它现在是 position:fixed 铺满屏），不再按 content 那一格 ——
+     这样横屏时地图一直铺到挖孔边、竖屏时铺到系统栏下面。 */
+  const box={ width:innerWidth||document.documentElement.clientWidth,
+              height:innerHeight||document.documentElement.clientHeight };
   const dpr=Math.min(devicePixelRatio||1, 2.5);
   const W=Math.max(1,Math.round(box.width*dpr)), H=Math.max(1,Math.round(box.height*dpr));
   if(cv.width!==W||cv.height!==H){ cv.width=W; cv.height=H; }
