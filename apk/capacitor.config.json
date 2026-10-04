@@ -4,7 +4,7 @@
   "webDir": "www",
   "plugins": {
     "SystemBars": {
-      "insetsHandling": "css",
+      "insetsHandling": "disable",
       "hidden": false
     }
   }

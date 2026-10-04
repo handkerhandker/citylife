@@ -32,6 +32,13 @@
   --sa-b:var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
   --sa-l:var(--safe-area-inset-left, env(safe-area-inset-left, 0px));
   --sa-r:var(--safe-area-inset-right, env(safe-area-inset-right, 0px));
+  /* 第 159 单·真机实证修正（两条，均出自真机截图 ＋ 装在本机包里的 SystemBars.java 源码）：
+     ① `insetsHandling="css"` 在 WebView < 140 时会把**整个 WebView 塞进安全区**
+        （源码：decor.setPadding(left, top, right, bottom)），并把 `--safe-area-inset-*` 注入成 0
+        ⇒ 页面再按壳量到的值内缩一次＝**双重内缩**（外面那圈没画布的深色带就是它）。插件已改
+        `disable`（官方口径：安全区全交给自写代码——本作壳自己量、页面自己躲）。
+     ② 这台机器**横屏顶部也有状态栏**（截图实证 top=37 CSS px 是真值）；旧的"横屏强制 top=0"
+        是照另一台设备经验写的，在这里会让横屏顶栏钻到状态栏底下——已删。 */
 }
 html{ font-size:calc(clamp(14px, 1.1vmin + 10px, 17px) * var(--ui-scale)); background:#171c26; }
 *{ box-sizing:border-box; }
@@ -513,7 +520,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v158</span>
+<span class="num dim" id="set-build">v159</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">

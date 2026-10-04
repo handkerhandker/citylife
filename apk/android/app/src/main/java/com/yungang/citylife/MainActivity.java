@@ -43,6 +43,7 @@ public class MainActivity extends BridgeActivity {
         边缘到边缘();
         量insets();
         建顶渐隐();
+        挂键盘垫起();
         推值();
         挂全屏开关();
         for (long t : new long[] { 120, 400, 1200, 2500, 5000, 8000 }) {   // 页面加载完前几次推送会落空，补几拍（第 190 单补到 8 秒——鸿蒙冷启动慢）
@@ -185,11 +186,10 @@ public class MainActivity extends BridgeActivity {
             上 = ins.getSystemWindowInsetTop(); 下 = ins.getSystemWindowInsetBottom();
             左 = ins.getSystemWindowInsetLeft(); 右 = ins.getSystemWindowInsetRight();
         }
-        if (getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE) {
-            上 = 0;                                  // 实测坑：横屏没有状态栏，宿主却仍报竖屏的 112px
-        } else if (上 <= 0) {
-            /* 第 190 单·兜底：宿主（卓易通/鸿蒙容器）压根不报上值时，用系统声明的状态栏高度——
-               否则顶栏一直钻在状态栏底下（真机复现）。只在竖屏兜，横屏上面已强制 0。 */
+        /* 第 159 单·真机实证（先看截图再改）：这台机器**横屏顶部也有状态栏**（截图里 07:25 那行），
+           实测 top 37 CSS px 是真的；此前照另一台设备的经验"横屏强制 top=0"在这里是**错的**，
+           会让顶栏在横屏钻到状态栏底下。故：两个方向一视同仁，只保留"宿主不报数就用系统声明值兜底"。 */
+        if (上 <= 0) {
             上 = 取系统尺寸("status_bar_height");
             上为兜底 = 上 > 0;
         }
@@ -202,6 +202,25 @@ public class MainActivity extends BridgeActivity {
             if (id > 0) return getResources().getDimensionPixelSize(id);
         } catch (Throwable ignored) { }
         return 0;
+    }
+
+    /* 第 159 单·键盘垫起：插件改 `insetsHandling=disable` 之后，它原先顺带做的"键盘可见时把视图垫高"
+       也跟着不做了——自己补一条（只垫 `android.R.id.content` 的底部＝键盘高度；其余时间不垫，
+       保持铺满。挂 content 而不是 decor，免得影响我们自己读 rootWindowInsets）。 */
+    private void 挂键盘垫起() {
+        try {
+            final View 内容 = findViewById(android.R.id.content);
+            if (内容 == null) return;
+            androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(内容, (v, insets) -> {
+                int 垫 = 0;
+                try {
+                    if (insets.isVisible(androidx.core.view.WindowInsetsCompat.Type.ime()))
+                        垫 = insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.ime()).bottom;
+                } catch (Throwable ignored) { }
+                if (v.getPaddingBottom() != 垫) { v.setPadding(0, 0, 0, 垫); v.requestLayout(); }
+                return insets;
+            });
+        } catch (Throwable ignored) { }
     }
 
     private int dp(float v) { return Math.round(v * getResources().getDisplayMetrics().density); }
