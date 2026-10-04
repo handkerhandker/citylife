@@ -471,7 +471,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v139</span>
+<span class="num dim" id="set-build">v140</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -2617,6 +2617,16 @@ function 记陪过(ag, id, 年){
   if(!ag.bdayCoYears||typeof ag.bdayCoYears!=='object'||Array.isArray(ag.bdayCoYears)) ag.bdayCoYears={};
   ag.bdayCoYears[id]=年;
 }
+/* 第 172 单·出门采访（《无心云志》卡 09 的记者线，见 docs/规划/借鉴调研-2026-10-04.md §五）：
+   自由撰稿人 a4 的"写稿"大多在家里的写作角；**每 5 天有一天**带着题目出门采访——公共采访点
+   按日号轮转（滨江公园长椅／江边步道／街市摊位），题目按日号取（照第 71 单夜谈话题先例，
+   **零 rng**）。只改"这一天在哪儿上班、叫什么、说什么"；钱／饭／时长／活动类型一律不动。 */
+const REPORT_TOPICS=['这周的雨','菜价和房租','夜班车几点收','江边新挂的灯','广场的夜市','店里的进货单','公园的长椅','一个人的周末'];
+const REPORT_THOUGHTS=['问的人不一样，答的也不一样。','记满了半页，够写一篇了。','对方说得慢，我就记得慢一点。','好问题比好答案难。','先把听到的原样记下，回头再理。'];
+const REPORT_SPOTS=['park_bench','river_walk','market'];
+function 采访日(day){ return ((day*7+3)%5)===0; }
+function 采访点(day){ return REPORT_SPOTS[((day*11)%REPORT_SPOTS.length+REPORT_SPOTS.length)%REPORT_SPOTS.length]; }
+function 采访题(day){ return REPORT_TOPICS[((day*17)%REPORT_TOPICS.length+REPORT_TOPICS.length)%REPORT_TOPICS.length]; }
 function decide(w, ag){
   const mod=PURE.minuteOfDay(w.t);
   const R=rhyOf(ag);          // 第 22 单·逐人作息人格（由既有特质逐条相加，见 RHY 段）
@@ -2727,6 +2737,12 @@ function decide(w, ag){
     const today=PURE.dayOf(w.t);
     const firstArrive=ag.flags.arrivedDay!==today;
     const logText = (ag.activity.type==='work')?null:(firstArrive?'到岗开始工作':'回到工位');
+    /* 第 172 单·写稿人的采访日：每 5 天有一天带题出门（纯哈希；不改钱/饭/时长/活动类型，
+       只改"在哪儿上班、叫什么、说什么"）。摸鱼那种照旧按原样走。 */
+    const 采访=!!(ag.workKind==='write' && !slack && 采访日(today));
+    const 出点=采访?采访点(today):ag.workAnchor;
+    const 稿签=采访?'出门采访':label;
+    const 稿志=(logText===null)?null:(采访?('带着题目出门采访：'+采访题(today)):logText);
     if(logText!==null) ag.flags.arrivedDay=today;
     // 独白节奏逐人化：概率照旧，外加最小间隔门（距该人上次工作独白不足 mutterGap 拍则跳过；
     // 到岗/回到工位日志同样携带工作独白，一并刷新 lastMutterT）
@@ -2734,10 +2750,11 @@ function decide(w, ag){
       && (w.t-(ag.lastMutterT||0)) >= tempoNum((ag.tempo||{}).mutterGap,TEMPO_DEFAULT.mutterGap,0,144)*10;
     // 只在会落日志时抽独白，未落日志的拍不消耗当日去重池
     const thought = (logText!==null || mutter)
-      ? (slack?pickV(w,SLACK_THOUGHTS,ag,'ls'):pickV(w,WORK_THOUGHTS[ag.workKind],ag,'lw:'+ag.workKind))   // 全城一本账下不同数组不得共键；四人 workKind 互异，语义仍等于按人
+      ? (slack?pickV(w,SLACK_THOUGHTS,ag,'ls')
+         :(采访?pickV(w,REPORT_THOUGHTS,ag,'lr'):pickV(w,WORK_THOUGHTS[ag.workKind],ag,'lw:'+ag.workKind)))   // 全城一本账下不同数组不得共键；四人 workKind 互异，语义仍等于按人
       : undefined;
     if(logText!==null || mutter) ag.lastMutterT=w.t;
-    setActivity(w,ag,ag.workAnchor,'work',label,60,thought,logText);
+    setActivity(w,ag,出点,'work',稿签,60,thought,稿志);
     if(mutter){ logAct(w,ag,'工作中',thought); }
     // 第 17 单·外围角色事件：只在该住户当天的工作时段内触发，一天至多一次。
     // 短路顺序有意为之——peerDay 先判，命中封当日后本日再不消耗 rng；陌生 workKind（无表）零 rng 零事件。
@@ -3124,7 +3141,7 @@ const CLIP_TIER={sit_flat:'b', sit_none:'b', money_debt:'b', freq:'c', mkt_go:'b
 // 每条 act 条目都必须归到某一类，谁改了 logText 那条断言即红）。
 const CLIP_LOGCAT=[
   ['eat',   ['做了顿简餐','解决了一餐','买了份小吃','试了道新菜']],   // 第 170 单·试新菜那句也归 eat（覆盖率闸当场抓到它没归类）
-  ['work',  ['到岗开始工作','回到工位','工作中']],
+  ['work',  ['到岗开始工作','回到工位','工作中','带着题目出门采访']],   // 第 172 单·采访那句也归 work（覆盖率闸照查）
   ['nap',   ['回卧室小憩']],
   ['stroll',['出门散步','街市逛逛','周末出门逛逛']],   // 第 46 单后半新增的一句（第 21 单那条覆盖率断言当场抓到了它）
   /* 第 73 单：夜谈那句从 `stroll` 挪出来单开一类——剪辑层要为它上卡（乙级 `talk_go`），
@@ -3864,6 +3881,7 @@ const Sim={makeWorld, step, sendMessage, sendCustomMessage, decide, MSGS, ANCHOR
   REL_YOU, relYouOf, relYouGet, relYouBump, relYouStep,   // 第 115 单·玩家篇①期（门禁按真值读：涨落一处定义）
   REL_WAIT_DAYS, 等你天数, relYouWord,   // 第 117 单·玩家篇②期（门禁按真值读：窗口表＋那句"你在他心里"一处定义）
   DISH_POOL, 试新菜,   // 第 170 单·自己研究一道菜（门禁按真值读：池子一处定义＋纯哈希取词）
+  REPORT_TOPICS, REPORT_SPOTS, 采访日, 采访点, 采访题,   // 第 172 单·出门采访（门禁按真值读：纯哈希、零 rng）
   HEART, heartMate,   // 第 91 单·交心（门禁按真值读：门槛与时长一处定义）
   RAIN_STROLL_THOUGHTS, RAIN_IDLE_THOUGHTS, 天气词,   // 第 97 单·雨天的独白（门禁按真值读同一份池）
   IDLE_THOUGHTS, STROLL_THOUGHTS,                     // 第 97 单：两张基础池也一并导出（门禁要按真值比对"串没串池"）
