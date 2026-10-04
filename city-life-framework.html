@@ -520,7 +520,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v162</span>
+<span class="num dim" id="set-build">v163</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -2133,6 +2133,60 @@ function talkStep(w){
   }
 }
 /*TALK-END*/
+/*CAT-START*/
+/* ---------- 第 210 单·云港的猫（观察型访客：把这城里"还住着别的"变成看得见的事）----------
+   来历（调研一手源，见 docs/规划/借鉴调研-2026-10-05.md）：
+     · ねこあつめ（Neko Atsume）——"…attract a variety of cats to their home. The player can watch
+       cats interact with objects…"（Wikipedia）⇒ 抄"条件对上猫就来、看着就好"这半；
+     · 星露谷 Pets——"Pets (cats, dogs, or turtles) can be adopted, which the player can form a
+       friendship with."（Stardew Valley Wiki）⇒ 抄"慢慢处出感情"的底色，落成住户与猫的照面。
+   口径（与夜谈／生日同族）：
+     · 每天按**日号散列**定"来不来、来的是谁、蹲哪"——**零 rng**（不摇随机源，世界轨迹只多几条日志）；
+     · 一周约两天（`h%7∈{0,1}`；因乘数 mod 7 可逆，恰是每周固定两天，7→10→14→17 的节奏）；
+     · 雨天不来（到场那一刻在下雨就作罢）；下午 15:00 落一条城市日志；
+     · 15:00–17:00 若有人恰好在那一带，他会蹲下来看一会儿——
+       **全城每天至多一条**（`w.catDay` 记账，旧档缺省视为没见，绝不判坏档）；
+     · 零经济影响、不发短信、v1 不进剪辑候选（照夜谈分单先例；归类只保覆盖率）。 */
+const CATS=[
+  {名:'豆花', 花色:'三花', 尾:'摊成一条，晒着太阳。'},
+  {名:'煤球', 花色:'黑',   尾:'蹲在阴影里，只看得见两只眼睛。'},
+  {名:'橘子', 花色:'橘',   尾:'胖得理直气壮，谁路过都不抬眼。'},
+];
+const CAT_SPOTS=[
+  {id:'park_bench', where:'滨江公园的长椅上'},
+  {id:'river_walk', where:'江边步道边上'},
+  {id:'market',     where:'常设街市的摊位旁'},
+];
+const CAT={ on:15*60, off:17*60 };
+// 今天的猫（没有就 null）：按日号乘散列定——与第 71 单 `题材取` 同族，零 rng
+function catOfDay(w){
+  if(w.weather && w.weather.rain) return null;          // 雨天不来
+  if(!CATS.length || !CAT_SPOTS.length) return null;    // 空表（构造/篡改）不抛错
+  const day=PURE.dayOf(w.t), h=(day*2654435761)>>>0;
+  if((h%7)>1) return null;                              // 一周两天
+  const 猫=CATS[(h>>>3)%CATS.length], 点=CAT_SPOTS[(h>>>5)%CAT_SPOTS.length];
+  return {day, 名:猫.名, 花色:猫.花色, 尾:猫.尾, spot:点.id, where:点.where};
+}
+// 住户看到猫时各自那一句（前缀固定"蹲下来看"——归类靠前缀，覆盖率闸照管）
+const CAT_MEET={
+  work: ['蹲下来看了看猫，喊了声「{名}」，它尾巴动了一下。','它认得这个声音。'],
+  clerk:['蹲下来看了看猫，蹲着跟「{名}」说了半天话。','它要是能回一句就好啦。'],
+  trade:['蹲下来看了看猫，叫它「{名}」它也不理。','谁也不欠谁，挺好。'],
+  write:['蹲下来看了看猫，看了很久，像在给「{名}」想一个句子。','这种东西，写下来就淡了。'],
+};
+function catStep(w){
+  const mod=PURE.minuteOfDay(w.t);
+  if(mod<CAT.on || mod>=CAT.off) return;
+  const 猫=catOfDay(w); if(!猫) return;
+  if(mod===CAT.on) logSys(w,'🐈 '+猫.where+'，一只'+猫.花色+'猫'+猫.尾);
+  if(w.catDay===猫.day) return;                          // 今天已经照过面
+  const 人=w.agents.find(a=>a.anchor===猫.spot);
+  if(!人) return;
+  w.catDay=猫.day;
+  const 句=CAT_MEET[人.workKind]||CAT_MEET.work;
+  logAct(w,人,句[0].replace('{名}',猫.名),句[1]);
+}
+/*CAT-END*/
 /*MISS-START*/
 /* ---------- 第 74 单·住户主动惦记你（把"你在不在"接进住户的一天）----------
    出处（2026-10-03 实测可访问，见 `docs/规划/借鉴调研-2026-10-03.md`）：
@@ -3263,8 +3317,9 @@ const CLIP_LOGCAT=[
   ['bday',  ['给自己买了块蛋糕','陪着','有人陪着']],   // 第 64 单·生日蛋糕 ＋ 第 110 单·陪坐那两句（前缀都固定；覆盖率闸照查）
   ['rel',   ['关系：']],             // 第 88 单·关系涨档／冷线两句（前缀固定"关系："，一处管两句话）
   ['heart', ['交心：']],             // 第 91 单·交心那两条日志（前缀固定"交心："，两人各一条都归这类）
+  ['cat',   ['蹲下来看', '🐈']],     // 第 210 单·云港的猫（住户照面那句与城市那条都归"猫事"；v1 只保覆盖率，不出卡）
 ];
-const CLIP_CATNAME={eat:'吃饭', work:'上班', nap:'小憩', stroll:'散步', sleep:'睡觉', chat:'闲聊', goal:'目标', fest:'放灯', bday:'生日', talk:'夜谈', miss:'惦记', rel:'关系', heart:'交心', visit:'串门'};
+const CLIP_CATNAME={eat:'吃饭', work:'上班', nap:'小憩', stroll:'散步', sleep:'睡觉', chat:'闲聊', goal:'目标', fest:'放灯', bday:'生日', talk:'夜谈', miss:'惦记', rel:'关系', heart:'交心', visit:'串门', cat:'猫事'};
 // 丙级只数这几类。刻意不含 chat：闲聊次数已由甲级 social_burst 按同一个数出活，
 // 两级同时命中会在同一张卡上把同一句话印两遍（实测 D10 「闲聊 4 次，平常 2 次」印了两行）。
 // 也不含 idle：在家待着 logText 恒为 null、不上墙，本层「只数上了墙的事」故无从计数。
@@ -3763,6 +3818,7 @@ function advance10(w){
   morningStep(w);   // 第 58 单·云港晨报（每天 08:10 一条，只用已存在的事实拼）
   festivalStep(w);  // 第 62 单·江灯节（一年一次：提前一周预告／开灯／收灯）
   talkStep(w);      // 第 70 单·周日夜谈（周日 20:00–22:00，22:00 散场播报）
+  catStep(w);       // 第 210 单·云港的猫（每天 15:00–17:00；零 rng）
   missStep(w);      // 第 74 单·住户主动惦记你（周日 18:00；这周没收到短信的人各留一条）
   noteStep(w);      // 第 77 单·别的时候也开口（每天 21:00；生日／放灯／目标达成各留一句）
   if(w.weather.rain && w.t>=w.weather.until){
@@ -3978,6 +4034,7 @@ const Sim={makeWorld, step, sendMessage, sendCustomMessage, decide, MSGS, ANCHOR
   TALK, nightTalkStartAt, inTalk, thisWeekTalkAt, talkStep,   // 第 70 单·周日夜谈（门禁按真值读）
   TALK_TOPICS, TALK_TOPICS_RAIN, talkTopicOf,   // 第 71 单·夜谈话题（第 199 单补雨池；门禁按真值读：不摇 rng）
   TALK_OPEN, talkOpenLine, talkTopicOnDay,   // 第 72 单·题面带着台词走（门禁按真值读：占位符一处替换）
+  CATS, CAT_SPOTS, CAT, catOfDay, catStep,   // 第 210 单·云港的猫（门禁按真值读：不摇 rng、一周约两天）
   MISS, missStep,   // 第 74 单·惦记（门禁按真值读：周日 18:00、一周零来信才留一条）
   MISS_NOTE, missNoteOf,   // 第 76 单·居民的留言池（门禁按真值读：按周号取句、不摇 rng）
   NOTE, NOTE_LINES, NOTE_LINES_NEAR, 贴己池, noteStep,   // 第 77／121 单·别的时候也开口（门禁按真值读：每天 21:00、一天一句；③期按档位换池）
