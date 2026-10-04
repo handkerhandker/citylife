@@ -497,7 +497,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v147</span>
+<span class="num dim" id="set-build">v148</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -6722,8 +6722,13 @@ function lampPaint(t){
 
    由构造保证：所有笔画被 `ctx.clip()` 裁在房间矩形内，**一笔都出不去**（门禁另有逐笔核）。 */
 const TILE_ROOMS=['store','office'];          // 还没被拼合图接管的两间；加进 PIX_ROOMS 后本段自动跳过
-const TILE_LINE='rgba(255,255,255,.055)';     // 地砖细缝
-const TILE_MAJOR='rgba(255,255,255,.10)';     // 每两格一道粗缝
+/* 第 182 单·地砖改样：第 36 单那版是**每格都描一道线**，在手机屏上放大后读起来像"网格纸"
+   （决策者真机反馈："这效果能好吗"）。改成**两色棋盘**（2×2 一格、两块砖只差一点点明度）——
+   砖缝由两色的边自然读出来，不再到处是线；只在每两格留一道极浅的竖缝给大块地一个尺度感。
+   射程、裁剪、零占格三条口径全部照旧（门禁逐笔核）。 */
+const TILE_A='rgba(255,255,255,.022)';        // 棋盘甲色
+const TILE_B='rgba(0,0,0,.045)';              // 棋盘乙色
+const TILE_SEAM='rgba(255,255,255,.05)';      // 每两格一道极浅的竖缝
 const TILE_WALL=0.18;                         // 后墙带：把房间自己的边色压到 18% 铺满顶上一格
 const TILE_SKIRT='rgba(0,0,0,.22)';           // 踢脚线（贴房间底边）
 function roomTile(r){
@@ -6734,14 +6739,15 @@ function roomTile(r){
   ctx.fillStyle=r.edge;
   ctx.fillRect(x0,y0,w,s);
   ctx.globalAlpha=1;
-  ctx.lineWidth=1;
-  for(let i=1;i<r.w;i++){                             // 竖缝
-    ctx.strokeStyle=(i%2===0)?TILE_MAJOR:TILE_LINE;
-    ctx.beginPath(); ctx.moveTo(x0+i*s,y0+s); ctx.lineTo(x0+i*s,y0+h); ctx.stroke();
+  for(let j=1;j<r.h;j++){                             // 棋盘：2×2 一格
+    for(let i=0;i<r.w;i++){
+      ctx.fillStyle=((((i>>1)+(j>>1))&1)?TILE_A:TILE_B);
+      ctx.fillRect(x0+i*s, y0+j*s, s, s);
+    }
   }
-  for(let j=2;j<r.h;j++){                             // 横缝（第 1 道留给后墙带）
-    ctx.strokeStyle=(j%2===0)?TILE_MAJOR:TILE_LINE;
-    ctx.beginPath(); ctx.moveTo(x0,y0+j*s); ctx.lineTo(x0+w,y0+j*s); ctx.stroke();
+  ctx.lineWidth=1; ctx.strokeStyle=TILE_SEAM;         // 每两格一道竖缝
+  for(let i=2;i<r.w;i+=2){
+    ctx.beginPath(); ctx.moveTo(x0+i*s,y0+s); ctx.lineTo(x0+i*s,y0+h); ctx.stroke();
   }
   ctx.fillStyle=TILE_SKIRT;                           // 踢脚线
   ctx.fillRect(x0,y0+h-3,w,3);

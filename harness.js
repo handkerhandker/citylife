@@ -8305,7 +8305,7 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
     let code=TILE_SRC;
     if(mut) code=mut(code);
     const M=new Function('ctx','state','sx','sy',
-      code+'\nreturn {roomTile,TILE_ROOMS,TILE_LINE,TILE_MAJOR,TILE_WALL,TILE_SKIRT};')(ctx,state,sx,sy);
+      code+'\nreturn {roomTile,TILE_ROOMS,TILE_A,TILE_B,TILE_SEAM,TILE_WALL,TILE_SKIRT};')(ctx,state,sx,sy);
     return {M,rec,state,sx,sy};
   }
   const 房内=(r,x,y)=>x>=300+r.x*20-0.51 && x<=300+(r.x+r.w)*20+0.51
@@ -8363,11 +8363,14 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   // ── 闸四 · 反向自查 ＋ 结构侧 ──────────────────────────────────────────
   {
     // 病态一 · 一条线画到房外
-    const L=tileLab(s=>s.replace('ctx.lineTo(x0+i*s,y0+h);','ctx.lineTo(x0+i*s,y0+h+50);'));
+    /* 第 182 单改型：地砖不再逐格描线，病态样本跟着换成"一块棋盘砖画到房外"——口径没松：
+       仍然要求逐笔核把越界那一笔画出来。 */
+    const L=tileLab(s=>s.replace('ctx.fillRect(x0+i*s, y0+j*s, s, s);','ctx.fillRect(x0+i*s, y0+j*s, s+80, s);'));
     const r=Sim.ROOMS.find(x=>x.id===L.M.TILE_ROOMS[0]);
     L.M.roomTile(r);
-    const 出界=L.rec.seg.filter(p=>!房内(r,p.x,p.y)).length;
-    ok(出界>0,'闸四·反向一：把一道竖缝画到房外 50px ⇒ 逐笔核当场判红（实测出界 '+出界+' 个端点）');
+    const 出界=L.rec.seg.filter(p=>!房内(r,p.x,p.y)).length
+             + L.rec.rect.filter(b=>!(房内(r,b.x,b.y)&&房内(r,b.x+b.w,b.y+b.h))).length;
+    ok(出界>0,'闸四·反向一：把一块地砖画到房外 80px ⇒ 逐笔核当场判红（实测出界 '+出界+' 笔）');
     // 病态二 · 把室外那间塞进名单
     const L2=tileLab(s=>s.replace("const TILE_ROOMS=['store','office'];","const TILE_ROOMS=['store','office','park'];"));
     const 未铺=Sim.ROOMS.map(x=>x.id).filter(id=>L2.M.TILE_ROOMS.indexOf(id)<0);
