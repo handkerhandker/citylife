@@ -470,7 +470,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v136</span>
+<span class="num dim" id="set-build">v137</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -6951,6 +6951,28 @@ function snowRoom(r){                          // 公园／江边步道——房
   ctx.fillStyle=(r.id==='park')?SNOW_GROUND.park:SNOW_GROUND.walk;
   ctx.fillRect(sx(r.x)+2, sy(r.y)+2, r.w*s-4, r.h*s-4);                    // 内缩 2px 留住房间边界
 }
+/* 第 169 单·树冠雪帽（"snow will … settle on the ground, **trees**, and buildings"）：
+   雪帽＝裁在树冠圆里的**上缘白弧**（不是另画一个白圆，故不会越出树冠轮廓）；
+   树木/灌木的位置从 ROOM_FURN.park 现读、广场大树从 PLAZA_TREE 现读——不写第二套坐标。 */
+function 雪帽(cx,cy,r){
+  ctx.save();
+  ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.clip();               // 白只许落在树冠里
+  ctx.fillStyle='rgba(244,248,255,.92)';
+  ctx.beginPath(); ctx.ellipse(cx, cy-r*0.62, r*0.95, r*0.42, 0, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle='rgba(226,236,250,.75)';                                  // 帽檐一档暗，出一点厚度
+  ctx.beginPath(); ctx.ellipse(cx, cy-r*0.22, r*0.72, r*0.18, 0, 0, Math.PI*2); ctx.fill();
+  ctx.restore();
+}
+function snowCaps(){                           // 广场大树＋公园树/灌木——在所有树画完之后调用
+  if(!冬积雪(state.world.t)) return;
+  const s=state.view.s;
+  for(const f of (ROOM_FURN.park||[])){        // 公园（现读家具表）
+    const X=sx(f.x), Y=sy(f.y), W=f.w*s, H=f.h*s;
+    if(f.k==='tree') 雪帽(X+W*0.5, Y+H*0.38, 0.62*s);
+    else if(f.k==='bush') for(let i=0;i<f.w;i++) 雪帽(X+(i+0.5)/f.w*W, Y+H*0.55, 0.42*s);
+  }
+  雪帽(sx(PLAZA_TREE.x+PLAZA_TREE.w/2), sy(PLAZA_TREE.y+PLAZA_TREE.h*0.45), PLAZA_TREE.w*s*0.42);
+}
 /*SNOWGROUND-END*/
 /*STARS-START*/
 /* ---------- 第 164 单·晴夜的星空与流星（"making a wish on a shooting star"）------------------
@@ -7108,6 +7130,7 @@ function draw(now){
   ctx.beginPath();
   ctx.arc(sx(PLAZA_TREE.x+PLAZA_TREE.w/2),sy(PLAZA_TREE.y+PLAZA_TREE.h*0.45),PLAZA_TREE.w*s*0.42,0,Math.PI*2);
   ctx.fill();
+  snowCaps();   // 第 169 单：树冠雪帽——所有树都画完之后、标签与人物之前
   // 广场／岸线／江面标签（屏幕空间字号，与房间标签同口径）
   if(PLAZA.w*s>52){
     chip(sx(PLAZA.x+PLAZA.w/2), sy(PLAZA.y)+16, '云港广场', '#b9b0d6', Math.max(9,Math.min(12, s*0.7)));

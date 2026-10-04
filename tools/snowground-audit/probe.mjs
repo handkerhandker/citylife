@@ -27,7 +27,7 @@ const raw = BEFORE
   ? execFileSync('git', ['-C', REPO, 'show', `${BEFORE}:city-life-framework.html`], { maxBuffer: 1 << 28, encoding: 'utf8' })
   : fs.readFileSync(path.join(REPO, 'city-life-framework.html'), 'utf8');
 const html = raw.replace(/\}\)\(\);\s*<\/script>/,
-  'window.__pv={get state(){return state},get Sim(){return Sim},get PLAZA(){return PLAZA},get STREET_Y(){return STREET_Y},get SHORE_Y(){return SHORE_Y},get RIVER_Y(){return RIVER_Y}};\n})();\n</script>');
+  'window.__pv={get state(){return state},get Sim(){return Sim},get PLAZA(){return PLAZA},get STREET_Y(){return STREET_Y},get SHORE_Y(){return SHORE_Y},get RIVER_Y(){return RIVER_Y},get ROOM_FURN(){return ROOM_FURN},get PLAZA_TREE(){return PLAZA_TREE}};\n})();\n</script>');
 if (html === raw) { console.error('注入点没找到'); process.exit(2); }
 
 const PORT = 18970;
@@ -66,6 +66,21 @@ const 区域 = await page.evaluate(() => {
   };
 });
 
+/* 第 169 单：树冠雪帽——取样"树冠圆的顶部"（公园三棵树＋广场大树）；
+   位置从 ROOM_FURN/PLAZA_TREE 现读，与产品同一处定义。 */
+const 树顶区 = await page.evaluate(() => {
+  const out = [];
+  let i = 0;
+  for (const f of (__pv.ROOM_FURN.park || [])) if (f.k === 'tree') {
+    const cx = f.x + 0.5, cy = f.y + 0.38, r = 0.62;
+    out.push(['公园树' + (++i), [cx - r * 0.55, cy - r * 0.85, r * 1.1, r * 0.7]]);
+  }
+  const T = __pv.PLAZA_TREE, cx = T.x + T.w / 2, cy = T.y + T.h * 0.45, r = T.w * 0.42;
+  out.push(['广场树', [cx - r * 0.55, cy - r * 0.85, r * 1.1, r * 0.7]]);
+  return out;
+});
+const 树名 = 树顶区.map(t => t[0]);
+
 const 测白度 = (格) => page.evaluate((q) => {
   const cv = document.querySelector('#cv'), st = __pv.state, s = st.view.s;
   const x0 = Math.round(st.view.ox + q[0] * s), y0 = Math.round(st.view.oy + q[1] * s);
@@ -81,6 +96,7 @@ const 一景 = async (名, t) => {
   await page.waitForTimeout(1200);
   const o = {};
   for (const k of Object.keys(区域)) o[k] = await 测白度(区域[k]);
+  for (const [k, rect] of 树顶区) o[k] = await 测白度(rect);
   return o;
 };
 
@@ -100,8 +116,14 @@ const 读数 = { 春, 夏, 秋, 初冬, 深冬, 错误: 错 };
 const 通过 = 地面.every(k => (深冬[k] - 初冬[k]) >= 阈值[k])
   && 不吃的.every(k => Math.abs(深冬[k] - 春[k]) <= 20)
   && 地面.every(k => (深冬[k] - 春[k]) >= 阈值[k])
+  && 树名.every(k => (深冬[k] - 初冬[k]) >= 40 && (深冬[k] - 春[k]) >= 40)
   && 错.length === 0;
 读数.通过 = 通过;
 fs.writeFileSync(path.join(OUT, 'report.json'), JSON.stringify(读数, null, 2), 'utf8');
-console.log((通过 ? '✔' : '✘') + ' 冬日积雪：' + JSON.stringify({ 深冬, 初冬, 春, 不吃的: 不吃的.map(k => k + ' Δ=' + Math.round((深冬[k] - 春[k]) * 10) / 10), 错误: 错 }));
+console.log((通过 ? '✔' : '✘') + ' 冬日积雪：' + JSON.stringify({
+  深冬, 初冬, 春,
+  不吃的: 不吃的.map(k => k + ' Δ=' + Math.round((深冬[k] - 春[k]) * 10) / 10),
+  树冠: 树名.map(k => k + ' 深冬' + 深冬[k] + '／初冬' + 初冬[k]),
+  错误: 错,
+}));
 process.exit(通过 ? 0 : 1);
