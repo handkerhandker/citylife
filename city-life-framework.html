@@ -470,7 +470,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v137</span>
+<span class="num dim" id="set-build">v138</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -666,6 +666,24 @@ function 生日回信(ag,当天){
 // IDLE 例外——其调用点 logText 恒为 null、独白不上墙，故允许池尽重置（真到峰值也无人看见）。
 const IDLE_THOUGHTS=['刷了会儿手机，什么也没刷进去。','给绿萝浇了点水。','盯着天花板想明天的事。','翻了两页没读完的书。','把桌面收拾了一下，心情好一点。','把手机倒扣在桌上，坚持了十分钟。','阳台上的衣服干了，收下来有太阳味。','翻到三年前的照片，愣了一会儿。','把椅子转了半圈，又转回来。','窗台积了点灰，用手指画了道线又擦掉。','水烧开了，忘了要泡什么。','袜子配对，永远多出一只。','楼上小孩在练琴，听出来是哪首了。','快递盒拆完叠好，莫名成就感。','充电线绕成一团，解了半天。','日历撕到今天，纸比想象的厚。'];
 const COOK_THOUGHTS=['自己做，八块钱吃得妥妥的。','锅一响，人就踏实了。','冰箱里剩的菜正好清一清。','做多了一点，明天带饭。','油烟机一开，心里反而静。','热油下葱花，整个屋子都醒了。','照着视频做的，成品和封面没一处像。','盐放多了，加水，成汤了。','一边煮面一边洗碗，灶台效率之王。','剩饭炒一炒，又是一顿正经饭。','火关小一点，让它自己咕嘟一会儿。'];
+/* 第 170 单·自己研究一道菜（《无心云志》卡 05 候选，见 docs/规划/借鉴调研-2026-10-04.md §五）：
+   24 道家常菜；触发与取词**全走哈希**（零 rng ⇒ 世界轨迹不动），只加记录与文案。 */
+const DISH_POOL=['番茄炒蛋','葱油拌面','红烧鲫鱼','土豆炖牛腩','清炒时蔬','菌菇豆腐汤','糖醋小排','梅干菜焖肉','凉拌黄瓜','腊味煲仔饭','椒盐小黄鱼','冬瓜丸子汤','咖喱鸡饭','韭菜盒子','酒酿圆子','烤红薯','雪菜肉丝面','香菇滑鸡','干煸四季豆','紫菜蛋花汤','蛋炒饭','白菜猪肉饺子','虾仁滑蛋','酸辣汤'];
+const COOK_TRIES=['火候再压一压，就差这一点。','换个配法，说不定成了。','这次记着点，别又忘了放盐。','味道像那么回事了。','锅气起来了，有戏。','成了就写进本子里。'];
+function 试新菜(w,ag){
+  /* 约每 5 天一次、一天至多一道；**全走哈希取词**（零 rng ⇒ 世界轨迹不变）。
+     旧档没有 dishes 字段就补空表；池子翻遍（24 道全会）之后不再触发，返回空串＝做顿平常饭。 */
+  const day=PURE.dayOf(w.t), 序=(ag.id && ag.id.charCodeAt(1))||0;
+  if((day*7+序*13)%5!==0) return '';
+  if(!Array.isArray(ag.dishes)) ag.dishes=[];
+  let i=(day*11+序*17)%DISH_POOL.length;
+  for(let k=0;k<DISH_POOL.length;k++){
+    const 名=DISH_POOL[i];
+    if(ag.dishes.indexOf(名)<0){ ag.dishes.push(名); return 名; }
+    i=(i+1)%DISH_POOL.length;
+  }
+  return '';
+}
 const NAP_THOUGHTS=['眯一会儿，谁也别拦。','闹钟定了四十分钟，信不过自己。','沙发比床危险，一躺就起不来。','就闭五分钟眼……（并不）。','枕头一沾，念头全散。','手机搁远点，纯睡。','十五分钟，就十五分钟。','梦的开头都没看清就被闹钟掐了。','醒来窗外的光斜了一截。'];
 const SLEEP_THOUGHTS=['今天到此为止。','被窝是白天欠我的。','明天的事明天再说。','关灯，世界清净了。','眼皮先下班了。','充电器插上，人也充上。','白天的事锁进抽屉，钥匙明早再找。','翻了个身，把这一天翻过去。','窗帘一拉，今天营业结束。'];
 const STROLL_THOUGHTS=['吹吹江风，把今天散掉一半。','走一走，脑子里的浆糊沉淀一下。','路灯一盏一盏数过去。','风里有一点点凉下来的意思。','江面上一条船也没有，安静得很。','走到第三个路口才想起没带钥匙，还好门没锁。','桥洞下有人拉二胡，停下听了半支曲子。','晚风把一天的褶子吹平了些。','沿江的石栏摸上去还是温的。','遛狗的人和狗都一脸下班了的表情。'];
@@ -2671,7 +2689,9 @@ function decide(w, ag){
     const atHome=['living','kitchen','bedroom'].includes(roomOf(ag.anchor));
     if(atHome || ag.money<20 || (thrifty && mod<9*60)){
       ag.money-=8; ag.hunger=12;
-      setActivity(w,ag,'kitchen','eat','做饭吃',tempoDur(w,ag,30),pickV(w,COOK_THOUGHTS,ag,'lc'),'在厨房做了顿简餐');
+      const 新菜=试新菜(w,ag);   // 第 170 单：约每 5 天一次"自己研究一道"（零 rng；钱/饭/时长一个不改）
+      if(新菜) setActivity(w,ag,'kitchen','eat','试新菜',tempoDur(w,ag,30),pickV(w,COOK_TRIES,ag,'lk'),'在厨房试了道新菜：'+新菜+'（第 '+ag.dishes.length+' 道）');
+      else setActivity(w,ag,'kitchen','eat','做饭吃',tempoDur(w,ag,30),pickV(w,COOK_THOUGHTS,ag,'lc'),'在厨房做了顿简餐');
     }else if(sunday && mod>=10*60 && mod<17*60){
       ag.money-=10; ag.hunger=15;
       setActivity(w,ag,'market','eat','逛吃街市',tempoDur(w,ag,30),pickV(w,MARKET_THOUGHTS,ag,'lm'),'去周日街市买了份小吃');
@@ -3098,7 +3118,7 @@ const CLIP_TIER={sit_flat:'b', sit_none:'b', money_debt:'b', freq:'c', mkt_go:'b
 // 日志正文 → 类目。取的是 decide() 实际写出的字串（harness 有覆盖率断言：30 天里
 // 每条 act 条目都必须归到某一类，谁改了 logText 那条断言即红）。
 const CLIP_LOGCAT=[
-  ['eat',   ['做了顿简餐','解决了一餐','买了份小吃']],
+  ['eat',   ['做了顿简餐','解决了一餐','买了份小吃','试了道新菜']],   // 第 170 单·试新菜那句也归 eat（覆盖率闸当场抓到它没归类）
   ['work',  ['到岗开始工作','回到工位','工作中']],
   ['nap',   ['回卧室小憩']],
   ['stroll',['出门散步','街市逛逛','周末出门逛逛']],   // 第 46 单后半新增的一句（第 21 单那条覆盖率断言当场抓到了它）
@@ -3831,6 +3851,7 @@ const Sim={makeWorld, step, sendMessage, sendCustomMessage, decide, MSGS, ANCHOR
   SEASON_RHY_BED, SEASON_RHY_DUR, 季作息,   // 第 126 单·作息随季节（门禁按真值读：两张表＋一处取用）
   REL_YOU, relYouOf, relYouGet, relYouBump, relYouStep,   // 第 115 单·玩家篇①期（门禁按真值读：涨落一处定义）
   REL_WAIT_DAYS, 等你天数, relYouWord,   // 第 117 单·玩家篇②期（门禁按真值读：窗口表＋那句"你在他心里"一处定义）
+  DISH_POOL, 试新菜,   // 第 170 单·自己研究一道菜（门禁按真值读：池子一处定义＋纯哈希取词）
   HEART, heartMate,   // 第 91 单·交心（门禁按真值读：门槛与时长一处定义）
   RAIN_STROLL_THOUGHTS, RAIN_IDLE_THOUGHTS, 天气词,   // 第 97 单·雨天的独白（门禁按真值读同一份池）
   IDLE_THOUGHTS, STROLL_THOUGHTS,                     // 第 97 单：两张基础池也一并导出（门禁要按真值比对"串没串池"）
@@ -4406,6 +4427,13 @@ function relText(w, ag){
 function relYouText(ag){
   return relYouWord(ag);   // 第 117 单：那句话收进 SIM 一处定义（角色卡的短信挂点与这里共用一套词）
 }
+/* 第 170 单·拿手菜外显：只读 SIM 里那本 `ag.dishes`（旧档没有这个字段就照实说"还没研究过"）。 */
+function dishText(ag){
+  const n=(ag && Array.isArray(ag.dishes)) ? ag.dishes.length : 0;
+  if(!n) return '还没研究过新菜';
+  const 手=ag.dishes[n-1];
+  return '「'+手+'」'+(n>1?('（已琢磨 '+n+' 道）'):'（第 1 道）');
+}
 /* ---------- 第 79 单·云港日历（把"接下来会发生什么"摆出来）----------
    出处（2026-10-03 实测可访问）：星露谷 wiki·Festivals／Birthdays——村民的生日与节日都挂在**日历**上，
    玩家靠"看日历"安排；Nookipedia·Event 同理（动森的公告栏提前贴出活动）。
@@ -4455,6 +4483,7 @@ function buildRoles(){
     +'<div class="kv"><span>上周</span><span class="rr-mem"></span></div>'
     +'<div class="kv"><span>关系</span><span class="rr-rel"></span></div>'
     +'<div class="kv"><span>和你</span><span class="rr-you"></span></div>'
+    +'<div class="kv"><span>拿手菜</span><span class="rr-dish"></span></div>'
     +'<div class="kv"><span>正在</span><span class="rr-act"></span></div>'
     +'<div class="row" style="margin-top:.4rem"><span class="faint" style="font-size:.72rem">饱食</span><span class="bar"><i class="rr-h"></i></span></div>'
     +'<div class="row" style="margin-top:.25rem"><span class="faint" style="font-size:.72rem">体力</span><span class="bar"><i class="rr-e" style="background:var(--blue)"></i></span></div>'
@@ -4494,6 +4523,7 @@ function renderRoles(){
     const mEl=c.querySelector('.rr-mem'); if(mEl) mEl.textContent=memText(ag);     // 第 53 单·周记忆外显
     const rEl=c.querySelector('.rr-rel'); if(rEl) rEl.textContent=relText(state.world, ag);   // 第 67 单·关系外显（一期）
     const uEl=c.querySelector('.rr-you'); if(uEl) uEl.textContent=relYouText(ag);              // 第 115 单·「你在他心里」
+    const dEl=c.querySelector('.rr-dish'); if(dEl) dEl.textContent=dishText(ag);              // 第 170 单·拿手菜
     c.querySelector('.rr-act').textContent=ag.activity.label+' · '+(loc?loc.label:'路上');
     c.querySelector('.rr-h').style.width=(100-ag.hunger)+'%';
     c.querySelector('.rr-e').style.width=ag.energy+'%';
@@ -4527,6 +4557,7 @@ function openAgentDialog(id){
        现在把既有那份 `w.stats.pair` 账摆出来（谁、多少次），旧的总数保留在括号里。 */
     +'<div class="kv"><span>关系</span><span>'+esc(relText(state.world, ag))+'（累计 '+(ag.relNotes|0)+' 次来往）</span></div>'
     +'<div class="kv"><span>和你</span><span>'+esc(relYouText(ag))+'</span></div>'
+    +'<div class="kv"><span>拿手菜</span><span>'+esc(dishText(ag))+'</span></div>'
     /* 第 99 单·「此刻」：把活动里那半句独白（`ag.activity.think`）摆出来——空闲独白从此看得见。
        没有独白的活动（走路、交心之类直接挂活动的）就不出这一行，不做样子。 */
     +(ag.activity&&ag.activity.think?'<div class="kv"><span>此刻</span><span>「'+esc(ag.activity.think)+'」</span></div>':'')
