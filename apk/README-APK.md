@@ -1,7 +1,8 @@
 # 云港小事 · APK 壳（Capacitor）—— **已出包**
 
-**最近一次成功打包**：2026-10-04，产物 `out\citylife-debug.apk`（4.43MB，内含游戏 v144；
-装机包另拷一份到 `F:\资料\codex\云港小事\outputs\citylife-debug.apk`）。
+**最近一次成功打包**：2026-10-04，产物 `out\citylife-debug.apk`（4.43MB，内含游戏 v155；
+**versionCode 1155 / versionName v155**——见下方「升级号」；装机包另拷
+`F:\资料\codex\云港小事\outputs\citylife-debug-v155-r2.apk`）。
 包信息（aapt2 实测）：`com.yungang.citylife` · minSdk 24 · target/compileSdk 36 · 名称「云港小事」。
 
 这个目录是**打包用的壳**，不属于游戏仓库（`..\citylife`）——游戏仓库保持干净，
@@ -37,6 +38,7 @@
 ```powershell
 cd F:\资料\codex\云港小事\apk-shell
 node sync-www.cjs
+node set-version.cjs      # 第 191 单：把游戏版本写成 versionCode/versionName（不跑 = 又出 versionCode 1 的包）
 npx cap sync android
 cd android; .\gradlew.bat assembleDebug
 ```
@@ -49,6 +51,10 @@ cd android; .\gradlew.bat assembleDebug
 
 - 壳版本：Capacitor **8.5.2**（npm 实测最新）；安卓模板 compileSdk/targetSdk **36**、minSdk **24**、Gradle **8.14.3**、AGP **8.13.0**（全部实测自官方模板）。
 - `www/` 由 `sync-www.cjs` 从游戏仓库拷：`index.html`（即 `city-life-framework.html`）＋ `assets/`（两张图，0.1MB）。
+- **升级号（第 191 单）**：`versionCode = 1000 + 游戏版本号`（v155 ⇒ **1155**）、`versionName = "vN"`；
+  由 `set-version.cjs` 读 `www/index.html` 自动写进 `android/app/build.gradle`。
+  **每个包必须涨这个号**——v145–v155 全是模板默认 `versionCode 1`，真机"装了新版啥变化都没有"
+  的头号嫌疑就是它（同号安装器可能不当"更新"处理；aapt 拆包实证见第 191 单交付件）。
 - **APK 里不放任何密钥**；壳里 `/relay` 是相对路径 ⇒ 在 App 里指向它自己（连不上）⇒
   **AI 自动走模板兜底**（断网照样完整可玩）。要让 App 用上 AI，需要下一单加
   「AI 中转地址」设置项（把地址指到站点上的 `/relay`）——见 `docs\规划\APK打包方案_v1.md`。
