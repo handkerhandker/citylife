@@ -470,7 +470,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v122</span>
+<span class="num dim" id="set-build">v123</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -6633,6 +6633,56 @@ function streetGlow(t){
   ctx.restore();
 }
 /*STREETGLOW-END*/
+/*FIREWORK-START*/
+/* ---------- 第 148 单·江灯节烟花（夜空的"看得见的高潮"）----------------------------------------
+   调研出处（2026-10-04 复核 HTTP 200）：Nookipedia·Fireworks show——
+     「The fireworks show … is an event held regularly…」「During a fireworks show, fireworks can be seen
+       flying into the sky in the background and **exploding in different colors, lighting up the ground**
+       and the insides of certain buildings.」——同类里"节日夜空要有看得见的高潮"是标配，
+     而"炸开的花色会照亮地面"这条正好对上本作的罩层画法（画在夜色/灯光之上，自发光）。
+   本作的江灯节（第 62 单：D45 19:00–23:00 江边）此前只有播报、日志与灯影——**河上夜空是空的**。
+   本段：纯渲染层（零 rng、零存档字段、不改 SIM），只在 `Sim.inFestival(w)` 为真时画：
+     · 每 2.6 秒一发（`周期`可调），沿江面从固定**点表**（六处轮转）升空；
+     · 前半段画上升的曳光，后半段炸开：14 道光芒 ＋ 白芯闪光 ＋ 地面微光（呼应"lighting up the ground"）；
+     · 颜色/位置全部来自点表（确定性）；`reduceMotion` 开 ⇒ 整段跳过（照雨幕/滑动的同口径）。 */
+const FIREWORK={周期:2600, 起爆:0.22, 点:[
+  [10,25.2,'#ffd98a'],[16,25.8,'#ff9fb2'],[22,25.4,'#9fd0ff'],
+  [28,25.9,'#c9f2b8'],[34,25.2,'#ffd98a'],[40,25.7,'#ffb2e0'],
+]};
+function fireworkPaint(now){
+  const w=state.world;
+  if(state.reduceMotion || !Sim.inFestival(w)) return;
+  const idx=Math.floor(now/FIREWORK.周期), ph=(now-idx*FIREWORK.周期)/FIREWORK.周期;
+  const p=FIREWORK.点[idx%FIREWORK.点.length], cx=sx(p[0]+0.5), cy=sy(p[1]);
+  const s=state.view.s;
+  ctx.save();
+  if(ph<FIREWORK.起爆){                                   // 升空曳光
+    const k=ph/FIREWORK.起爆;
+    ctx.globalAlpha=0.9;
+    ctx.strokeStyle=p[2]; ctx.lineWidth=Math.max(1,s*0.08);
+    ctx.beginPath(); ctx.moveTo(cx,cy+(1-k)*1.6*s); ctx.lineTo(cx,cy+(1-k)*1.6*s-0.5*s); ctx.stroke();
+    ctx.fillStyle='rgba(255,245,220,.9)';
+    ctx.beginPath(); ctx.arc(cx,cy+(1-k)*1.6*s-0.5*s, Math.max(1,s*0.06), 0, Math.PI*2); ctx.fill();
+  }else{                                                  // 炸开
+    const k=(ph-FIREWORK.起爆)/(1-FIREWORK.起爆);
+    const r=(0.4+2.0*k)*s, 衰=1-k;
+    ctx.globalAlpha=Math.max(0,衰*0.55);                  // 地面微光（lighting up the ground）
+    const g=ctx.createRadialGradient(cx,cy,r*0.2,cx,cy,r*1.5);
+    g.addColorStop(0,p[2]); g.addColorStop(1,'rgba(0,0,0,0)');
+    ctx.fillStyle=g; ctx.beginPath(); ctx.arc(cx,cy,r*1.5,0,Math.PI*2); ctx.fill();
+    ctx.globalAlpha=Math.max(0,衰);
+    ctx.strokeStyle=p[2]; ctx.lineWidth=Math.max(1,s*0.07);
+    for(let i=0;i<14;i++){                                // 14 道光芒（两圈错开）
+      const a=i/14*Math.PI*2+idx*0.7, r0=r*0.35, r1=r;
+      ctx.beginPath(); ctx.moveTo(cx+Math.cos(a)*r0, cy+Math.sin(a)*r0);
+      ctx.lineTo(cx+Math.cos(a)*r1, cy+Math.sin(a)*r1); ctx.stroke();
+    }
+    if(k<0.3){ ctx.globalAlpha=(0.3-k)/0.3; ctx.fillStyle='#fff6df';
+      ctx.beginPath(); ctx.arc(cx,cy,r*0.28,0,Math.PI*2); ctx.fill(); }   // 白芯闪光
+  }
+  ctx.restore();
+}
+/*FIREWORK-END*/
 /* 第 85 单·门洞记号：门框柱 ＋ 地垫（**零素材**，只读 ROOMS[].door，一处定义）
    第 142 单·可见度增强：141 单目验巡查在 4× 放大下都几乎认不出记号——柱只有 2.5px 高 4px、
    地垫是与木地板同系的淡黄半透明（木地板上糊、深色地板上也糊）。本单按"同一处定义"加两件：
@@ -6840,6 +6890,7 @@ function draw(now){
   skyPaint(state.cvW,state.cvH,state.world.t);   // 第 33 单：天色罩层——画在最后一层，雨幕也一并跟着染色
   lampPaint(state.world.t);                       // 第 35 单：入夜点灯——画在天色**之上**，灯才亮得起来（否则被夜色吃掉）
   streetGlow(state.world.t);                      // 第 38 单：室外路灯光斑——同样画在天色之上；只画地面，不占格
+  fireworkPaint(now);                             // 第 148 单：江灯节烟花——画在最上层（自发光），只在节日夜
 }
 // 画布：拖动=平移镜头，点按=选中小人
 let drag=null;
