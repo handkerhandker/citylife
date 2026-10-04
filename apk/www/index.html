@@ -520,7 +520,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v166</span>
+<span class="num dim" id="set-build">v167</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -2255,7 +2255,11 @@ function missStep(w){
     ag.missWeek=周号;
     logAct(w,ag,'翻到上次的短信，看了两遍','（这周你一句话都没来。）');
     const 话=missNoteOf(ag, 周号);
-    if(话){
+  /* 第 214 单（批后审计 210–213）：**出声的那句**与请求/留言共用"一天一句"——第 77 单那条额度的
+     本意是"一天最多一句"，但这里原先只写不读（只 set 不 check）。09:00 的居民委托已占掉额度时
+     （`ag.noteDay===今天`），18:00 就不再出声；**心里的独白照旧**（"惦记"是心里的、"留言"才是
+     出声的——照第 74／76 单的分工）。 */
+  if(话 && ag.noteDay!==PURE.dayOf(w.t)){
       ag.noteDay=PURE.dayOf(w.t);      // 第 77 单：与"别的时候也开口"共用"一天最多一句"的额度
       pushLog(w,{type:'player',sms:'note',agent:ag.id,name:ag.name,
         text:'给你留了一句：'+话, thought:''});
