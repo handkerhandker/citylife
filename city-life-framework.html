@@ -466,12 +466,16 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
         <span class="num dim" id="set-llm-stat">0 次 · 待机</span>
       </div>
       <div class="set-row">
+        <span class="lbl">今日额度<small>本地小账，每游戏日零点重置；用尽自动走模板、不再联网（中转站另有限流与熔断）</small></span>
+        <span class="num dim" id="set-llm-quota">— / 60</span>
+      </div>
+      <div class="set-row">
         <span class="lbl">通道</span>
         <span class="num dim" id="set-llm-channel">未连接</span>
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v142</span>
+<span class="num dim" id="set-build">v143</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -3995,6 +3999,14 @@ const bootMiles=(()=>{
   return { sms:n(m.sms), replies:n(m.replies), notes:n(m.notes), bdays:n(m.bdays),
            countedLid:(isFinite(m.countedLid)&&m.countedLid>=0)?Math.floor(m.countedLid):(bootWorld?bootWorld.lidSeq:0) };
 })();
+/* 第 177 单·AI 成本闸的本地小账（《AI 通道与成本闸方案 v1》阶段一）：{day, used}。
+   走**存档信封**（与 phSeenBy／miles 同一处），不进世界状态——世界指纹与 SIM 块 md5 都不受影响；
+   旧档没有这一项 ⇒ 从零起算。校验一律归一（非有限／负数就地丢弃），绝不因小账畸形拒载存档。 */
+const bootAiGate=(()=>{
+  const a=(bootMeta && bootMeta.ai && typeof bootMeta.ai==='object') ? bootMeta.ai : {};
+  return { day:(isFinite(a.day)&&a.day>=0)?Math.floor(a.day):-1,
+           used:(isFinite(a.used)&&a.used>0)?Math.floor(a.used):0 };
+})();
 const state={
   world:bootWorld||Sim.makeWorld(bootSeed),
   selected:(bootMeta && bootWorld && bootWorld.agents.some(a=>a&&a.id===bootMeta.selected))?bootMeta.selected:'a1',
@@ -4003,12 +4015,13 @@ const state={
   phSeen:(bootMeta && isFinite(bootMeta.phSeen))?(bootMeta.phSeen|0):0,
   phSeenBy:bootPhSeenBy,   // 第 129 单·分人水位（短信页每个人的小角标各读各的）
   miles:bootMiles,         // 第 131 单·云港手账（玩家侧里程碑的小账）
+  aiGate:bootAiGate,       // 第 177 单·AI 成本闸的本地小账（今日已用几次；随存档信封走）
   screen:'live',
   soundOn:true,            // 第 124 单·提示音（默认开；与"减少动效"同口径：只活在本次会话里）
   ambienceOn:false,        // 第 136 单·环境音（雨声）（默认关——持续音更需用户自己点头；同样只活本次会话）
   forcedLayout:'auto',
   logStick:true,
-  llm:{on:true, calls:0, pending:0, status:'待机', lastErr:'', warned:false, channel:''},
+  llm:{on:true, calls:0, pending:0, status:'待机', lastErr:'', warned:false, channel:'', quotaStop:false},   // 第 177 单·quotaStop＝这一次失败是"本地额度用尽"而非"连线失败"
   lastReflectDay:bootWorld
     ? ((bootMeta && isFinite(bootMeta.lastReflectDay)) ? bootMeta.lastReflectDay
        : (PURE.minuteOfDay(bootWorld.t)>=Sim.REFLECT_MIN ? PURE.dayOf(bootWorld.t) : PURE.dayOf(bootWorld.t)-1))
@@ -4940,7 +4953,9 @@ function refreshSaveLine(){
 }
 let saveHold=false;   // 导入/重开已定稿到 reload 之间，封锁自动写档，防止 pagehide 把旧世界覆盖回去
 function saveMeta(){ return {selected:state.selected, lastReflectDay:state.lastReflectDay,
-  phSeen:(state.phSeen|0), phSeenBy:Object.assign({},state.phSeenBy), miles:Object.assign({},state.miles), at:Date.now()}; }   // 第 80／129／131 单：总水位、分人水位与手账小账随存档信封走
+  phSeen:(state.phSeen|0), phSeenBy:Object.assign({},state.phSeenBy), miles:Object.assign({},state.miles),
+  ai:{day:(state.aiGate&&isFinite(state.aiGate.day))?(state.aiGate.day|0):-1, used:(state.aiGate&&isFinite(state.aiGate.used))?(state.aiGate.used|0):0},
+  at:Date.now()}; }   // 第 80／129／131／177 单：总水位、分人水位、手账小账与 AI 额度小账随存档信封走
 function saveNow(){
   if(saveHold || saveMode!=='normal') return false;
   const meta=saveMeta();
@@ -5305,8 +5320,32 @@ function syncLLMStat(){
   const L=state.llm;
   const detail=L.calls+' 次 · '+L.status+(L.lastErr?('：'+L.lastErr):'')+(L.pending?'（'+L.pending+' 进行中）':'');
   const el=$('#set-llm-stat'); if(el) el.textContent=detail;
+  const q=$('#set-llm-quota'); if(q) q.textContent=aiGateLeft()+' / '+((isFinite(AI_GATE.daily)&&AI_GATE.daily>0)?Math.floor(AI_GATE.daily):0)+' 次';
   const chip=$('#ph-llm'); if(chip) chip.textContent='AI '+(L.on?L.status:'已关');
   const ch=$('#set-llm-channel'); if(ch) ch.textContent=L.channel==='claude'?'Claude 直连':(L.channel==='relay'?'中转站（DeepSeek）':'未连接');
+}
+/* 第 177 单·AI 成本闸（客户端一档）——《AI 通道与成本闸方案 v1》阶段一落地：
+   每天最多 AI_GATE.daily 次请求；用尽即**不发请求**、直接走模板兜底（零成本、零等待）。
+   为什么：AI 是花钱的——一个跑飞的循环或反复重试能在没人看的时候把额度烧掉。
+   与服务端（functions/relay.js：通行证／限流／缓存／预算熔断／台账）是**两道独立的闸**：
+   这道管"这台机器别把自己刷爆"，那道管"谁也别把服务器刷爆"。
+   计数走**存档信封**（刷新／重开不清零，防"刷新即绕过"）；按游戏日重置（与短信额度同一个零点）。
+   定标：本机 5 分钟浸泡（第 177 单）实测 D1→D18 共 258 次 ⇒ ≈15 次/日（含重试；自然量口径见交付件），
+   取 60 ⇒ 约 4 倍余量。改这个数只影响"什么时候回退模板"，对世界零影响（一帧都不走 SIM）。 */
+const AI_GATE={daily:60};   // 可调：每天最多请求次数
+function aiGateDay(){ return PURE.dayOf(state.world.t); }
+function aiGateCap(){ return (isFinite(AI_GATE.daily)&&AI_GATE.daily>0)?Math.floor(AI_GATE.daily):0; }
+function aiGateLeft(){
+  const g=state.aiGate, d=aiGateDay();
+  const used=(g && g.day===d && isFinite(g.used)) ? Math.max(0,Math.floor(g.used)) : 0;
+  return Math.max(0, aiGateCap()-used);
+}
+function aiGateSpend(){
+  const d=aiGateDay();
+  if(!state.aiGate || typeof state.aiGate!=='object' || state.aiGate.day!==d) state.aiGate={day:d, used:0};
+  if(state.aiGate.used>=aiGateCap()) return false;
+  state.aiGate.used++;
+  return true;
 }
 const AI_TIMEOUT={direct:4000, relay:15000, batch:30000}; // 毫秒，可调：直连/中转单条/打包（日记等多人一车）死线
 const llmQueue=[]; let llmActive=0, llmSkipDirect=false;  // llmSkipDirect：本局直连首败后跳级记仇（会话级，不入存档）
@@ -5333,7 +5372,8 @@ async function callClaude(prompt, prio, batch){
   }
   if(!j && !state.llm.warned){
     state.llm.warned=true;
-    logSys(state.world,'⚠ AI 连线失败（'+(state.llm.lastErr||state.llm.status)+'），文案暂回退模板。详情见 设置·AI。');
+    if(state.llm.quotaStop) logSys(state.world,'今日 AI 额度已用尽，文案改走模板（每游戏日零点重置；用量见 设置·AI）。');
+    else logSys(state.world,'⚠ AI 连线失败（'+(state.llm.lastErr||state.llm.status)+'），文案暂回退模板。详情见 设置·AI。');
   }
   return j;
 }
@@ -5367,6 +5407,12 @@ async function rawCallClaude(prompt, batch){
   // 结构上本就到不了（补算整块同步、无 await），万一日后有人把补算挪进异步路径，这里当场记账并落空。
   if(catchupActive){ catchupAiHits++; return null; }
   const L=state.llm;
+  /* 第 177 单·成本闸（唯一入口）：额度用尽 ⇒ 一次请求都不发，直接落模板兜底。 */
+  if(!aiGateSpend()){
+    L.quotaStop=true; L.status='今日额度用尽，走模板'; L.lastErr='本地额度用尽'; syncLLMStat();
+    return null;
+  }
+  L.quotaStop=false;
   L.calls++; L.pending++; L.status='思考中'; syncLLMStat();
   let j=null, hardFail=false;
   try{
