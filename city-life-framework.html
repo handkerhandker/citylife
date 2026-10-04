@@ -513,7 +513,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v157</span>
+<span class="num dim" id="set-build">v158</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -6052,7 +6052,14 @@ function 设备三样(){
   }
   let vv='—';
   try{ if(window.visualViewport) vv=Math.round(visualViewport.width)+'×'+Math.round(visualViewport.height)+'@'+visualViewport.scale.toFixed(2); }catch(e){}
-  return '设备 内存 '+内存+' · GPU '+诊断GPU+' · 视口(vv) '+vv;
+  /* 第 202 单·内核版本：186 单引的官方口径是"安卓 WebView < 140 时 env(safe-area-inset-*) 拿不到值"——
+     把 UA 里的内核主版本打出来，真机截图一眼能判"是不是这道坎"（取不到就打 —）。 */
+  let 核='—';
+  try{
+    const m=/Chrome\/(\d+)/.exec(String(navigator.userAgent||''))||/Version\/(\d+)/.exec(String(navigator.userAgent||''));
+    if(m) 核='WebView '+m[1];
+  }catch(e){}
+  return '设备 内存 '+内存+' · GPU '+诊断GPU+' · 内核 '+核+' · 视口(vv) '+vv;
 }
 [80,500,1500,3500,7000].forEach(t=>setTimeout(拉壳安全区,t));
 addEventListener('resize',拉壳安全区);
