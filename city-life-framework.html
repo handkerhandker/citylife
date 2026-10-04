@@ -504,7 +504,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v150</span>
+<span class="num dim" id="set-build">v151</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -5181,16 +5181,31 @@ if(saveMode==='normal'){                                  // 试玩档（ephemer
      ② storage 事件：另一个页写存档键（每 15 秒必然发生）⇒ 立刻提示，不等计时器凑巧对上。
    显示规则：提示可点掉；点掉后只要那个页还活着就不再弹（它走了/过期后重新武装）；另一个页不再活着 ⇒ 自动收起。 */
 const TAB_KEY='citylife-tab-heartbeat', TAB_BEAT_MS=4000, TAB_FRESH_MS=10000;
-const 本页id=String(Date.now())+'-'+String(Math.floor(performance.now()));
-let 多开闭过=false;
-function 多开心跳(){ try{ localStorage.setItem(TAB_KEY, JSON.stringify({id:本页id, at:Date.now()})); }catch(_){} }
-function 多开别页活着(){
+/* 第 185 单·"刷新误报双开"的根因：页标识原先每次加载都新生成一个（`Date.now`+`performance.now`），
+   于是**刷新一次就换了个人**——上一拍那条心跳还在 10 秒保鲜期内、id 又对不上，被当成"另一个标签页"，
+   冤枉提示（真机/本机都复现：刷新必弹）。治法：标识改存 **sessionStorage**（同一标签页刷新后不变、
+   新开的标签页各起一个）；复制标签页会把 sessionStorage 一起抄走（同 id）⇒ 再用
+   "心跳比我上次自己写的还新"补一刀，复制出来的那一个照样报。 */
+const 本页id=(()=>{
   try{
-    const s=localStorage.getItem(TAB_KEY);
-    if(!s) return false;
-    const o=JSON.parse(s);
-    return !!(o && typeof o.id==='string' && o.id!==本页id && isFinite(o.at) && (Date.now()-o.at)<TAB_FRESH_MS);
-  }catch(_){ return false; }
+    let v=sessionStorage.getItem('citylife-tab-id');
+    if(!v){ v=String(Date.now())+'-'+String(Math.floor(performance.now())); sessionStorage.setItem('citylife-tab-id', v); }
+    return v;
+  }catch(_){ return String(Date.now())+'-'+String(Math.floor(performance.now())); }
+})();
+const 本页开钟=Date.now();                   // 第 185 单：本页开始跑的时刻（用来撇掉"刷新时旧页的收尾存档"）
+let 多开闭过=false, 自己上次写=Date.now();   // 记账用（心跳落盘时刻）
+function 多开心跳(){ 自己上次写=Date.now(); try{ localStorage.setItem(TAB_KEY, JSON.stringify({id:本页id, at:自己上次写})); }catch(_){} }
+function 心跳算别页(o){
+  if(!o || !isFinite(o.at) || (Date.now()-o.at)>=TAB_FRESH_MS) return false;
+  /* 只认"不同的页标识"＝真的另开了一个标签页。**同 id 一律不算**：
+     刷新时旧页面走完最后两拍才消失，那条心跳会带着同一个 id 落盘——按"比我新"去判，
+     就会把刷新冤枉成双开（第 185 单实测：刷新必弹一次、约 6 秒后自己收起）。
+     复制标签页那种"同 id"的漏网之鱼由**存档键**那条兜底：它一存（每 15 秒一次）就报。 */
+  return o.id!==本页id;
+}
+function 多开别页活着(){
+  try{ return 心跳算别页(JSON.parse(localStorage.getItem(TAB_KEY)||'null')); }catch(_){ return false; }
 }
 function 多开提示(show){
   const el=document.getElementById('multi-hint');
@@ -5217,9 +5232,14 @@ if(saveMode==='normal'){
       if(!e || !e.key) return;
       if(e.key===TAB_KEY && e.newValue){
         const o=JSON.parse(e.newValue);
-        if(o && typeof o.id==='string' && o.id!==本页id && !多开闭过) 多开提示(true);
+        if(心跳算别页(o) && !多开闭过) 多开提示(true);   // 第 185 单：同一判据（含"复制标签页"那一刀）
       } else if(e.key===SAVE_KEY && !多开闭过){
-        多开提示(true);   // 别的页刚存过档 ⇒ 就是互相覆盖的现场
+        /* 第 185 单：别的页刚存过档 ⇒ 就是互相覆盖的现场。但**刷新时旧页面也会在收尾存一笔**
+           （storage 事件照发）——只认"本页开钟之后"由别页写下的那笔存档，
+           否则第二次刷新必弹一次冤枉提示（实测）。 */
+        let 别页存=0;
+        try{ const m=JSON.parse(e.newValue||'null'); 别页存=(m&&m.meta&&isFinite(m.meta.at))?m.meta.at:0; }catch(_){ 别页存=0; }
+        if(!别页存 || 别页存>本页开钟+200) 多开提示(true);
       }
     }catch(_){}
   });

@@ -145,6 +145,25 @@ if (!支持提示) {
   let 收 = false;
   for (let i = 0; i < 20; i++) { await P1.waitForTimeout(1000); if ((await 有无提示(P1)) === false) { 收 = true; break; } }
   判('B⑧ 关掉第二页后：第一页提示 ≤20 秒自动收起', 收, { 收起: 收 });
+  /* 第 185 单·把最坏样本补进门禁：**刷新**不是双开。
+     病根（本单实测）：页标识原先每次加载都新生成 ⇒ 刷新后旧心跳被当成"另一页"，
+     连带旧页收尾那笔存档也会触发"存档键"提示——刷新必弹一次冤枉提示。
+     治法：标识改存 sessionStorage（同标签页刷新不变）＋存档提示只认"本页开钟之后"的笔。 */
+  await P1.reload({ waitUntil: 'load' });
+  let 刷新误报 = false;
+  for (let i = 0; i < 12; i++) { await P1.waitForTimeout(1000); if (await 有无提示(P1)) { 刷新误报 = true; break; } }
+  判('B⑨ 刷新不误报：同一页刷新后 12 秒内不得出现 #multi-hint', !刷新误报, { 刷新误报 });
+  /* 复制标签页会把 sessionStorage 一起抄过去（同 id）——心跳那条认不出它，
+     由"存档键"那条兜底：它一存（每 15 秒一次）就该报。 */
+  const 同id = await P1.evaluate(() => { try { return sessionStorage.getItem('citylife-tab-id') || ''; } catch (_) { return ''; } });
+  const P3 = await ctx2.newPage();
+  P3.on('pageerror', e => 错.push('P3: ' + ((e && e.message) || e)));
+  await P3.addInitScript(id => { try { sessionStorage.setItem('citylife-tab-id', id); } catch (_) {} }, 同id);
+  await P3.goto(URL_, { waitUntil: 'load' });
+  let 复制报 = false;
+  for (let i = 0; i < 25; i++) { await P3.waitForTimeout(1000); if (await 有无提示(P3)) { 复制报 = true; break; } }
+  判('B⑩ 复制标签页（同 id）也要报：靠"存档键"那条兜底 ≤25 秒', 复制报, { 同id: !!同id, 复制报 });
+  await P3.close();
   await ctx2.close(); await browser2.close();
 }
 
