@@ -520,7 +520,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v161</span>
+<span class="num dim" id="set-build">v162</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -537,7 +537,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <h2 class="sec">视口调试</h2>
       <div class="set-row">
-        <span class="lbl">全屏方式<small>装进手机 App 才有区别：铺满＝内容铺到系统栏下面（默认）；沉浸＝请求把系统栏藏起来（卓易通里宿主那条状态栏藏不掉——留给别家设备）。顶部渐隐层已去掉：顶栏底色顶到屏幕最上沿；横屏左右也不再避让摄像头，侧栏贴左边缘。</small></span>
+    <span class="lbl">全屏方式<small>装进手机 App 才有区别：铺满＝内容铺到系统栏下面（默认）；沉浸＝请求把系统栏藏起来（卓易通里宿主那条状态栏藏不掉——留给别家设备）。顶部渐隐层已去掉：顶栏底色顶到屏幕最上沿，顶部也不再留白（UI 贴顶）；横屏左右也不再避让摄像头，侧栏贴左边缘；竖屏画布按纵向铺满（不再上下留空带）。</small></span>
         <span class="row" style="gap:.4rem">
           <button class="btn small" id="set-fs-edge" data-fx>铺满</button>
           <button class="btn small" id="set-fs-immersive" data-fx>沉浸</button>
@@ -6016,8 +6016,15 @@ function resizeCanvas(){
      镜头跟随/手动平移照旧，纵向裁掉的部分跟人走。 */
   const 比地图宽 = (box.width / Math.max(1, box.height)) >= (Sim.MAPW / Sim.MAPH);
   const 铺宽 = 比地图宽 ? (box.width / Sim.MAPW) : fit;
+  /* 第 208 单·手机竖屏也"铺满"：决策者真机反馈"横竖屏顶上还有一条空白，画面和元素没顶到顶部"——
+     根因是竖屏画布比地图高，旧的"整幅能看清"把地图纵向居中，上下各留一条画布底色。
+     本单按**纵向铺满**取缩放（`h/MAPH`，第 186 单"铺宽"的镜像）⇒ 竖屏不再留上下空带；
+     镜头跟随/手动平移照旧。只对 compact-portrait 生效——横屏（早就铺满）、平板与桌面
+     保持"看全城"原样。 */
+  const 手机竖屏 = app.dataset.layout === 'compact-portrait';
+  const 铺高 = 手机竖屏 ? (box.height / Sim.MAPH) : fit;
   // 地图整幅能看清就整幅显示；否则放大到可读的最小瓦片尺寸，镜头改为跟随+平移
-  state.view.s=Math.max(fit, 铺宽, Math.min(13, box.width/14, box.height/10));
+  state.view.s=Math.max(fit, 铺宽, 铺高, Math.min(13, box.width/14, box.height/10));
 }
 new ResizeObserver(resizeCanvas).observe($('#live-wrap'));
 
