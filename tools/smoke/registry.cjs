@@ -41,6 +41,7 @@ const 清单 = [
   { 路径: 'tools/keyboard-audit/probe.mjs',   档: 2, 参数: ['{OUT}/keyboard-audit'],    超时: 180000, 备注: '键盘导航（首键出环/移焦点/Enter 激活页签/QE 切页/Esc 两级返回/输入框不劫持方向键）' },
   { 路径: 'tools/gamepad-audit/probe.mjs',    档: 2, 参数: ['{OUT}/gamepad-audit'],     超时: 180000, 备注: '手柄（假手柄注入：十字键/左摇杆/Ⓐ 确认/Ⓑ 返回/LB·RB 切页/长按连发）' },
   { 路径: 'tools/firework-audit/probe.mjs',   档: 2, 参数: ['{OUT}/firework'],          超时: 180000, 备注: '江灯节烟花（江面带帧间差分：节日夜大差帧数 ≥4／其余三档 ≤1；--改前 判红对照）' },
+  { 路径: 'tools/bubble-audit/probe.mjs',     档: 2, 参数: ['{OUT}/bubble-audit'],      超时: 180000, 备注: '气泡顶边稳定性（rAF 逐帧：行数切换时逐帧 |Δtop|≤5px、切换≥1 次；--改前 判红）' },
   { 路径: 'tools/gift-audit/probe.cjs',       档: 1, 参数: [],                        超时: 90000, 备注: '欠人情排队（与上一版并排跑生日那两周）' },
   { 路径: 'tools/offline-catchup/probe.cjs',  档: 1, 参数: [],    超时: 90000, 备注: '离线补算取证' },
   { 路径: 'tools/offline-catchup/pushprobe.cjs', 档: 1, 参数: [], 超时: 90000, 备注: '回城推送判据取证' },

@@ -470,7 +470,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v123</span>
+<span class="num dim" id="set-build">v124</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -5999,6 +5999,10 @@ const BUBBLE={ size:10, font:'system-ui,sans-serif', padX:6, padY:4, gap:6, maxC
                fill:'rgba(14,17,26,.88)', ink:'#ece5d0', edge:'rgba(236,229,208,.35)',
                /* 第 100 单·气泡二期：第二行（独白）的上限与行距、以及暗一档的墨色 */
                thinkChars:20, lineGap:2, ink2:'rgba(236,229,208,.72)' };
+/* 第 150 单·气泡盒高的**显示值**：行数 1↔2 切换时目标高瞬变 12px，旧写法顶边一帧瞬跳
+   （实测 11.6–12.9px/帧、64 秒 8 次）。这里让显示高按 ~6/s 指数逼近目标——每帧位移 ≈1.2px，
+   顶边平滑生长/收缩；`reduceMotion` 时直置（照全站口径）。稳态时与旧写法逐像素相同（见下）。 */
+let 气泡显高=null;
 // 文本：只认 activity.label；超长截断。纯函数——门禁直接喂畸形输入（null／数字／超长）测它。
 function bubbleText(ag){
   const raw=(ag && ag.activity && typeof ag.activity.label==='string') ? ag.activity.label.trim() : '';
@@ -6026,7 +6030,15 @@ function sayBubble(x, yBottom, ag){
   let w=0; for(const t of 行) w=Math.max(w, ctx.measureText(t).width);
   w+=BUBBLE.padX*2;
   const h=行.length*BUBBLE.size+(行.length-1)*BUBBLE.lineGap+BUBBLE.padY*2;
-  const top=yBottom-BUBBLE.gap-h, l=x-w/2, r=x+w/2, rr=4, bot=top+h;
+  /* 第 150 单：显示高缓动（目标高 h 不变；防行数切换时顶边瞬跳）——稳态时 h画===h，逐像素同旧写法 */
+  if(气泡显高===null || state.reduceMotion || !isFinite(气泡显高)) 气泡显高=h;
+  else{
+    const k=Math.min(1, dtFrame*6);
+    气泡显高+=(h-气泡显高)*k;
+    if(Math.abs(h-气泡显高)<0.4) 气泡显高=h;
+  }
+  const h画=气泡显高;
+  const top=yBottom-BUBBLE.gap-气泡显高, l=x-w/2, r=x+w/2, rr=4, bot=top+气泡显高;
   ctx.beginPath();
   ctx.moveTo(l+rr,top);
   ctx.lineTo(r-rr,top); ctx.quadraticCurveTo(r,top,r,top+rr);
@@ -6038,9 +6050,17 @@ function sayBubble(x, yBottom, ag){
   ctx.fillStyle=BUBBLE.fill; ctx.fill();
   ctx.strokeStyle=BUBBLE.edge; ctx.lineWidth=1; ctx.stroke();
   ctx.textAlign='center'; ctx.textBaseline='middle';
+  /* 文字贴盒子底部排（缓动中主行平滑上移、第二行按盒高进度渐显）；稳态时与旧式等价：
+     文字顶 = bot − padY − 文字块 = top + padY（旧式）——构造保证。 */
+  const 两行=行.length===2;
+  const 进度=两行? Math.max(0, Math.min(1, (气泡显高-2*BUBBLE.padY-BUBBLE.size)/(BUBBLE.size+BUBBLE.lineGap))):1;
+  const 文字块=BUBBLE.size + (两行? 进度*(BUBBLE.size+BUBBLE.lineGap) : 0);
+  const 文字顶=bot-BUBBLE.padY-文字块;
   for(let i=0;i<行.length;i++){
     ctx.fillStyle=(i===0)?BUBBLE.ink:BUBBLE.ink2;
-    ctx.fillText(行[i], x, top+BUBBLE.padY+BUBBLE.size/2+i*(BUBBLE.size+BUBBLE.lineGap));
+    if(i===1 && 进度<1){ ctx.save(); ctx.globalAlpha=进度; }
+    ctx.fillText(行[i], x, 文字顶+BUBBLE.size/2+i*(BUBBLE.size+BUBBLE.lineGap));
+    if(i===1 && 进度<1){ ctx.restore(); }
   }
   labelBlockBoxes.push({l, r, t:top, b:bot+BUBBLE.tail});   // 第 42 单：房间名给人物让位
   return top;
