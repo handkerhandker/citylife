@@ -55,6 +55,10 @@ await page.evaluate(() => {
   const s = document.documentElement.style;
   s.setProperty('--sa-t', '11px'); s.setProperty('--sa-b', '8px');
   s.setProperty('--sa-l', '3px'); s.setProperty('--sa-r', '0px');
+  /* 第 189 单：再模拟一层**平台原始值**（Capacitor SystemBars 注入的 `--safe-area-inset-*`），
+     浮层现在两套并排打——真机截图能区分"平台没给值、壳兜的底"与"平台给了别的值"。 */
+  s.setProperty('--safe-area-inset-top', '11px'); s.setProperty('--safe-area-inset-bottom', '8px');
+  s.setProperty('--safe-area-inset-left', '3px'); s.setProperty('--safe-area-inset-right', '0px');
 });
 
 let 红 = 0;
@@ -76,9 +80,12 @@ const 真屏 = await page.evaluate(() => window.__pv.state.screen);
 const 齐 = 开.on && 开.display !== 'none'
   && /视口 \d+×\d+ · dpr [\d.]+/.test(开.文)
   && /安全区 t11px b8px l3px r0px/.test(开.文)
+  && /平台 t11px b8px l3px r0px/.test(开.文)                       // 第 189 单：平台原始值并排
+  && /画布 \d+×\d+（buf \d+×\d+） · 地图 \d+×\d+ @ -?\d+,-?\d+ · 边带 t\d+ b\d+ l\d+ r\d+/.test(开.文)  // 第 189 单：画布/地图/边带
   && 开.文.indexOf('屏 ' + 真屏) >= 0          // 与当前屏一致（点开关时人在设置页，就应显示 settings）
   && /帧 \d+ fps · p95 [\d.]+ms/.test(开.文);
-判('② 点开 ⇒ 显示且四行读数齐（视口/密度·安全区四值·当前屏·帧率p95）', 齐, { 文: 开.文, 真屏 });
+判('② 点开 ⇒ 显示且五行读数齐（视口/密度·安全区四值＋平台原始值·画布/地图/边带·当前屏·帧率p95）', 齐, { 文: 开.文, 真屏 });
+await page.screenshot({ path: path.join(OUT, '诊断浮层-开.png') }).catch(() => {});   // 带浮层的样张（交付件引用）
 
 const 穿透 = await page.evaluate(() => {
   const el = document.getElementById('dbg');

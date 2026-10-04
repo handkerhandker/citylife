@@ -513,7 +513,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v153</span>
+<span class="num dim" id="set-build">v154</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -538,7 +538,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row"><span class="lbl">实时读数</span><span class="num dim" id="set-viewport">—</span></div>
       <div class="set-row">
-        <span class="lbl">诊断浮层<small>打在左上角：视口／密度／布局档／壳推下来的安全区／当前屏／帧率。截图就能当证据（鸿蒙上没有 adb）；只读、不拦触摸。</small></span>
+        <span class="lbl">诊断浮层<small>打在左上角：视口／密度／布局档／安全区（页面用的＋平台原始值）／画布与地图边带／当前屏／帧率。截图就能当证据（鸿蒙上没有 adb）；只读、不拦触摸。</small></span>
         <button class="btn small" id="set-dbg" data-fx>关</button>
       </div>
       <p class="faint" style="font-size:.72rem;margin:var(--sp4) 0 0">美术素材：Modern Interiors / Modern Exteriors by LimeZu（limezu.itch.io）</p>
@@ -7650,10 +7650,26 @@ function 诊断画(){
   const 均=有效.length? (有效.reduce((a,b)=>a+b,0)/有效.length):0;
   const p95=有效.length? 有效[Math.min(有效.length-1,Math.floor(有效.length*0.95))]:0;
   const 速=(((state.world||{}).speed===0)?'暂停':(((state.world||{}).speed||1)+'×'));
+  /* 第 189 单·诊断浮层补全（真机"画面没铺满"那条反馈的取证面）：
+     ① 平台**原始**安全区（`--safe-area-inset-*`，Capacitor SystemBars 注入的）——与页面实际
+        用的 `--sa-*` 并排，截图可区分"平台没给值、壳兜的底"还是"平台给了别的值"；
+     ② 画布尺寸（CSS ＋ 绘制缓冲）；
+     ③ 地图在画布里的落点与四边**边带**——"上/下/左/右各留多宽"一眼可读，
+        哪一侧有深色带、多宽，截图即证据。全部只读，零世界写入。 */
+  const 值=k=>{const s=cs.getPropertyValue(k).trim(); return s||'—';};
+  const vv=(state.view||{s:0,ox:0,oy:0});
+  const mw=Sim.MAPW*(vv.s||0), mh=Sim.MAPH*(vv.s||0);
+  const cw=state.cvW||innerWidth, ch=state.cvH||innerHeight;
+  const 带=a=>Math.max(0,Math.round(a));
   el.textContent='视口 '+innerWidth+'×'+innerHeight+' · dpr '+(devicePixelRatio||1).toFixed(2)
     +' · '+((document.getElementById('app')||{}).dataset||{}).layout
     +'\n安全区 t'+cs.getPropertyValue('--sa-t').trim()+' b'+cs.getPropertyValue('--sa-b').trim()
     +' l'+cs.getPropertyValue('--sa-l').trim()+' r'+cs.getPropertyValue('--sa-r').trim()
+    +'（平台 t'+值('--safe-area-inset-top')+' b'+值('--safe-area-inset-bottom')
+    +' l'+值('--safe-area-inset-left')+' r'+值('--safe-area-inset-right')+'）'
+    +'\n画布 '+Math.round(cw)+'×'+Math.round(ch)+'（buf '+cv.width+'×'+cv.height+'）'
+    +' · 地图 '+Math.round(mw)+'×'+Math.round(mh)+' @ '+Math.round(vv.ox)+','+Math.round(vv.oy)
+    +' · 边带 t'+带(vv.oy)+' b'+带(ch-(vv.oy+mh))+' l'+带(vv.ox)+' r'+带(cw-(vv.ox+mw))
     +'\n屏 '+state.screen+(($('#dialog-root')&&$('#dialog-root').classList.contains('open'))?' · 弹窗开':'')
     +'\n帧 '+(均?Math.round(1000/均):0)+' fps · p95 '+p95.toFixed(1)+'ms · 缩放 '+state.view.s.toFixed(1)+' · 速度 '+速;
 }
