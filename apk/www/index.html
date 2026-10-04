@@ -520,7 +520,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v167</span>
+<span class="num dim" id="set-build">v168</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -2364,6 +2364,8 @@ function reqStep(w){
       if(!q.ok) continue;                       // 没回 ⇒ 什么都不发生（不夺走）
       const 句=REQ_DONE[ag.workKind]||REQ_DONE.work;
       logAct(w,ag,句[0],句[1]);
+      /* 第 215 单·委托办完也进剪辑：落下事件锚（照第 73／211 单先例），摘原文引的就是那条 */
+      ag.lastReq={t:w.t, tx:句[0]};
       谢礼(ag, w);                              // 你在他心里 +1（只加不减；每天至多一件由触发保证）
     }
   }
@@ -3368,6 +3370,7 @@ const CLIP_W={
   bday_cake:2.6,                                  // 第 64 单·生日蛋糕（甲级：一年一次的个人日，与江灯节同档——"值得当天的卡"）
   talk_go:1.0,                                    // 第 73 单·去了一趟夜谈角（乙级弱信号，与夜市 `mkt_go` 同档）
   cat_go:1.0,                                     // 第 211 单·蹲下来看了一会儿猫（乙级弱信号，与 `talk_go` 同档）
+  req_done:1.0,                                   // 第 215 单·你应下的那件小事他办完了（乙级弱信号，同档）
   report:1.2,                                     // 第 180 单·把采访写成了署名报道（乙级上档：与 `gift` 同档——一件"做完的事"）
   gift:1.2,                                       // 第 81 单·给寿星带了点东西（乙级上档：它是"两个人之间的事"）
   bday_co:1.4,                                    // 第 110 单·生日坐下来陪一会儿（乙级上档：比"带了东西"再深一层——"人在"）
@@ -3381,7 +3384,7 @@ const CLIP_W={
   hunger_nomeal:2.6, hunger_peak:2.0, hunger_high:1.5, worn_out:2.2, worn_low:1.6,
   freq:0.2,
 };
-const CLIP_TIER={sit_flat:'b', sit_none:'b', money_debt:'b', freq:'c', mkt_go:'b', talk_go:'b', cat_go:'b', report:'b', gift:'b',
+const CLIP_TIER={sit_flat:'b', sit_none:'b', money_debt:'b', freq:'c', mkt_go:'b', talk_go:'b', cat_go:'b', req_done:'b', report:'b', gift:'b',
                  bday_co:'b', rel_cold:'b'};   // 第 88 单·冷线归乙级（第 110 单·陪坐同归乙级）；未列者一律甲级（rel_up 走甲级）
 // 日志正文 → 类目。取的是 decide() 实际写出的字串（harness 有覆盖率断言：30 天里
 // 每条 act 条目都必须归到某一类，谁改了 logText 那条断言即红）。
@@ -3423,6 +3426,7 @@ const CLIP_QCAT={sit:'work', money:'money', social:'chat', sleep:'sleep', wake:'
                  bday_co:'bday',  // 第 110 单：陪坐那句也归 bday ⇒ 摘原文就引"陪着…"那条
                  talk_go:'talk',  // 第 73 单：夜谈那条日志单开一类 ⇒ 摘原文就引它
                  cat:'cat',       // 第 211 单·猫事（`clipHead('cat_go')＝'cat'`——见上面 clipHead 口径；主路仍是 tx 落笔抄录）
+                 req:'req',       // 第 215 单·委托办完（`clipHead('req_done')＝'req'`——同款有效键口径）
                  report:'work',   // 第 180 单：报道那条日志归 work 类（兜底用；正路是 `tx` 落笔抄录）
                  gift:'gift',     // 第 81 单：礼物那两句单开一类 ⇒ 摘原文引"带了…"那句
                  rel_up:'rel', rel_cold:'rel',   // 第 88 单：关系两句同归一"关系"类 ⇒ 摘原文引那条日志
@@ -3602,6 +3606,11 @@ function clipSample(w,sh){
       r.catT=lcat.t; r.catName=(typeof lcat.名==='string')?lcat.名:'';
       r.catTx0=(typeof lcat.tx==='string')?lcat.tx:'';
     }
+    // 第 215 单·居民委托办完了：同一套事件通道（`req.done` 已保证全城每天至多一件）
+    const lreq=ag.lastReq;
+    if(lreq && typeof lreq==='object' && isFinite(lreq.t) && lreq.t>=t0 && lreq.t<t1 && r.reqT!==lreq.t){
+      r.reqT=lreq.t; r.reqTx0=(typeof lreq.tx==='string')?lreq.tx:'';
+    }
   }
 }
 
@@ -3628,6 +3637,7 @@ function clipMake(w,sh,ent,ag,sum,base){
   if(r.bdayT) push('bday_cake',{spent:r.bdaySpent, tx:r.bdayTx0},r.bdayT);   // 第 64 单·生日蛋糕（每人每年至多一条；落笔抄录）
   if(r.talkT) push('talk_go',{topic:r.talkTopic, tx:r.talkTx0},r.talkT);     // 第 73 单·夜谈（每人每周至多一条；落笔抄录）
   if(r.catT) push('cat_go',{cat:r.catName, tx:r.catTx0},r.catT);             // 第 211 单·云港的猫（全城每天至多一条；落笔抄录）
+  if(r.reqT) push('req_done',{tx:r.reqTx0},r.reqT);                          // 第 215 单·委托办完（全城每天至多一件；落笔抄录）
   if(r.repT) push('report',{topic:r.repTopic, tx:r.repTx0},r.repT);         // 第 180 单·署名报道（每个采访日至多一条；落笔抄录）
   if(r.giftT) push('gift',{to:r.giftTo, tx:r.giftTx0},r.giftT);              // 第 81 单·生日礼物（每人每年至多一条；落笔抄录）
   if(r.bdayCoT) push('bday_co',{to:r.bdayCoTo, tx:r.bdayCoTx0},r.bdayCoT);   // 第 110 单·生日有人陪（一对人一年至多一条；落笔抄录）
@@ -3706,6 +3716,7 @@ function clipItemText(it){
     case 'bday_cake':  return '生日 · 给自己买了块蛋糕：花了 ¥'+(v.spent||0)+'（一年一次）';
     case 'talk_go':    return '夜谈 · 去坐了一晚：聊「'+(v.topic||'')+'」';
   case 'cat_go':     return '猫事 · 蹲下来看了一会儿「'+(v.cat||'猫')+'」';
+  case 'req_done':   return '委托 · 你应下的那件小事，他办完了';
     case 'report':     return '报道 · 写成了《'+(v.topic||'')+'》（署名发走了）';
     case 'gift':       return '生日 · 给'+(v.to||'人')+'带了点东西';
     case 'bday_co':    return '生日 · 陪'+(v.to||'人')+'坐了会儿';
