@@ -21,8 +21,17 @@
   --r:6px;
   --sp1:.25rem; --sp2:.5rem; --sp3:.75rem; --sp4:1rem; --sp5:1.5rem;
   --tap:2.75rem;
-  --sa-t:env(safe-area-inset-top,0px); --sa-b:env(safe-area-inset-bottom,0px);
-  --sa-l:env(safe-area-inset-left,0px); --sa-r:env(safe-area-inset-right,0px);
+  /* 第 186 单·安全区取数（Capacitor 官方配方）：新版 Android WebView（<140）里
+     `env(safe-area-inset-*)` 恒为 0 —— 光用它，顶栏就会钻到状态栏底下（真机实证）。
+     官方 SystemBars 插件会把正确的值注入成 `--safe-area-inset-*`，故这里**先读它、再回落 env()**：
+       padding-top: var(--safe-area-inset-top, env(safe-area-inset-top, 0px))
+     出处：https://capacitorjs.com/docs/apis/system-bars （insetsHandling: "css"）。
+     控制侧：capacitor.config.json 的 plugins.SystemBars.insetsHandling="css"；安卓壳那边
+     只在平台变量缺失时才自补（不跟平台抢）。 */
+  --sa-t:var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
+  --sa-b:var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
+  --sa-l:var(--safe-area-inset-left, env(safe-area-inset-left, 0px));
+  --sa-r:var(--safe-area-inset-right, env(safe-area-inset-right, 0px));
 }
 html{ font-size:calc(clamp(14px, 1.1vmin + 10px, 17px) * var(--ui-scale)); background:#171c26; }
 *{ box-sizing:border-box; }
@@ -504,7 +513,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v151</span>
+<span class="num dim" id="set-build">v152</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -5960,8 +5969,14 @@ function resizeCanvas(){
   if(cv.width!==W||cv.height!==H){ cv.width=W; cv.height=H; }
   state.dpr=dpr; state.cvW=box.width; state.cvH=box.height;
   const fit=Math.min(box.width/Sim.MAPW, box.height/Sim.MAPH)*0.96;
+  /* 第 186 单·宽屏要"铺满"：画布比地图更宽（手机横屏、平板）时，按**横向铺满**取缩放
+     （`w/MAPW`）——否则地图居中、左右各留一条画布底色，看着像"游戏画面没铺到边"（真机反馈）。
+     竖屏时画布比地图窄，仍走原来的"整幅能看清"（地图居中一条，行为不变）。
+     镜头跟随/手动平移照旧，纵向裁掉的部分跟人走。 */
+  const 比地图宽 = (box.width / Math.max(1, box.height)) >= (Sim.MAPW / Sim.MAPH);
+  const 铺宽 = 比地图宽 ? (box.width / Sim.MAPW) : fit;
   // 地图整幅能看清就整幅显示；否则放大到可读的最小瓦片尺寸，镜头改为跟随+平移
-  state.view.s=Math.max(fit, Math.min(13, box.width/14, box.height/10));
+  state.view.s=Math.max(fit, 铺宽, Math.min(13, box.width/14, box.height/10));
 }
 new ResizeObserver(resizeCanvas).observe($('#live-wrap'));
 function updateCamera(dt){
@@ -6107,7 +6122,9 @@ function nameChip(x,y,text,lane,laneF){
   const w=ctx.measureText(text).width+8;
   lane=lane|0;
   const 浮=(typeof laneF==='number'&&isFinite(laneF))?laneF:lane;
-  nameChipBoxes.push({x,y,w,lane});
+  /* 第 187 单：把**浮道**一并登记——批后审计那支"名牌稳定性"探针要能分清
+     "同一道上两块真叠"（算法失败）与"一块正在滑向自己那道、途中蹭到别人"（浮道缓动的固有滞后）。 */
+  nameChipBoxes.push({x,y,w,lane,浮道:浮});
   /* 第 84 单：自己画这块底（不再借 `chip()`）——因为 `chip()` 的盒高写死 15、字号一变就露馅，
      而它还被房间名／地标名／活动指示器共用，动它等于动全站。名牌这块只改自己。 */
   const 顶=y-高+1-浮*道距;
@@ -7285,10 +7302,24 @@ function 晴夜空(w){                        // 三道 gate 一处定义：夜�
 function starField(now){
   if(!晴夜空(state.world)) return;
   const s=state.view.s, cvW=state.cvW, cvH=state.cvH;
-  /* ① 星空：确定性坐标（按索引哈希）+ 微闪 */
-  for(let i=0;i<STAR_N;i++){
+  /* ① 星空：确定性坐标（按索引哈希）+ 微闪。
+     第 187 单（批后审计抓到的真回归）：铺满之后画布＝整窗、地图盖掉约 92%，
+     原来"固定 36 颗撒满整张画布"里只有 ~8% 落在看得见的天空带上 ⇒ 夜里星星几乎看不见
+     （探针实测 夜晴(开−关) 39.6 → 18.6）。治法两条都落在源头：
+       · **只往看得见的天空里落**（地图上缘以上 / 地图下缘以下两条带）；
+       · 数量按**天空带面积**折（每百万像素 ≈100 颗，下限 12、上限 80）——
+         天空大就多几颗、天空小也不至于空。 */
+  const 上带高 = Math.max(0, Math.round(state.view.oy));
+  const 下带起 = Math.max(上带高, Math.round(state.view.oy + Sim.MAPH * s));
+  const 下带高 = Math.max(0, Math.round(cvH - 下带起));
+  const 天空高 = 上带高 + 下带高;
+  if(天空高 < 6) return;
+  const 星数 = Math.max(12, Math.min(80, Math.round(cvW * 天空高 / 1000000 * 100)));
+  for(let i=0;i<星数;i++){
     const hx=((i*2654435761)>>>0)%10000/10000, hy=((i*40503+7919)>>>0)%10000/10000;
-    const x=hx*cvW, y=hy*cvH;
+    const x=hx*cvW;
+    const 位=hy*天空高;
+    const y=(位<上带高)?位:(下带起+(位-上带高));
     const 闪=0.5+0.5*Math.sin(now/1400+i*2.1);
     ctx.fillStyle='rgba('+STAR_RGB+','+(0.32+0.6*闪).toFixed(3)+')';   // 第 164 单：星走**背景层**、会被夜色罩层压一档 ⇒ 闪幅定 0.32–0.92（探针实测校准）
     ctx.beginPath(); ctx.arc(x,y,Math.max(0.7,s*0.035),0,Math.PI*2); ctx.fill();

@@ -1,6 +1,8 @@
 // 深秋枫叶探针（真浏览器；只读诊断。第 161 单立，进冒烟档 2）
 //
-// 量什么：**画面顶部天空带**（canvas 0..110px 全宽）里的"橙红叶片像素"数——
+// 量什么：**画面顶部天空带**（地图上缘以上那一条，全宽）里的"橙红叶片像素"数——
+//   第 187 单重标定：同 petal —— 铺满后写死的 "0..110px" 会把地图顶部框进来，
+//   改成"0..地图上缘−2"（跟着布局走；量的仍是地图以上的纯天空）。
 //   判据色 [r>150 且 r−g>40 且 g−b>10]（叶色 224,122,63／217,82,46／224,163,63 叠底后仍满足；
 //   地图里的暖色元素在天空带外，室内矩形也被裁剪——双保险）。
 //   场景：深秋（D255）／初秋（D200）／夏（D120）／春（D30）各 10 帧（300ms）。
@@ -45,7 +47,8 @@ await page.waitForTimeout(2500);
 
 const 数叶 = () => page.evaluate(() => {
   const cv = document.querySelector('#cv');
-  const d = cv.getContext('2d').getImageData(0, 0, cv.width, 110).data;
+  const 带高 = Math.max(6, Math.min(cv.height, Math.round(__pv.state.view.oy) - 2));
+  const d = cv.getContext('2d').getImageData(0, 0, cv.width, 带高).data;
   let n = 0;
   for (let i = 0; i < d.length; i += 4) {
     if (d[i] > 150 && (d[i] - d[i + 1]) > 40 && (d[i + 1] - d[i + 2]) > 10) n++;

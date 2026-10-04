@@ -150,8 +150,11 @@ public class MainActivity extends BridgeActivity {
         if (Build.VERSION.SDK_INT >= 30) {
             Insets b = ins.getInsets(WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
             上 = b.top; 下 = b.bottom; 左 = b.left; 右 = b.right;
+            /* 第 186 单·顶部的"在不在"那一腿**在卓易通上会误伤**：宿主的状态栏不是安卓系统画的那条，
+               系统报"不可见"，按两条腿判就会把 top 清成 0 ⇒ 页面不内缩、顶栏钻到状态栏底下（真机实证）。
+               故：顶部只认数值 ＋ 下面那条"横屏强制 0"（交接文档 §4-⑧ 那个假值场景由它兜住）；
+               底部保留两条腿（手势条不在时不该白留一截）。 */
             try {
-                if (!ins.isVisible(WindowInsets.Type.statusBars())) 上 = 0;        // 两条腿：数值 ＋ 在不在
                 if (!ins.isVisible(WindowInsets.Type.navigationBars())) 下 = 0;
             } catch (Throwable ignored) { }
         } else {
@@ -171,9 +174,17 @@ public class MainActivity extends BridgeActivity {
         int t = Math.round(上 / d), b = Math.round(下 / d), l = Math.round(左 / d), r = Math.round(右 / d);
         if (t != 推过上 || b != 推过下 || l != 推过左 || r != 推过右) {
             推过上 = t; 推过下 = b; 推过左 = l; 推过右 = r;
+            /* 第 186 单·照 Capacitor 官方口径：平台（SystemBars, insetsHandling='css'）会把正确值注入成
+               `--safe-area-inset-*`，页面 CSS 先读它、再回落 env()。**壳只做兜底**——
+               平台变量某一轴缺失时才补 `--sa-*`（不跟平台抢，免得两套值打架）。
+               出处：https://capacitorjs.com/docs/apis/system-bars */
             final String js = "(function(){var s=document.documentElement.style;"
-                + "s.setProperty('--sa-t','" + t + "px');s.setProperty('--sa-b','" + b + "px');"
-                + "s.setProperty('--sa-l','" + l + "px');s.setProperty('--sa-r','" + r + "px');})();";
+                + "var cs=getComputedStyle(document.documentElement);"
+                + "function 缺(k){var v=cs.getPropertyValue(k);return !v||!v.trim()||v.trim()==='0px';}"
+                + "if(缺('--safe-area-inset-top'))s.setProperty('--sa-t','" + t + "px');"
+                + "if(缺('--safe-area-inset-bottom'))s.setProperty('--sa-b','" + b + "px');"
+                + "if(缺('--safe-area-inset-left'))s.setProperty('--sa-l','" + l + "px');"
+                + "if(缺('--safe-area-inset-right'))s.setProperty('--sa-r','" + r + "px');})();";
             try {
                 if (getBridge() != null && getBridge().getWebView() != null) {
                     getBridge().getWebView().post(() -> {

@@ -1,6 +1,9 @@
 // 春季落花探针（真浏览器；只读诊断。第 157 单立，进冒烟档 2）
 //
-// 量什么：**画面顶部天空带**（canvas 0..110px 全宽）里的"粉色花瓣像素"数——
+// 量什么：**画面顶部天空带**（地图上缘以上那一条，全宽）里的"粉色花瓣像素"数——
+//   第 187 单重标定：铺满之后画布＝整窗、地图上缘只剩 ~34px，原来写死的 "0..110px"
+//   把地图顶部那截也框进来了（那里本来就有粉色像素 ⇒ 四季都上千、判据失去分辨力）。
+//   现改成"0..地图上缘−2"（跟着布局走，口径不松：量的仍是**地图以上的纯天空**）。
 //   判据色 [r>190 且 g<180 且 b>120 且 r−g>55]（花瓣 255,120,170、α0.8–0.92 叠在深底上
 //   ⇒ r≈219/g≈103/b≈146；地图里的粉床单等在天空带外，室内矩形也被裁剪——双保险）。
 //   场景：春（D30）/ 夏（D120）/ 秋（D210）/ 冬（D300）各采 10 帧（300ms 间隔，花瓣在动），
@@ -46,7 +49,8 @@ await page.waitForTimeout(2500);
 const 数粉 = () => page.evaluate(() => {
   const cv = document.querySelector('#cv');
   const g = cv.getContext('2d');
-  const d = g.getImageData(0, 0, cv.width, 110).data;
+  const 带高 = Math.max(6, Math.min(cv.height, Math.round(__pv.state.view.oy) - 2));
+  const d = g.getImageData(0, 0, cv.width, 带高).data;
   let n = 0;
   for (let i = 0; i < d.length; i += 4) {
     if (d[i] > 190 && d[i + 1] < 180 && d[i + 2] > 120 && (d[i] - d[i + 1]) > 55) n++;

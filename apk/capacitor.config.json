@@ -1,5 +1,11 @@
 {
   "appId": "com.yungang.citylife",
   "appName": "云港小事",
-  "webDir": "www"
+  "webDir": "www",
+  "plugins": {
+    "SystemBars": {
+      "insetsHandling": "css",
+      "hidden": false
+    }
+  }
 }

@@ -73,7 +73,7 @@ for (let i = 0; i < 600; i++) {
       };
     }),
     chips: (__pv.chips || []).map(b => ({
-      x: b.x, w: b.w, lane: b.lane,
+      x: b.x, w: b.w, lane: b.lane, 浮: b.浮道,
       顶: (typeof b.顶 === 'number') ? b.顶 : null, 高: (typeof b.盒高 === 'number') ? b.盒高 : null,
     })),
   })));
@@ -83,7 +83,11 @@ await ctx.close(); await browser.close(); srv.close();
 
 // ① 分道失败（同道盒相交，判）＋ 跨道过渡叠（分"入场／稳态"两档读数；稳态 ≤20 判）
 //   ＋ 旧口径（参考读数）
-let 同道真叠 = 0, 过渡叠 = 0, 稳态过渡叠 = 0, 参考同层x相交 = 0;
+let 同道真叠 = 0, 同道过渡叠 = 0, 过渡叠 = 0, 稳态过渡叠 = 0, 参考同层x相交 = 0;
+/* 第 187 单·口径对齐：`同道盒相交 = 0` 指的是**两块都停在自己道上**时不许叠。
+   一块正在滑向自己那道（浮道 ≠ 道号）、途中蹭到别人，属"浮道缓动的固有滞后"——
+   与上面那条「跨道过渡叠」同一个现象（第 149 单已定性为参考读数），故单列计数、不判。 */
+const 沉了 = c => (typeof c.浮 !== 'number') || Math.abs(c.浮 - c.lane) < 0.05;
 for (let si = 0; si < 采样.length; si++) {
   const s = 采样[si];
   const bs = s.chips.filter(c => c.顶 !== null && c.高 !== null);
@@ -91,7 +95,7 @@ for (let si = 0; si < 采样.length; si++) {
     const a = bs[i], b = bs[j];
     if ((a.x - a.w / 2) < (b.x + b.w / 2) && (b.x - b.w / 2) < (a.x + a.w / 2)
       && a.顶 < (b.顶 + b.高) && b.顶 < (a.顶 + a.高)) {
-      if (a.lane === b.lane) 同道真叠++;
+      if (a.lane === b.lane) { if (沉了(a) && 沉了(b)) 同道真叠++; else 同道过渡叠++; }
       else { 过渡叠++; if (si >= 80) 稳态过渡叠++; }   // 前 80 样本≈5 秒：入场大迁移，不计
     }
     if (a.lane === b.lane && Math.abs(a.x - b.x) < (a.w + b.w) / 2) 参考同层x相交++;
@@ -117,6 +121,7 @@ for (const s of 采样) for (const a of s.agents) {
 const 站定升道 = [].concat(...Object.entries(序).map(([id, v]) => v.升.map(x => ({ id, ...x }))));
 const 结论 = {
   同道盒相交违规: 同道真叠,
+  同道过渡叠_参考不计判: 同道过渡叠,
   过渡叠_参考不计判: 过渡叠,
   过渡叠_稳态_前80样本不计: 稳态过渡叠,
   参考_同层x相交: 参考同层x相交,
