@@ -471,7 +471,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v141</span>
+<span class="num dim" id="set-build">v142</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -2662,6 +2662,17 @@ function decide(w, ag){
     ag.busyUntil=w.t+10;
     return;
   }
+  /* 0.5 第 175 单·采访收口：采访日的班下了 ⇒ 把材料写成**署名报道**（一天一条、零 rng）。
+     `ag.interviewDay` 记住"哪天的采访"（跨午夜也算得清）；落过稿就记 `reportDay`，绝不重复。
+     条件里"已跨天"那一支是给熬夜写稿的人兜底：过了午夜才轮到 decide 也照样落稿。 */
+  if(ag.interviewDay && ag.reportDay!==ag.interviewDay){
+    const 采日=ag.interviewDay;
+    const W=workWindow(w,ag);
+    if(PURE.dayOf(w.t)>采日 || mod>=W.end){
+      ag.reportDay=采日;
+      logAct(w,ag,'把采访写成了报道：《'+采访题(采日)+'》','署名发走了。');
+    }
+  }
   // 1. 睡觉（第 22 单：起床时刻＝躺下时刻＋今晚该睡多久，入睡那一刻定死，不再是逐分钟固定的参数）
   if(ag.activity.type==='sleep'){
     // 旧档中途接上时可能正睡着却没有记账 → 就地补一个起床时刻，绝不当场把人叫醒
@@ -2740,6 +2751,7 @@ function decide(w, ag){
     /* 第 172 单·写稿人的采访日：每 5 天有一天带题出门（纯哈希；不改钱/饭/时长/活动类型，
        只改"在哪儿上班、叫什么、说什么"）。摸鱼那种照旧按原样走。 */
     const 采访=!!(ag.workKind==='write' && !slack && 采访日(today));
+    if(采访) ag.interviewDay=today;   // 第 175 单：记住"哪天的采访"——班后好写署名报道
     const 出点=采访?采访点(today):ag.workAnchor;
     const 稿签=采访?'出门采访':label;
     const 稿志=(logText===null)?null:(采访?('带着题目出门采访：'+采访题(today)):logText);
@@ -3141,7 +3153,7 @@ const CLIP_TIER={sit_flat:'b', sit_none:'b', money_debt:'b', freq:'c', mkt_go:'b
 // 每条 act 条目都必须归到某一类，谁改了 logText 那条断言即红）。
 const CLIP_LOGCAT=[
   ['eat',   ['做了顿简餐','解决了一餐','买了份小吃','试了道新菜']],   // 第 170 单·试新菜那句也归 eat（覆盖率闸当场抓到它没归类）
-  ['work',  ['到岗开始工作','回到工位','工作中','带着题目出门采访']],   // 第 172 单·采访那句也归 work（覆盖率闸照查）
+  ['work',  ['到岗开始工作','回到工位','工作中','带着题目出门采访','把采访写成了报道']],   // 第 172／175 单·采访与落稿都归 work（覆盖率闸照查）
   ['nap',   ['回卧室小憩']],
   ['stroll',['出门散步','街市逛逛','周末出门逛逛']],   // 第 46 单后半新增的一句（第 21 单那条覆盖率断言当场抓到了它）
   /* 第 73 单：夜谈那句从 `stroll` 挪出来单开一类——剪辑层要为它上卡（乙级 `talk_go`），

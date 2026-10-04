@@ -25,7 +25,7 @@ function 跑一遍(seed){
   const w = Sim.makeWorld(seed);
   const a4 = w.agents.find(a => a.id === 'a4');
   let 水位 = 0;
-  const 采访天 = [];
+  const 采访天 = [], 报道 = [];
   let 非采访日见家 = false, 采访日点ok = true, 类型乱 = 0;
   let 当天见点 = null, 当天见家 = false;
   for (let d = 1; d <= 天; d++) {
@@ -43,22 +43,32 @@ function 跑一遍(seed){
          否则"采访日 ~80 天"会被数成 ~175 条。 */
       if (t.indexOf('带着题目出门采访：') >= 0 && !(采访天.length && 采访天[采访天.length - 1].d === d))
         采访天.push({ d, 题: t.split('：')[1] || '', 点: 当天见点 || '' });
+      /* 第 175 单·署名报道：班后落一条「把采访写成了报道：《题》」——按出现顺序收，回头与本日采访配对 */
+      if (t.indexOf('把采访写成了报道：《') >= 0) {
+        const 题 = t.slice(t.indexOf('《') + 1, t.lastIndexOf('》'));
+        报道.push({ d, 题 });
+      }
     }
     const 今采访 = 采访天.length > 0 && 采访天[采访天.length - 1].d === d;
     if (今采访 && !当天见点) 采访日点ok = false;
     if (!今采访 && 当天见家) 非采访日见家 = true;
   }
-  return { 采访天, 非采访日见家, 采访日点ok, 类型乱 };
+  return { 采访天, 报道, 非采访日见家, 采访日点ok, 类型乱 };
 }
 
 for (const seed of 种子表) {
   const 一 = 跑一遍(seed), 二 = 跑一遍(seed);
   const 题好 = 一.采访天.every(x => 题池.indexOf(x.题) >= 0);
   const 点好 = 一.采访天.every(x => 点池.has(x.点));
-  const 同 = JSON.stringify(一.采访天) === JSON.stringify(二.采访天);
+  const 同 = JSON.stringify([一.采访天, 一.报道]) === JSON.stringify([二.采访天, 二.报道]);
   判('[' + seed + '] 出过采访日（' + 一.采访天.length + ' 天）', 一.采访天.length >= 1, { 头三天: 一.采访天.slice(0, 3) });
   判('[' + seed + '] 题面来自题池且采访点在三处之一', 题好 && 点好 && 一.采访日点ok, { 题好, 点好, 采访日点ok: 一.采访日点ok });
   判('[' + seed + '] 同种子两遍逐字相同（纯哈希、零 rng）', 同, { 第一遍: 一.采访天.slice(0, 4), 第二遍: 二.采访天.slice(0, 4) });
+  /* 第 175 单：采访日"一对一"落稿——条数相等、题面逐条对上 */
+  const 稿齐 = 一.报道.length === 一.采访天.length
+    && 一.采访天.every((x, i) => 一.报道[i] && 一.报道[i].题 === x.题);
+  判('[' + seed + '] 每个采访日恰有一条署名报道、题面逐条对上（' + 一.报道.length + '／' + 一.采访天.length + '）',
+    稿齐, { 前三天: 一.报道.slice(0, 3) });
   判('[' + seed + '] 非采访日仍见过 home_desk（对照）＋活动类型未新增', 一.非采访日见家 && 一.类型乱 === 0,
     { 非采访日见家: 一.非采访日见家, 类型乱: 一.类型乱 });
 }
