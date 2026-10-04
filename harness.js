@@ -6017,15 +6017,25 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   const DRAWFN=grab(/function draw\(now\)\{[\s\S]*?\n\}\n\/\/ 画布：拖动=平移镜头/,'draw() 全函数');
 
   function skyLab(mut){
-    const rec={rect:[]};
-    const ctx={ fillStyle:'', fillRect(x,y,w,h){ rec.rect.push({x,y,w,h,fill:ctx.fillStyle}); } };
+    /* 第 152 单：skyPaint 从"一次 fillRect"改成"evenodd 挖空 + 室内补层"（两次 fill()），
+       台子升级为**按笔记录**——`笔`＝每次 fill／fillRect 的 fillStyle（"落笔数""坏色"两条
+       断言的量尺从 rect 换成笔，语义不变：白天不盖＝0 笔、畸形输入不许出现坏色）。 */
+    const rec={rect:[],笔:[]};
+    const ctx={ fillStyle:'',
+      fillRect(x,y,w,h){ rec.rect.push({x,y,w,h,fill:ctx.fillStyle}); rec.笔.push({fill:String(ctx.fillStyle)}); },
+      beginPath(){}, rect(){},
+      fill(){ rec.笔.push({fill:String(ctx.fillStyle)}); } };
     /* 第 112 单：天色开始读季节（`skySunShift` 要 `SEASON_DAYS`）⇒ 这门"抠源码求值"的闸
        把 SEASON 段一起抠进来（**同源**：天色 → 四季，两段必须同一份日历）。 */
     const SEASON_SRC=grab(/\/\*SEASON-START\*\/[\s\S]*?\/\*SEASON-END\*\//,'SEASON 段');
-    let code=SEASON_SRC+'\n'+SKY_SRC;
+    /* 第 152 单：skyPaint 新增 `室内矩()`（读 APT／Sim.ROOMS／state.view.s／sx／sy）——
+       台子把这些一并喂进去（sx/sy 用恒等；坐标只用于画，不参与判据）。 */
+    const APT_SRC=grab(/const APT=\{x:1,y:1,w:19,h:11\};/,'APT 常量');
+    let code=APT_SRC+'\n'+SEASON_SRC+'\n'+SKY_SRC;
     if(mut) code=mut(code);
-    const M=new Function('ctx','PURE',
-      code+'\nreturn {SKY_KEYS,SKY_MAX_ALPHA,skyTint,skyPaint};')(ctx,PURE);
+    const M=new Function('ctx','PURE','state','sx','sy','Sim',
+      code+'\nreturn {SKY_KEYS,SKY_MAX_ALPHA,skyTint,skyPaint};')(
+      ctx,PURE,{view:{s:13}},x=>x,y=>y,Sim);
     return {M,rec,ctx};
   }
   // 判据抽成函数，闸四正反两侧喂的是同一段判断
@@ -6102,12 +6112,12 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
     catch(e){ threw=String((e&&e.message)||e); }
     ok(!threw,'闸三·畸形钟点不抛错：8 种（负／越界／NaN／undefined／null／极大值）一律不出错'
        +(threw?('（实测抛了：'+threw+'）'):''));
-    const 坏色=L2.rec.rect.filter(r=>/NaN|undefined|null/.test(String(r.fill))).length;
-    ok(坏色===0,'闸三·畸形钟点不画坏色：畸形入参落下 '+L2.rec.rect.length+' 笔，其中色值含 NaN／undefined 的 '
+    const 坏色=L2.rec.笔.filter(r=>/NaN|undefined|null/.test(String(r.fill))).length;
+    ok(坏色===0,'闸三·畸形钟点不画坏色：畸形入参落下 '+L2.rec.笔.length+' 笔，其中色值含 NaN／undefined 的 '
        +坏色+' 笔（浏览器会忽略非法色值、拿上一笔残留的颜色涂满整屏，故必须一笔都不发）');
     const L3=skyLab(); L3.M.skyPaint(10,10,720);
-    ok(L3.rec.rect.length===0,'闸三·白天不盖：12:00 那一档一次 fillRect 都不发（实测 '+L3.rec.rect.length
-       +' 次）——「不着色」不是画了一层透明的');
+    ok(L3.rec.笔.length===0,'闸三·白天不盖：12:00 那一档一笔都不发（实测 '+L3.rec.笔.length
+       +' 笔）——「不着色」不是画了一层透明的');
   }
   // ── 闸四 · 反向自查 ＋ 结构侧 ──────────────────────────────────────────
   {
@@ -7253,6 +7263,34 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   }
 }
 
+// ═══ 第 152 单·室内不吃全量夜色（屋顶下看不见天）════════════════════════════════════
+/* 调研出处：docs/规划/借鉴调研-2026-10-03.md 候选 #4（星露谷口径"室内有自己的光"；
+   当时缺「室内」概念，第 139 单的「建筑房／在室内」已补）。实现：skyPaint 用 evenodd
+   挖空三块互不重叠的室内矩形（APT 含门厅走廊＋便利店＋公司），室内补吃 SKY_INDOOR 份；
+   白天照旧整段跳过。行为面由 tools/night-audit/audit.mjs --判 验：室内五区 ≥ 基线+0.005
+   （公寓三间 ≥+0.04）、户外八区 ±0.01；改前版被同一判据判红（五处低于阈值）。 */
+{
+  const fs152=require('fs'), path152=require('path');
+  const src152=fs152.readFileSync(path152.resolve(__dirname,'city-life-framework.html'),'utf8');
+  const m152=src152.match(/const SKY_INDOOR=([\d.]+);/);
+  const 值152=m152?Number(m152[1]):NaN;
+  ok(值152>0&&值152<1,
+     '第 152 单·结构：SKY_INDOOR ∈ (0,1)——室内吃得比室外少（实测 '+值152+'；改 0＝完全不吃、改 1＝回到旧行为，都判红）');
+  ok(/function 室内矩\(\)\{[\s\S]*?APT[\s\S]*?'store'[\s\S]*?'office'[\s\S]*?\}/.test(src152),
+     '第 152 单·结构：室内矩＝APT（含门厅走廊）＋便利店＋公司 三块（互不重叠，见三处常量）');
+  ok(/ctx\.fill\('evenodd'\);/.test(src152)&&/if\(!\(c\.a>0\.001\)\) return;/.test(src152),
+     '第 152 单·结构：evenodd 挖空在（第 38 单"光不穿墙"同一手法）；白天整段跳过保留');
+  {
+    const 病1=src152.replace('const SKY_INDOOR=0.45;','const SKY_INDOOR=1;');
+    const 值病=病1.match(/const SKY_INDOOR=([\d.]+);/);
+    ok(病1!==src152&&!(Number(值病[1])>0&&Number(值病[1])<1),
+       '第 152 单·反向自查·拦得住：把 SKY_INDOOR 改成 1（＝室内外一个待遇）⇒ ∈(0,1) 当场判红');
+    const 病2=src152.replace("ctx.fill('evenodd');","ctx.fill();");
+    ok(病2!==src152&&!/ctx\.fill\('evenodd'\);/.test(病2),
+       '第 152 单·反向自查·拦得住：把 evenodd 抠成普通填充 ⇒ "挖空在"当场判红');
+  }
+}
+
 // ═══ 第 126 单·作息随季节（夏晚睡/冬早睡；春/秋＝基准）═══════════════════════════
 /* 被验的是生产源码与真值：
      ① 结构：两张季表一处定义（`SEASON_RHY_BED`／`SEASON_RHY_DUR`）＋`季作息()` 一处取用；
@@ -8089,7 +8127,7 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   ok(恒绿===0,'第 66 单·闸二：`ok` 第一参数写死 true 的**读数型假断言**为 0 条（实测 '+恒绿+'；读数一律走 `读数()`）');
   // 闸三 · 反向自查登记（防整条被删）
   const 登记=['第 48 单','第 49 单','第 51 单','第 52 单','第 53 单','第 54 单','第 56 单','第 57 单',
-              '第 58 单','第 59 单','第 62 单','第 63 单','第 64 单','第 65 单','第 67 单','第 70 单','第 71 单','第 72 单','第 73 单','第 74 单','第 75 单','第 76 单','第 77 单','第 79 单','第 80 单','第 81 单','第 84 单','第 85 单','第 87 单','第 88 单','第 90 单','第 91 单','第 92 单','第 93 单','第 94 单','第 95 单','第 96 单','第 97 单','第 98 单','第 99 单','第 100 单','第 102 单','第 103 单','第 106 单','第 107 单','第 109 单','第 110 单','第 111 单','第 112 单','第 113 单','第 115 单','第 116 单','第 117 单','第 118 单','第 119 单','第 120 单','第 121 单','第 123 单','第 124 单','第 125 单','第 126 单','第 129 单','第 131 单','第 135 单','第 136 单','第 139 单','第 142 单','第 143 单','第 144 单','第 145 单','第 148 单','第 149 单','第 150 单','第 151 单',
+              '第 58 单','第 59 单','第 62 单','第 63 单','第 64 单','第 65 单','第 67 单','第 70 单','第 71 单','第 72 单','第 73 单','第 74 单','第 75 单','第 76 单','第 77 单','第 79 单','第 80 单','第 81 单','第 84 单','第 85 单','第 87 单','第 88 单','第 90 单','第 91 单','第 92 单','第 93 单','第 94 单','第 95 单','第 96 单','第 97 单','第 98 单','第 99 单','第 100 单','第 102 单','第 103 单','第 106 单','第 107 单','第 109 单','第 110 单','第 111 单','第 112 单','第 113 单','第 115 单','第 116 单','第 117 单','第 118 单','第 119 单','第 120 单','第 121 单','第 123 单','第 124 单','第 125 单','第 126 单','第 129 单','第 131 单','第 135 单','第 136 单','第 139 单','第 142 单','第 143 单','第 144 单','第 145 单','第 148 单','第 149 单','第 150 单','第 151 单','第 152 单',
               '闸四','闸五','闸十','闸十一','闸十二'];
   const 实有=[...new Set((自源.match(/(第 \d+ 单|闸[一二三四五六七八九十]+)·反向自查/g)||[])
                             .map(x=>x.replace('·反向自查','')))];

@@ -8,7 +8,12 @@
 // 本工具量的是**平均亮度**（0–1，按 Rec.709 加权），逐区在**同一个夜晚帧**上采：
 //   读的是画布自己的像素（`ctx.getImageData`），不是估的、也不是从源码推的。
 //
-// 用法：node tools/night-audit/audit.mjs <输出目录>
+// 用法：node tools/night-audit/audit.mjs <输出目录> [--判]
+//   第 152 单加 `--判`：按"改前基线"判决——室内五区（客厅/厨房/卧室/便利店/公司）夜值
+//   必须 ≥ 基线+0.01（公寓三间 ≥+0.04，即"室内不吃全量夜色"落地）；户外八区（含灯下/灯间）
+//   夜值不得漂移（±0.01）。基线＝第 152 单改前（v125）实测值，锚在下方常量表——
+//   **日后调灯 / 调天色曲线要同步改这张锚**（改了不改＝判红是预期行为）。
+//   不带 --判 时保持原行为（只读数、不判红）。
 import http from 'http';
 import fs from 'fs';
 import path from 'path';
@@ -22,6 +27,7 @@ const PORT = 18944;
 fs.mkdirSync(OUT, { recursive: true });
 
 const BEFORE = (process.argv.find(a => a.startsWith('--改前=')) || '').split('=')[1] || '';
+const 判 = process.argv.includes('--判');
 const pre = BEFORE ? '改前-' : '';
 const rawHtml = BEFORE
   ? execFileSync('git', ['show', `${BEFORE}:city-life-framework.html`], { cwd: REPO, maxBuffer: 1 << 28, encoding: 'utf8' })
@@ -90,10 +96,23 @@ for (const [档, h] of [['夜 03:00', 3], ['昼 12:00', 12]]) {
   await page.goto(URL_); await settle(2600);
   await page.evaluate((hh) => {
     const st = __pv.state, w = st.world;
-    w.speed = 0; w.t = 1440 * 6 + hh * 60; st.llm.on = false; st.reduceMotion = true; w.weather.rain = false;
+    w.speed = 1; w.t = 1440 * 6 + hh * 60; st.llm.on = false; st.reduceMotion = true; w.weather.rain = false;
     st.cam.manual = true; st.cam.fx = 24; st.cam.fy = 12;
   }, h);
-  await settle(500);
+  /* 第 152 单·采样场景确定化：先 1× 短跑 3 秒（sim 推进 30 分钟）让人走到该时刻的锚点
+     （03:00 ⇒ 全体上床、12:00 ⇒ 各就各位），再停 sim 等 moving 全 false——
+     否则"人停在哪儿"取决于页面加载后的行走进度，卧室/客厅的亮度会在 ±0.06 抖动。 */
+  await settle(3000);
+  await page.evaluate(() => { __pv.state.world.speed = 0; });
+  for (let i = 0; i < 30; i++) {
+    const 静 = await page.evaluate(() => {
+      const st = __pv.state;
+      return st.world.agents.every(a => !st.vis[a.id].moving);
+    });
+    if (静) break;
+    await settle(100);
+  }
+  await settle(400);
   const r = await 采样(page);
   读数[档] = r;
   await page.screenshot({ path: path.join(OUT, pre + '体检-' + (h === 3 ? '夜03' : '昼12') + '.png') });
@@ -108,3 +127,29 @@ for (let i = 0; i < 读数['夜 03:00'].length; i++) {
   console.log(a.区.padEnd(30) + String(a.平均亮度).padEnd(12) + String(b.平均亮度));
 }
 console.log('完成：', OUT);
+
+/* ── 第 152 单·判决模式：改前基线锚（v125 实测）──────────────────────────────
+   室内五区是「SKY_INDOOR=0.45」的验收对象；户外八区是"没被误伤"的对照。
+   数值取一位小数不取——照实抄 v125 的两位/三位实测（见 第152单-图/探针-改前.json）。 */
+const 基线 = {
+  '公寓·客厅': 0.486, '公寓·厨房': 0.507, '公寓·卧室': 0.530, '便利店': 0.307, '公司': 0.287,
+  '滨江公园（室外·无灯）': 0.179, '江边步道（室外·无灯）': 0.153, '街道（有灯）': 0.248,
+  '广场 T 口（有灯）': 0.304, '街市摊区（第 38 单登记的遗漏）': 0.387, '岸线步道（有灯）': 0.220,
+  '局部·灯下（街道第 1 盏）': 0.307, '局部·灯间（两盏正中间）': 0.201,
+};
+if (判) {
+  const 夜 = Object.fromEntries(读数['夜 03:00'].map(x => [x.区, x.平均亮度]));
+  const 室内 = ['公寓·客厅', '公寓·厨房', '公寓·卧室', '便利店', '公司'];
+  const 公寓三间 = ['公寓·客厅', '公寓·厨房', '公寓·卧室'];
+  const 红 = [];
+  for (const k of 室内) {
+    const 需 = 基线[k] + (公寓三间.includes(k) ? 0.04 : 0.005);
+    if (!(夜[k] >= 需)) 红.push(k + ' 夜 ' + 夜[k] + ' < 基线+' + (公寓三间.includes(k) ? '0.04' : '0.005') + '（' + 需.toFixed(3) + '）');
+  }
+  for (const k of Object.keys(基线)) {
+    if (室内.includes(k)) continue;
+    if (!(Math.abs(夜[k] - 基线[k]) <= 0.01)) 红.push(k + ' 夜漂移 ' + 夜[k] + '（基线 ' + 基线[k] + '）');
+  }
+  console.log(红.length ? ('✘ 夜间判据：' + 红.join('；')) : '✔ 夜间判据全过（室内提升到位、户外未漂移）');
+  process.exit(红.length ? 1 : 0);
+}

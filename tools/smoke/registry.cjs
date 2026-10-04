@@ -47,7 +47,7 @@ const 清单 = [
   { 路径: 'tools/offline-catchup/pushprobe.cjs', 档: 1, 参数: [], 超时: 90000, 备注: '回城推送判据取证' },
   { 路径: 'tools/live-walkgate/audit.mjs',    档: 2, 参数: ['{OUT}/live-walkgate'], 超时: 120000, 备注: '真页面逐帧走位' },
   { 路径: 'tools/nameplate-audit/audit.mjs',  档: 2, 参数: ['{OUT}/nameplate'],    超时: 120000, 备注: '名牌 vs 房间名' },
-  { 路径: 'tools/night-audit/audit.mjs',      档: 2, 参数: ['{OUT}/night'],        超时: 120000, 备注: '夜间亮度体检' },
+  { 路径: 'tools/night-audit/audit.mjs',      档: 2, 参数: ['{OUT}/night', '--判'], 超时: 120000, 备注: '夜间亮度体检（第 152 单起带 --判：室内五区 ≥ 基线／户外八区不漂移）' },
   { 路径: 'tools/fresh-gate/probe.mjs',       档: 2, 参数: ['{OUT}/fresh'],        超时: 120000, 备注: '「有新版」四场景' },
   { 路径: 'tools/page-sweep/sweep.mjs',       档: 2, 参数: ['{OUT}/sweep'],        超时: 180000, 备注: '六页两档 ＋ 全按钮扫描' },
   { 路径: 'tools/soak/soak.mjs',              档: 2, 参数: ['{OUT}/soak','--天=30','--分钟=5'], 超时: 600000, 备注: '满状态巡检 ＋ 浸泡（默认 5 分钟档）' },

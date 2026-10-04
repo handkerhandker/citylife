@@ -470,7 +470,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v125</span>
+<span class="num dim" id="set-build">v126</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -6357,14 +6357,33 @@ function skyTint(minuteOfDay, dayOfYear){
   const mix=(p,q)=>p+(q-p)*k;
   return { r:mix(a[1],b[1]), g:mix(a[2],b[2]), b:mix(a[3],b[3]), a:mix(a[4],b[4]) };
 }
+/* 第 152 单·室内不吃全量夜色（星露谷口径："室内有自己的光"——屋顶下看不见天）。
+   调研出处与前提见 docs/规划/借鉴调研-2026-10-03.md 候选 #4（当时缺「室内」概念；
+   第 139 单的「建筑房／在室内」已补上）。做法：evenodd 路径画「室外吃全量夜色」
+   （外框＋三块室内矩形——第 38 单「光不穿墙」同一手法），室内再补吃 SKY_INDOOR 份。
+   三块室内矩形＝APT 整体（含门厅走廊）＋便利店＋公司，互不重叠（构造见三处常量）；
+   白天照旧整段跳过（a≤0.001 提前 return），室外区域的夜色与改前逐像素相同。 */
+const SKY_INDOOR=0.45;   // 室内吃夜色的比例（0=不压、1=与室外同；一处可调）
+function 室内矩(){
+  const s=state.view.s;
+  return [APT, ...Sim.ROOMS.filter(r=>r.id==='store'||r.id==='office')]
+    .map(r=>[sx(r.x),sy(r.y),r.w*s,r.h*s]);
+}
 function skyPaint(w,h,t){
   const c=skyTint(PURE.minuteOfDay(t), PURE.dayOf(t)-1);
   // 白天不盖：省一次整屏填充，也让「白天不着色」可断言。
   // 写成 !(c.a>0.001) 而不是 c.a<=0.001 —— 后者对 NaN 为 false，会带着 NaN 去赋值 fillStyle，
   // 浏览器直接忽略非法色值 ⇒ 用上一笔残留的颜色涂满整屏（畸形钟点必须「什么都不画」）。
   if(!(c.a>0.001)) return;
-  ctx.fillStyle='rgba('+Math.round(c.r)+','+Math.round(c.g)+','+Math.round(c.b)+','+c.a.toFixed(3)+')';
-  ctx.fillRect(0,0,w,h);
+  const 色=a=>'rgba('+Math.round(c.r)+','+Math.round(c.g)+','+Math.round(c.b)+','+a.toFixed(3)+')';
+  ctx.fillStyle=色(c.a);
+  ctx.beginPath(); ctx.rect(0,0,w,h);
+  for(const q of 室内矩()) ctx.rect(q[0],q[1],q[2],q[3]);
+  ctx.fill('evenodd');
+  ctx.fillStyle=色(c.a*SKY_INDOOR);
+  ctx.beginPath();
+  for(const q of 室内矩()) ctx.rect(q[0],q[1],q[2],q[3]);
+  ctx.fill();
 }
 /*SKYTINT-END*/
 /*SEASON-START*/
