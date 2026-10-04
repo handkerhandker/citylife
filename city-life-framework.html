@@ -390,6 +390,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       <div id="ph-msgs"></div>
       <div class="row" style="margin-top:var(--sp2)">
         <input id="ph-input" class="ph-input grow" type="text" maxlength="60" placeholder="自己写一条（60 字内）…">
+        <label class="faint" style="font-size:.74rem;display:flex;align-items:center;gap:.25rem;cursor:pointer"><input type="checkbox" id="ph-urgent" data-fx style="accent-color:var(--gold-deep)">加急</label>
         <button class="btn gold" id="ph-send" data-fx>发送</button>
       </div>
       <h2 class="sec">往来记录 · TA 的回音也在这里 <span class="chip" id="ph-llm">AI 待机</span></h2>
@@ -470,7 +471,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v138</span>
+<span class="num dim" id="set-build">v139</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -2628,6 +2629,9 @@ function decide(w, ag){
        只改 `thought`（不改条目数、不改 type），故"有戏"与下雨时机一个字节不动。 */
     const 等他=!!(ag.waiting&&isFinite(ag.waiting.t));
     if(等他) delete ag.waiting;
+    /* 第 171 单·加急短信的"回话"：这一拍活动还挂在身上（下面才重写），正好用来判"停不停得住"——
+       advance10 只对能停的档位拉忙点，所以这里的判据与那处同源（work／sleep／nap＝停不住）。 */
+    const 停不住=!!(m.urgent && ['work','sleep','nap'].indexOf(String((ag.activity&&ag.activity.type)||''))>=0);
     pushLog(w,{type:'player',sms:'read',agent:ag.id,name:ag.name,msg:m.id,msgLabel:m.label,
       text:'读到了你的短信「'+m.label+'」',
       /* 第 64 单：同一份心意，**生日当天的分量不一样**（星露谷"生日 ×8"那条口径的本作映射）——
@@ -2637,7 +2641,8 @@ function decide(w, ag){
       thought:(m.id==='birthday' ? 生日回信(ag,inBirthday(w,ag))
         : ((relYouGet(ag)>=熟线()&&REACT_NEAR[m.id])?REACT_NEAR[m.id]
            :(REACT[m.id]||REACT.custom)))
-        +(等他?'（等了两天，总算等到了。）':'')});
+        +(等他?'（等了两天，总算等到了。）':'')
+        +(m.urgent?(停不住?'（"急"字看到了，手头这摊停不住，一松手就回你。）':'（你说急，手里的事先撂下了。）'):'')});
     if(m.id==='late') ag.flags.earlyWork=true;
     if(m.id==='sleep') ag.flags.sleepEarly=true;
     if(m.id==='eat' && ag.hunger>40) ag.flags.wantEat=true;
@@ -3642,6 +3647,13 @@ function advance10(w){
     logSys(w,'☔ 突然下起雨来，屋檐下多了几分躲雨的默契。');
     w.lastSpark=w.t;
   }
+  /* 第 171 单·加急短信：能停的事先停——把忙点拉到下一拍，让 decide() 先读到这封信；
+     工作／睡觉／小憩这几档视为"停不住"，照旧等忙完（回信里会说明）。 */
+  for(const ag of w.agents){
+    if(!ag.inbox.length || !ag.inbox[0].urgent) continue;
+    const 型=String((ag.activity&&ag.activity.type)||'');
+    if(型!=='work' && 型!=='sleep' && 型!=='nap' && ag.busyUntil>w.t+10) ag.busyUntil=w.t+10;
+  }
   // 逐人决策
   for(const ag of w.agents){
     goalStep(w,ag);                     // 第 52 单·目标系统：出生／记账／达成／到期（每拍一次，零 AI）
@@ -3687,15 +3699,15 @@ function sendMessage(w, agentId, msgId){
   pushLog(w,{type:'player',sms:'out',name:'你',text:'给'+ag.name+'发了短信「'+m.label+'」',thought:'剩余 ✉×'+w.credits});
   return true;
 }
-function sendCustomMessage(w, agentId, text){
+function sendCustomMessage(w, agentId, text, urgent){
   if(w.credits<=0) return false;
   const ag=w.agents.find(a=>a.id===agentId);
   const t=String(text||'').replace(/\s+/g,' ').trim().slice(0,60);
   if(!ag||!t) return false;
-  w.credits--; ag.inbox.push({id:'custom', label:t});
+  w.credits--; ag.inbox.push({id:'custom', label:t, urgent:!!urgent});   // 第 171 单：加急标记随信进收件箱
   relYouBump(w, ag, t.indexOf('生日快乐')>=0&&inBirthday(w,ag));   // 第 115 单：自写的祝福也算（同样一天只记一次）
   w.sentToday.push({to:ag.name,label:t,t:w.t});
-  pushLog(w,{type:'player',sms:'out',name:'你',text:'给'+ag.name+'发了短信「'+t+'」',thought:'剩余 ✉×'+w.credits});
+  pushLog(w,{type:'player',sms:'out',name:'你',text:'给'+ag.name+'发了'+(urgent?'一条加急短信':'短信')+'「'+t+'」',thought:'剩余 ✉×'+w.credits});
   return true;
 }
 
@@ -4622,6 +4634,7 @@ function renderPhone(){
   $$('#ph-msgs [data-msg]').forEach(b=>{ b.disabled = w.credits<=0; });
   $('#ph-input').disabled = w.credits<=0;
   $('#ph-send').disabled = w.credits<=0;
+  if($('#ph-urgent')) $('#ph-urgent').disabled = w.credits<=0;   // 第 171 单·加急勾选框同额度门
   $('#ph-history').innerHTML=phoneHistoryHTML(w, state.selected);   // 第 75 单：每帧照"这个人"的往来刷
   syncLLMStat();
 }
@@ -4795,7 +4808,11 @@ function sendCustom(){
   const inp=$('#ph-input');
   const t=inp.value.trim();
   if(!t) return;
-  if(Sim.sendCustomMessage(state.world, state.selected, t)){ inp.value=''; renderPhone(); saveNow(); }
+  const 急=!!($('#ph-urgent')&&$('#ph-urgent').checked);   // 第 171 单·加急：能停的事先停（SIM 里那套）
+  if(Sim.sendCustomMessage(state.world, state.selected, t, 急)){
+    inp.value=''; if($('#ph-urgent')) $('#ph-urgent').checked=false;
+    renderPhone(); saveNow();
+  }
 }
 $('#ph-send').addEventListener('click',sendCustom);
 $('#ph-input').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); sendCustom(); } });
