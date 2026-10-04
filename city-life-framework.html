@@ -470,7 +470,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v126</span>
+<span class="num dim" id="set-build">v127</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -6725,6 +6725,38 @@ function fireworkPaint(now){
   ctx.restore();
 }
 /*FIREWORK-END*/
+/*FESTLIGHTS-START*/
+/* ---------- 第 156 单·挂灯期的河岸灯串（"江边开始挂灯了"要看得见）------------------------------
+   调研出处（2026-10-04 HTTP 200）：星露谷 wiki·Feast of the Winter Star——节日家具里有
+   “**L. Light String**”（灯串；原文："Can be placed inside your house."）——同类里"节日配灯串"
+   是直接可见的元素。本仓第 63 单早已把挂灯写进世界（前一日 18:00 播报"江边开始挂灯了"、
+   次日 10:00"摊子收干净了，江边还留着灯影"），但画布上挂灯期与平常毫无区别。
+   本段：纯渲染层（零 rng、零存档字段、不改 SIM）——挂灯期在**岸线步道护栏**上画一排小灯，
+   白天是"挂着的灯点"（暗档）、入夜随 `lampLevel` 亮起并带柔光（与室内灯/路灯光斑同源作息）。
+   挂灯窗口＝[节日-1 日 18:00, 节日+1 日 10:00]，由 `thisYearFestAt` 一处推出（不新起第二套日历）。 */
+function inFestLights(w){
+  const 本=thisYearFestAt(w);
+  return w.t>=本-25*60 && w.t<本+15*60;      // 前一日 18:00 → 次日 10:00（25h/15h 由 FESTIVAL 常量推）
+}
+function festLights(t){
+  const w=state.world;
+  if(!inFestLights(w)) return;
+  const s=state.view.s, k=lampLevel(t);
+  const cy=sy(SHORE_Y+1)-2;                   // 护栏线上（第 16 单的岸线护栏）
+  const rgb='255,217,138';
+  for(let x=2;x<Sim.MAPW-1;x+=1.5){
+    const cx=sx(x);
+    if(k>0.05){                               // 夜里：柔光
+      const r=s*0.6, grd=ctx.createRadialGradient(cx,cy,0,cx,cy,r);
+      grd.addColorStop(0,'rgba('+rgb+','+(0.18*k).toFixed(3)+')');
+      grd.addColorStop(1,'rgba('+rgb+',0)');
+      ctx.fillStyle=grd; ctx.fillRect(cx-r,cy-r,r*2,r*2);
+    }
+    ctx.fillStyle='rgba('+rgb+','+(0.42+0.5*k).toFixed(3)+')';   // 灯点：白天也在（挂着），夜里更亮
+    ctx.beginPath(); ctx.arc(cx,cy,Math.max(1,s*0.075),0,Math.PI*2); ctx.fill();
+  }
+}
+/*FESTLIGHTS-END*/
 /* 第 85 单·门洞记号：门框柱 ＋ 地垫（**零素材**，只读 ROOMS[].door，一处定义）
    第 142 单·可见度增强：141 单目验巡查在 4× 放大下都几乎认不出记号——柱只有 2.5px 高 4px、
    地垫是与木地板同系的淡黄半透明（木地板上糊、深色地板上也糊）。本单按"同一处定义"加两件：
@@ -6932,6 +6964,7 @@ function draw(now){
   skyPaint(state.cvW,state.cvH,state.world.t);   // 第 33 单：天色罩层——画在最后一层，雨幕也一并跟着染色
   lampPaint(state.world.t);                       // 第 35 单：入夜点灯——画在天色**之上**，灯才亮得起来（否则被夜色吃掉）
   streetGlow(state.world.t);                      // 第 38 单：室外路灯光斑——同样画在天色之上；只画地面，不占格
+  festLights(state.world.t);                      // 第 156 单：挂灯期的河岸灯串——画在天色与路灯光斑之上、烟花之下
   fireworkPaint(now);                             // 第 148 单：江灯节烟花——画在最上层（自发光），只在节日夜
 }
 // 画布：拖动=平移镜头，点按=选中小人
