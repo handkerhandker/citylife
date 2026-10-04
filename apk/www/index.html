@@ -513,7 +513,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v155</span>
+<span class="num dim" id="set-build">v156</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -2049,16 +2049,29 @@ const TALK={ day:6, open:20*60, close:22*60, p:0.5 };
    现在每周日晚上给这一场定一个话题，写进坐下那条日志、也写进散场播报里。
    话题写到「地点／事由」粒度即止（照第 18 单 `TOPIC_POOL` 的口径：不写到具体物件，留口吻的余地）。 */
 const TALK_TOPICS=['这周的雨','楼下那家便利店','阳台上晾的东西','月底那笔房租','江边的灯','广场的夜市','最近的觉够不够睡','手里的活和欠的稿'];
-/* 今晚聊什么：按**日号**取（同一晚所有人、20:00 与 22:00 两处读到的都是同一句）。
-   用哈希、**不摇 rng**（照第 52 单派活那条先例：确定性、可复现，且不位移事件流的抽签）。 */
+/* 第 199 单·雨天话题：雨是**按拍**的状态（`weather.rain` 一场 90–140 分钟，20:00 与 22:00 可能
+   一次下一场、一次已经停了——这正是第 71 单当初没做雨天话题的原因）。治法：**今晚聊什么在今晚
+   第一次用到时定死**，钉在 `w.talkPin`（随身小账，照 `ag.lastTalk` 先例）上——坐下日志、夜谈台词、
+   22:00 散场播报三处读到的必然是同一句；下雨从雨池取，否则照旧日号哈希。两处都**不摇 rng**
+   （照第 52 单哈希派活那条先例：确定性、可复现，且不位移事件流的抽签）。 */
+const TALK_TOPICS_RAIN=['这雨要下到什么时候','谁出门又没带伞','雨天的路灯','阳台上没收的衣服'];
+function 题材取(池, day){
+  const d=Math.max(0,(isFinite(day)?day:1)-1);
+  return 池[((d*2654435761)>>>0)%池.length];
+}
+/* 世界侧入口（门禁也走这里）：有当晚的钉就用钉，没有就按当前雨晴取一次并**钉住**。
+   读取带"钉"这个副作用是刻意的：谁先需要谁定题，之后全晚一致（旧档无 `talkPin` 也不判坏档）。 */
 function talkTopicOf(w){
-  return talkTopicOnDay(PURE.dayOf(w.t));
+  const day=PURE.dayOf(w.t);
+  if(w.talkPin && w.talkPin.day===day && typeof w.talkPin.topic==='string') return w.talkPin.topic;
+  const 题=题材取(!!(w.weather&&w.weather.rain)?TALK_TOPICS_RAIN:TALK_TOPICS, day);
+  w.talkPin={day:day, topic:题};
+  return 题;
 }
 /* 第 72 单：同一个取题函数按**日号**暴露一遍——门禁普查要按日志条目自己的日子复算题面
-   （照 `PURE.fmtStamp` 那类"一处定义、两处调用"的口径；`talkTopicOf` 只是它的世界侧入口）。 */
+   （照 `PURE.fmtStamp` 那类"一处定义、两处调用"的口径；只走**晴池**，供"没下雨那晚"复算）。 */
 function talkTopicOnDay(day){
-  const d=Math.max(0,(isFinite(day)?day:1)-1);
-  return TALK_TOPICS[((d*2654435761)>>>0)%TALK_TOPICS.length];
+  return 题材取(TALK_TOPICS, day);
 }
 /* 第 72 单·夜谈三期：**让题面带着台词走**。前两单给夜谈定了时间、地点与"今晚聊什么"，
    可四人坐下后说的话仍是平常那套（随机开口／接话）——题面只是贴在日志上的一行字。
@@ -3946,7 +3959,7 @@ const Sim={makeWorld, step, sendMessage, sendCustomMessage, decide, MSGS, ANCHOR
   MORNING, morningFacts, morningStep,   // 第 58 单·云港晨报（门禁按真值读同一份日历）
   FESTIVAL, festAt, thisYearFestAt, inFestival, festivalStep,   // 第 62 单·江灯节（门禁按真值读同一份日历）
   TALK, nightTalkStartAt, inTalk, thisWeekTalkAt, talkStep,   // 第 70 单·周日夜谈（门禁按真值读）
-  TALK_TOPICS, talkTopicOf,   // 第 71 单·夜谈话题（门禁按真值读：话题按日号取、不摇 rng）
+  TALK_TOPICS, TALK_TOPICS_RAIN, talkTopicOf,   // 第 71 单·夜谈话题（第 199 单补雨池；门禁按真值读：不摇 rng）
   TALK_OPEN, talkOpenLine, talkTopicOnDay,   // 第 72 单·题面带着台词走（门禁按真值读：占位符一处替换）
   MISS, missStep,   // 第 74 单·惦记（门禁按真值读：周日 18:00、一周零来信才留一条）
   MISS_NOTE, missNoteOf,   // 第 76 单·居民的留言池（门禁按真值读：按周号取句、不摇 rng）
