@@ -470,7 +470,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v128</span>
+<span class="num dim" id="set-build">v129</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -6794,6 +6794,41 @@ function seasonPetals(now){
   ctx.restore();
 }
 /*PETALS-END*/
+/*FIREFLY-START*/
+/* ---------- 第 158 单·夏夜萤火虫（江边的点点光）--------------------------------------------
+   调研出处（Nookipedia·Firefly，2026-10-04 HTTP 200 复核）：
+     · "It can be found **flying near water during the overnight hours, occasionally glowing**…"；
+     · 数据表：Time of year **Jun**／Time of day **7 PM – 4 AM**／Location **Flying near freshwater**；
+     · Blathers 台词："a **night sky filled with whirling fireflies** is quite charming…"
+   ⇒ 同类里"夏夜、水边、偶尔发光的小虫"是标配；本作夜里江边只有灯与烟花，水面是安静的。
+   本段：纯渲染层（零 rng、零存档、不改 SIM）——**夏季的夜间（19:00–次日 04:00）**，
+   在**江面带＋岸线步道**（水边）飘一小把黄绿光点：每只自有相位地"亮—暗"（偶尔发光的观感）、
+   小幅游走；`reduceMotion` 跳过（照雨幕/滑动/烟花同口径）。 */
+const FIREFLY_N=14, FIREFLY_RGB='216,240,106';
+function fireflyPaint(now){
+  const w=state.world;
+  if(state.reduceMotion) return;
+  if(seasonTint(PURE.dayOf(w.t)-1).key!=='夏') return;      // 季节判定与四季罩层同源一处
+  const m=PURE.minuteOfDay(w.t);
+  if(!(m>=19*60 || m<4*60)) return;                         // 夜间：19:00–次日 04:00（照出处数据表）
+  const s=state.view.s;
+  const 相0=now/1000;
+  for(let i=0;i<FIREFLY_N;i++){
+    const 相=相0*(0.7+(i%3)*0.15)+i*2.3;
+    const 闪=Math.max(0,Math.sin(相*1.7+i))*0.9+0.1;        // 亮—暗循环（偶尔发光）
+    const x=sx(3+((i*37)%41)+Math.sin(相*0.6+i)*0.9);       // 沿江面（世界 x 3–44）小幅游走
+    const y=sy(22.6+((i*13)%5)*0.9+Math.cos(相*0.5+i*1.3)*0.5);   // 世界 y 22.6–26.2（岸线—江面）
+    if(闪>0.15){
+      const r=s*0.35, grd=ctx.createRadialGradient(x,y,0,x,y,r);
+      grd.addColorStop(0,'rgba('+FIREFLY_RGB+','+(0.2+0.22*闪).toFixed(3)+')');
+      grd.addColorStop(1,'rgba('+FIREFLY_RGB+',0)');
+      ctx.fillStyle=grd; ctx.fillRect(x-r,y-r,r*2,r*2);
+    }
+    ctx.fillStyle='rgba('+FIREFLY_RGB+','+(0.4+0.6*闪).toFixed(3)+')';
+    ctx.beginPath(); ctx.arc(x,y,Math.max(0.9,s*0.06),0,Math.PI*2); ctx.fill();
+  }
+}
+/*FIREFLY-END*/
 /* 第 85 单·门洞记号：门框柱 ＋ 地垫（**零素材**，只读 ROOMS[].door，一处定义）
    第 142 单·可见度增强：141 单目验巡查在 4× 放大下都几乎认不出记号——柱只有 2.5px 高 4px、
    地垫是与木地板同系的淡黄半透明（木地板上糊、深色地板上也糊）。本单按"同一处定义"加两件：
@@ -7002,6 +7037,7 @@ function draw(now){
   lampPaint(state.world.t);                       // 第 35 单：入夜点灯——画在天色**之上**，灯才亮得起来（否则被夜色吃掉）
   streetGlow(state.world.t);                      // 第 38 单：室外路灯光斑——同样画在天色之上；只画地面，不占格
   festLights(state.world.t);                      // 第 156 单：挂灯期的河岸灯串——画在天色与路灯光斑之上、烟花之下
+  fireflyPaint(now);                              // 第 158 单：夏夜萤火虫——江边近景，画在灯串之后、烟花之前
   fireworkPaint(now);                             // 第 148 单：江灯节烟花——画在最上层（自发光），只在节日夜
   seasonPetals(now);                              // 第 157 单：春季落花——画在最末（近景飘过，压在最上）
 }
