@@ -470,7 +470,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v129</span>
+<span class="num dim" id="set-build">v130</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -6829,6 +6829,43 @@ function fireflyPaint(now){
   }
 }
 /*FIREFLY-END*/
+/*LEAVES-START*/
+/* ---------- 第 161 单·深秋枫叶（"maple leaves will clutter the sky"）------------------------
+   调研出处（两处 HTTP 200 复核）：
+     · Nookipedia·Fall——"…and from a short period in **late fall**, **maple leaves will
+       clutter the sky** for players to catch with a net…"；
+     · 星露谷 wiki·Fall——"During this season **the leaves of some trees change color**…"。
+   ⇒ 同类里"深秋有枫叶铺过天空"是直接可见的季节记号；本作秋季只有色调、没有"叶"。
+   本段：纯渲染层（零 rng、零存档、不改 SIM）——**深秋（秋季后 1/3：年内 241–270 天）**
+   画布上空飘红橙黄小叶（26 片、打着旋下落、时钟驱动）；室外裁剪（evenodd 复用室内矩）＋
+   `reduceMotion` 跳过（照 157 落花同口径）。 */
+const LEAF_N=26, LEAF_RGB=['224,122,63','217,82,46','224,163,63'];
+function seasonLeaves(now){
+  const w=state.world;
+  if(state.reduceMotion) return;
+  if(seasonTint(PURE.dayOf(w.t)-1).key!=='秋') return;       // 季节判定与四季罩层同源一处
+  const 秋内=((PURE.dayOf(w.t)-1)%360)-180;                  // 秋＝年内 180–269（0 起）
+  if(!(秋内>=61)) return;                                    // "late fall"＝秋后 1/3（241–270 天）
+  const s=state.view.s, cvW=state.cvW, cvH=state.cvH;
+  const 相0=now/1000;
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0,0,cvW,cvH);
+  for(const q of 室内矩()) ctx.rect(q[0],q[1],q[2],q[3]);
+  ctx.clip('evenodd');                                       // 叶子只飘在室外上空（复用 152 的室内矩）
+  for(let i=0;i<LEAF_N;i++){
+    const 相=相0*(0.9+(i%5)*0.1)+i*2.9;
+    const x=((i*83+相*31)%(cvW+80))-40;
+    const y=((i*173+相*15+Math.sin(相*0.7+i)*30)%(cvH+80))-40;
+    const 色=LEAF_RGB[i%3];
+    ctx.fillStyle='rgba('+色+','+(0.75+(i%3)*0.07).toFixed(2)+')';
+    ctx.beginPath();
+    ctx.ellipse(x,y, Math.max(1,s*0.14), Math.max(0.7,s*0.075), Math.sin(相*1.1+i)*2.2, 0, Math.PI*2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+/*LEAVES-END*/
 /* 第 85 单·门洞记号：门框柱 ＋ 地垫（**零素材**，只读 ROOMS[].door，一处定义）
    第 142 单·可见度增强：141 单目验巡查在 4× 放大下都几乎认不出记号——柱只有 2.5px 高 4px、
    地垫是与木地板同系的淡黄半透明（木地板上糊、深色地板上也糊）。本单按"同一处定义"加两件：
@@ -7040,6 +7077,7 @@ function draw(now){
   fireflyPaint(now);                              // 第 158 单：夏夜萤火虫——江边近景，画在灯串之后、烟花之前
   fireworkPaint(now);                             // 第 148 单：江灯节烟花——画在最上层（自发光），只在节日夜
   seasonPetals(now);                              // 第 157 单：春季落花——画在最末（近景飘过，压在最上）
+  seasonLeaves(now);                              // 第 161 单：深秋枫叶——与落花同层（深秋飘过天空）
 }
 // 画布：拖动=平移镜头，点按=选中小人
 let drag=null;
