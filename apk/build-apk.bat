@@ -30,6 +30,8 @@ echo [5/5] verify versionCode (must not be the template default 1) ...
 "%ANDROID_HOME%\build-tools\36.0.0\aapt.exe" dump badging "out\citylife-debug.apk" > "out\badging.txt" || goto :err
 findstr /c:"versionCode='1'" "out\badging.txt" >nul && (echo BADGE STILL versionCode=1 - set-version did not take & goto :err)
 findstr /b "package:" "out\badging.txt"
+echo [6/6] verify the packaged page matches the game ...
+node check-embedded.cjs || goto :err
 echo.
 echo DONE: %~dp0out\citylife-debug.apk
 exit /b 0
