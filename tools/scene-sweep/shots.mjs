@@ -73,7 +73,11 @@ const 拍 = async (page, 名) => {
 
 const page = await browser.newPage({ viewport: { width: 1400, height: 900 }, deviceScaleFactor: 1 });
 page.on('pageerror', e => 错.push(String(e && e.message || e)));
-await page.goto(URL_); await page.waitForTimeout(2400);
+await page.goto(URL_);
+/* 第 174 单：**抢在第一次 AI 挂点之前**关掉 AI——否则沙箱不通网时，第一拍就会在日志上留一条
+   "⚠ AI 连线失败"，跟着进截图（⑧手机竖屏那张实测拍到过）。照 clip_shots.mjs 同款做法。 */
+await page.evaluate(() => { __pv.state.llm.on = false; });
+await page.waitForTimeout(2400);
 
 // ① 四人聚厅·下午（四道名牌＋各自图标＋选中者两行气泡）
 await 设景(page, { t: 1440 * 6 + 15 * 60, 雨: false, 看: [6, 7], 选中: 'a1' });
@@ -153,12 +157,33 @@ await 把人(page, [
   { id: 'a4', 位: [5.5, 8], 活: ['idle', '在家待着'] },
 ]);
 await page.waitForTimeout(500); await 拍(page, '⑨公司-上班');
+/* ⑩ 冬夜晴（第 168／169 单新景：地面积雪＋树冠雪帽＋第 164 单星空；23:00 的公园＋广场一带） */
+await 设景(page, { t: 300 * 1440 + 22 * 60, 雨: false, 看: [20, 18], 选中: 'a1' });
+await 把人(page, [
+  { id: 'a1', 位: [8.5, 19.5], 走: false, 活: ['stroll', '出门逛逛'], 想: '雪把声音都吸走了。' },
+  { id: 'a2', 位: [5.5, 7], 活: ['idle', '在家待着'] },
+  { id: 'a3', 位: [14.5, 3], 活: ['sleep', '睡觉'] },
+  { id: 'a4', 位: [17.5, 5], 活: ['sleep', '睡觉'] },
+]);
+await page.waitForTimeout(600); await 拍(page, '⑩冬夜晴-积雪雪帽');
+
+/* ⑪ 采访日（第 172 单新景：白一鸣在街市采访点；D1 是采访日、题面「菜价和房租」） */
+await 设景(page, { t: 1440 * 1 + 10 * 60, 雨: false, 看: [22, 18], 选中: 'a4' });
+await 把人(page, [
+  { id: 'a1', 位: [38.5, 6.5], 活: ['work', '上班'] },
+  { id: 'a2', 位: [27.5, 6.5], 活: ['work', '上班'] },
+  { id: 'a3', 位: [42.5, 6.5], 活: ['work', '上班'] },
+  { id: 'a4', 位: [22, 19], 走: false, 活: ['work', '出门采访'], 想: '记满了半页，够写一篇了。' },
+]);
+await page.waitForTimeout(500); await 拍(page, '⑪采访日-街市');
 await page.close();
 
 // ⑧ 手机竖屏·四人聚厅（名牌四道＋气泡在窄屏的观感）
 const 手 = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1 });
 手.on('pageerror', e => 错.push(String(e && e.message || e)));
-await 手.goto(URL_); await 手.waitForTimeout(2400);
+await 手.goto(URL_);
+await 手.evaluate(() => { __pv.state.llm.on = false; });   // 第 174 单：同上，防环境噪声进截图
+await 手.waitForTimeout(2400);
 await 设景(手, { t: 1440 * 6 + 15 * 60, 雨: false, 看: [5.5, 8.5], 选中: 'a3' });
 await 把人(手, [
   { id: 'a1', 位: [5.1, 9.3], 活: ['work', '上班'], 想: '先跑通再说。' },

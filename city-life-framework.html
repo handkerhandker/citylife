@@ -471,7 +471,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v140</span>
+<span class="num dim" id="set-build">v141</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -7197,19 +7197,22 @@ function draw(now){
   ctx.arc(sx(PLAZA_TREE.x+PLAZA_TREE.w/2),sy(PLAZA_TREE.y+PLAZA_TREE.h*0.45),PLAZA_TREE.w*s*0.42,0,Math.PI*2);
   ctx.fill();
   snowCaps();   // 第 169 单：树冠雪帽——所有树都画完之后、标签与人物之前
-  // 广场／岸线／江面标签（屏幕空间字号，与房间标签同口径）
+  /* 广场／岸线／江面标签（屏幕空间字号，与房间标签同口径）——**第 174 单起也走"先登记不画"**：
+     原先这五个场名是就地 chip，不吃第 42 单"房间名给人物让位"那条规则 ⇒ 有人站在广场时，
+     气泡会把「云港广场」压住半截、露出底下的字（第 174 单九景目验在 ⑥／⑪ 两景抓到）。
+     现在与房间名同一张队：推到人物与雨幕之后画，凡与遮挡盒相交者一律不画。 */
+  const roomLabelQueue=[];
   if(PLAZA.w*s>52){
-    chip(sx(PLAZA.x+PLAZA.w/2), sy(PLAZA.y)+16, '云港广场', '#b9b0d6', Math.max(9,Math.min(12, s*0.7)));
-    chip(sx(PLAZA_TALK.x+PLAZA_TALK.w/2), sy(PLAZA_TALK.y+PLAZA_TALK.h)-2, '夜谈角', '#9fb0c2', 9);
-    chip(sx(PLAZA_STALL.x+PLAZA_STALL.w/2), sy(PLAZA_STALL.y+PLAZA_STALL.n*PLAZA_STALL.h)+11, PURE.weekday(state.world.t)===6?'周日街市':'常设街市', '#d9b96c', 9);
+    roomLabelQueue.push({ x:sx(PLAZA.x+PLAZA.w/2), y:sy(PLAZA.y)+16, text:'云港广场', color:'#b9b0d6', size:Math.max(9,Math.min(12, s*0.7)) });
+    roomLabelQueue.push({ x:sx(PLAZA_TALK.x+PLAZA_TALK.w/2), y:sy(PLAZA_TALK.y+PLAZA_TALK.h)-2, text:'夜谈角', color:'#9fb0c2', size:9 });
+    roomLabelQueue.push({ x:sx(PLAZA_STALL.x+PLAZA_STALL.w/2), y:sy(PLAZA_STALL.y+PLAZA_STALL.n*PLAZA_STALL.h)+11, text:PURE.weekday(state.world.t)===6?'周日街市':'常设街市', color:'#d9b96c', size:9 });
   }
   if(Sim.MAPW*s>52){
-    chip(sx(6), sy(SHORE_Y)+13, '岸线步道', '#9aa4bb', 9);
-    chip(sx(Sim.MAPW/2), sy((RIVER_Y+Sim.MAPH)/2)+6, '江面', '#8fb4d9', Math.max(9,Math.min(12, s*0.7)));
+    roomLabelQueue.push({ x:sx(6), y:sy(SHORE_Y)+13, text:'岸线步道', color:'#9aa4bb', size:9 });
+    roomLabelQueue.push({ x:sx(Sim.MAPW/2), y:sy((RIVER_Y+Sim.MAPH)/2)+6, text:'江面', color:'#8fb4d9', size:Math.max(9,Math.min(12, s*0.7)) });
   }
   // 房间标签（屏幕空间字号，任何缩放下可读）—— 第 42 单起**只登记不画**，推到人物之后画
   // （理由见 nameChipReset 上方那段：四人摞名牌时会把房间名整片盖住，故房间名给人物让位）
-  const roomLabelQueue=[];
   for(const r of Sim.ROOMS){
     if(r.w*s>52) roomLabelQueue.push({ x:sx(r.x+r.w/2), y:sy(r.y)+16, text:r.label, size:Math.max(9,Math.min(12, s*0.7)) });
   }
@@ -7297,7 +7300,7 @@ function draw(now){
     ctx.font=L.size+'px system-ui,sans-serif';
     const w=ctx.measureText(L.text).width+8, b={l:L.x-w/2, r:L.x+w/2, t:L.y-14, b:L.y+1};
     if(labelBlockBoxes.some(k=>盒相交(k,b))) continue;
-    chip(L.x, L.y, L.text, '#aeb6c6', L.size);
+    chip(L.x, L.y, L.text, L.color||'#aeb6c6', L.size);   // 第 174 单：场名自带颜色（房间名沿用默认）
   }
   seasonPaint(state.cvW,state.cvH,state.world.t); // 第 111 单：四季罩层——画在天色**之下**（夜色与灯要压在它上面）
   skyPaint(state.cvW,state.cvH,state.world.t);   // 第 33 单：天色罩层——画在最后一层，雨幕也一并跟着染色
