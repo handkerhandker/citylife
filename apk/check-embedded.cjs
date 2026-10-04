@@ -1,5 +1,5 @@
 // 第 196 单·出包链第四道闸：**APK 里那份 index.html 与游戏仓库逐字节相同**。
-// 第 159 单补记：**APK 里那份 `capacitor.config.json` 也要与壳根一致**——159 单修复的心脏
+// 第 204 单补记：**APK 里那份 `capacitor.config.json` 也要与壳根一致**——204 单修复的心脏
 //   就在配置里的 `insetsHandling:"disable"`（插件别把 WebView 缩进安全区）；配置没进包＝改了等于没改。
 //
 // 为什么：前三道闸守的是"链上各步"（versionCode 写没写进去／www 镜像同不同步／
@@ -48,7 +48,7 @@ try {
        + 'APK 内 ' + b.length + ' B（' + sha(b).slice(0, 12) + '…）');
   }
 
-  /* 第 159 单补记·配置核对：语义比对（排序键后逐字比），不跟缩进/换行计较。 */
+  /* 第 204 单补记·配置核对：语义比对（排序键后逐字比），不跟缩进/换行计较。 */
   const 规整 = o => Array.isArray(o) ? o.map(规整)
     : (o && typeof o === 'object'
        ? Object.keys(o).sort().reduce((acc, k) => { acc[k] = 规整(o[k]); return acc; }, {})
