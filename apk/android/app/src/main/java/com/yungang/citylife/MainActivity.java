@@ -27,14 +27,14 @@ import com.getcapacitor.BridgeActivity;
    ③ **运行时自己量 insets**（判据＝数值 ＋ isVisible 两条腿；横屏强制 top=0——宿主会谎报竖屏
       的 112px）→ 除以 density 换算成 CSS px → 写进页面的 --sa-t/-b/-l/-r（游戏里那四个变量
       本来就是给安全区用的，写 inline 即覆盖 env()）；
-   ④ 顶部一条"底色→透明"渐隐（带一段实色 guard，状态栏图标不会压到字），底部一条
-      "透明→底色"渐隐贴在手势区上沿——不让系统蒙层的硬边切在画面中间。 */
+   ④ ~~顶部一条"底色→透明"渐隐~~ **已删（第 160 单·真机实证）**：它按状态栏高度盖一条**实心**
+      底色，比顶栏自己的底色更深，看着就是"上面空一条、顶不到顶"；删掉后顶栏底色一直顶到
+      屏幕最上沿。底部渐隐层第 181 单已删（同样理由：糊住底栏）。 */
 public class MainActivity extends BridgeActivity {
     private static final int 底色 = 0xFF171C26;      // ＝ 游戏的 --bg0，与 styles.xml 一致
     private static final String 全屏开关键 = "citylife-immersive";   // '1'＝沉浸（藏系统栏）；空/其它＝铺满
     private int 上, 下, 左, 右;
     private boolean 上为兜底 = false;                    // 第 190 单：上值是否来自系统声明高度（宿主不报数时）
-    private View 顶渐隐;
     private int 推过上 = -1, 推过下 = -1, 推过左 = -1, 推过右 = -1;
 
     @Override
@@ -42,7 +42,6 @@ public class MainActivity extends BridgeActivity {
         super.onCreate(savedInstanceState);
         边缘到边缘();
         量insets();
-        建顶渐隐();
         挂键盘垫起();
         推值();
         挂全屏开关();
@@ -193,6 +192,10 @@ public class MainActivity extends BridgeActivity {
             上 = 取系统尺寸("status_bar_height");
             上为兜底 = 上 > 0;
         }
+        /* 第 160 单·决策者原话："你不用避让摄像头啊！！！"——横屏的左右 inset（本机 l37，
+           疑为挖孔或宿主残留的旧值）**不再用于给 UI 让位**：侧栏/浮层一律贴到屏幕左右边缘。
+           上/下（状态栏、手势条）照旧让位——那两条是真会压住字。 */
+        左 = 0; 右 = 0;
     }
 
     /** 读系统声明的尺寸（如 status_bar_height）；读不到返回 0。 */
@@ -250,56 +253,9 @@ public class MainActivity extends BridgeActivity {
                 }
             } catch (Throwable ignored) { }
         }
-        调渐隐();
     }
 
-    /* 第 181 单：**去掉底部渐隐层**——真机反馈它把底部 UI（页签栏／提示条）糊住了。
-       底部那条系统蒙层改走"换深色主题 + 沉浸开关"这条路（见 styles.xml 与页面里的全屏方式）。 */
-    private void 建顶渐隐() {
-        ViewGroup 根;
-        try { 根 = findViewById(android.R.id.content); } catch (Throwable e) { return; }
-        if (根 == null) return;
-        顶渐隐 = new 渐隐层(true);
-        根.addView(顶渐隐, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0,
-            android.view.Gravity.TOP));
-    }
-
-    private void 调渐隐() {
-        if (顶渐隐 != null) {
-            int h = 上 > 0 ? 上 : 0;                    // 只盖住状态栏那一条，绝不下探到 UI 上
-            ViewGroup.LayoutParams lp = 顶渐隐.getLayoutParams();
-            lp.height = h;
-            顶渐隐.setLayoutParams(lp);
-            顶渐隐.setVisibility(h > 0 ? View.VISIBLE : View.GONE);   // 判据是"栏在不在"，不是横竖屏
-            顶渐隐.invalidate();
-        }
-    }
-
-    /** 纯展示层：不消费触摸（没挂点击监听），点击照常穿到下面的 WebView。 */
-    private class 渐隐层 extends View {
-        private final boolean 是顶;
-        private final Paint 笔 = new Paint(Paint.ANTI_ALIAS_FLAG);
-
-        渐隐层(boolean 是顶) { super(MainActivity.this); this.是顶 = 是顶; }
-
-        @Override
-        protected void onSizeChanged(int w, int h, int ow, int oh) {
-            super.onSizeChanged(w, h, ow, oh);
-            int 实色 = 底色;
-            int 透明 = 实色 & 0x00FFFFFF;
-            if (是顶) {
-                float guard = h > 0 ? Math.min(1f, (float) Math.max(0, 上) / (float) h) : 0f;
-                笔.setShader(new LinearGradient(0, 0, 0, h,
-                    new int[] { 实色, 实色, 透明 }, new float[] { 0f, guard, 1f }, Shader.TileMode.CLAMP));
-            } else {
-                笔.setShader(new LinearGradient(0, 0, 0, h,
-                    透明, 实色, Shader.TileMode.CLAMP));
-            }
-        }
-
-        @Override
-        protected void onDraw(Canvas c) {
-            if (getHeight() > 0) c.drawRect(0, 0, getWidth(), getHeight(), 笔);
-        }
-    }
+    /* 第 181 单删了底部渐隐层；第 160 单把**顶部渐隐层也删了**——它按状态栏高度盖一条实心底色，
+       比顶栏自己的底色更深，真机上看着就是"上面空一条、顶不到顶"（决策者圈图实证）。
+       底层（画布铺满 + 页面按 --sa-* 给 UI 让位）不变。 */
 }
