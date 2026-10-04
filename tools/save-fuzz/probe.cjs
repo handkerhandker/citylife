@@ -59,6 +59,8 @@ const 内部 = [
   { k: 'sentToday', v: [null] }, { k: 'saidDay', v: { a1: null } }, { k: 'saidDay', v: { a1: 'x' } },
   { k: 'stats', v: { act: 'x', pair: {}, rain: 0, pay: 0, rentPaid: 0, market: 0, maxGap: 0 } },
   { k: 'stats', v: { act: {}, pair: 'x', rain: 0, pay: 0, rentPaid: 0, market: 0, maxGap: 0 } },
+  /* 第 217 单·玩家留言进板：世界级新状态的两个畸形形状（照 214 单点名先例） */
+  { k: 'boardNote', v: { txt: 5, toName: [], t: 'x', read: 'y' } }, { k: 'boardNote', v: [] },
   /* 第 214 单（批后审计 210–213）：新状态的两个畸形形状（自动普查只到"物件级"，
      这两种是"对象里字段坏"——照 relYou/waiting 先例点名） */
   { ai: 0, k: 'lastCat', v: { t: 'x', 名: 5, tx: [] } }, { ai: 0, k: 'lastCat', v: { t: 1, 名: 'x', tx: 'y' } },

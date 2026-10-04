@@ -7,7 +7,10 @@
 //   B 存档：① 立即存档后状态行＝已存（file:// 下 localStorage 可写）；② 重载后世界从保存时刻续跑、仍＝已存（读回成功）；
 //          ③ 导出码以 `CLS1.` 开头
 //   C 降级：① 发一条短信 ⇒ AI 被触发并结算（直连与中转两条通道都试过）、零 pageerror；
-//          ② 「⚠ AI 连线失败」≤1 次、通道行＝未连接（file:// 无直连密钥、无同源 /relay——这是设计内形态，不刷屏不崩）
+//          ② 「⚠ AI 连线失败」**本会话新增** ≤1 次、通道行＝未连接（file:// 无直连密钥、无同源 /relay——
+//             这是设计内形态，不刷屏不崩）。★第 217 单批内修正：`warned` 是**会话级**的（不随存档走），
+//             而本探针自己会在 B② 重载一次——上一会话那条已随存档载回，故判据取"C 段前后之差"，
+//             不取日志墙里的绝对条数（原写法在"存档时已落过一条"的时序下会假红；实测三跑三中）。
 //
 // 保真度说明：不改产品文件；只挂一个 fetch 记账钩子（只记 URL、不改行为）与一条直连拦截。
 //   · 直连（api.anthropic.com）一律 route.abort——等价用户本机"被拦截/无 key"那一档，不真打扰外部 API；
@@ -44,6 +47,7 @@ page.on('pageerror', e => 错.push('pageerror: ' + ((e && e.message) || e)));
 const 断言 = [];
 const 判 = (n, ok, 读数_) => { 断言.push({ n, ok, 读数_ }); console.log((ok ? ' ok  ' : ' FAIL ') + n + '  ' + JSON.stringify(读数_)); };
 const 读 = sel => page.evaluate(s => { const el = document.querySelector(s); return el ? el.textContent : null; }, sel);
+const 数警告 = async () => (((await 读('#log-list')) || '').split('⚠ AI 连线失败').length) - 1;
 const 钟 = async () => {
   const day = await 读('#tb-day'), clk = await 读('#tb-clock');
   const md = /D(\d+)/.exec(day || ''), mc = /(\d+):(\d+)/.exec(clk || '');
@@ -77,6 +81,7 @@ await page.reload({ waitUntil: 'load' });
 await page.waitForTimeout(1600);
 const stat2 = await 读('#sv-stat');
 const c3 = await 钟();
+const 警告基线 = await 数警告();   // 重载会把上一会话那条（若已存进档）载回来——只判"本会话新增"
 判('B② 重载续档：世界从保存时刻续跑、仍＝已存', /已存/.test(stat2 || '') && cSave.min !== null && c3.min !== null && c3.min >= cSave.min - 1,
   { 存档前: cSave.day + ' ' + cSave.clock, 重载后: c3.day + ' ' + c3.clock, sv_stat: stat2 });
 await page.click('button.tab[data-tab="settings"]').catch(() => {});
@@ -104,12 +109,14 @@ for (let i = 0; i < 60; i++) {
 const fetches = await page.evaluate(() => window.__fetches || []);
 const anthropic = fetches.filter(u => u.includes('api.anthropic.com')).length;
 const relay = fetches.filter(u => u.includes('/relay')).length;
-const 警告数 = (((await 读('#log-list')) || '').split('⚠ AI 连线失败').length) - 1;
+const 警告总数 = await 数警告();
+const 本会话警告 = 警告总数 - 警告基线;
 const 通道 = await 读('#set-llm-channel');
 判('C① 发短信 ⇒ AI 被触发并结算（两条通道都试过）＋零 pageerror',
   结算 && anthropic >= 1 && relay >= 1 && 错.length === 0,
   { 统计行: stat, 直连尝试: anthropic, 中转尝试: relay, 错误: 错.length });
-判('C② 降级不刷屏：警告 ≤1 次、通道＝未连接', 警告数 <= 1 && 通道 === '未连接', { 警告数, 通道, ph芯片: chip });
+判('C② 降级不刷屏：本会话新增警告 ≤1 次、通道＝未连接', 本会话警告 <= 1 && 通道 === '未连接',
+  { 本会话警告, 警告总数, 警告基线, 通道, ph芯片: chip });
 
 await ctx.close(); await browser.close();
 const 红 = 断言.filter(x => !x.ok).length;

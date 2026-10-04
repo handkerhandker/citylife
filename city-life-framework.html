@@ -327,6 +327,11 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
   width:2.4rem; height:.28rem; border-radius:999px; background:var(--line); display:none; }
 #app[data-layout="compact-portrait"] .dlg-head .grab{ display:block; }
 .dlg-body{ padding:var(--sp3); overflow-y:auto; min-height:0; -webkit-overflow-scrolling:touch; touch-action:pan-y; }
+/* 第 217 单·公告栏·二期（玩家留言进板）：弹窗里"你贴的"与"贴一句"两段 */
+.board-posted{ margin-top:.6rem; padding:.45em .6em; border-left:3px solid var(--gold-deep);
+  background:var(--bg2); border-radius:var(--r); font-size:.82rem; overflow-wrap:anywhere; }
+.board-post{ display:grid; gap:.4rem; margin-top:.6rem; }
+.board-post .btn{ text-align:left; justify-content:flex-start; overflow-wrap:anywhere; white-space:normal; }
 #app.reduce-motion .dlg{ animation:none; }
 
 /* 滚动条低调化 */
@@ -520,7 +525,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v169</span>
+<span class="num dim" id="set-build">v170</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -2418,6 +2423,43 @@ function 公告内容(w){
   return out;
 }
 /*BOARD-END*/
+/*POST-START*/
+/* ---------- 第 217 单·玩家留言进板（公告栏·二期：你贴的句子，有人会读到）----------
+   出处：动森"玩家也能往公告板上贴"（见 `docs/规划/借鉴调研-2026-10-04-夜.md` 候选 3）。
+   口径：① 只贴"你今天发过的短信"里的一条（`w.sentToday` 是现成账，不新造计数器）——
+   贴上板的最新一条顶掉上一条；② **一贴一读**：贴出后，头一个路过广场（街市／夜谈角
+   两处锚点）的人会读到并留一句（按工种四套口吻），读过就不再重复；③ 零 rng、零经济、
+   不进剪辑候选（v1 照夜谈分单先例）。 */
+const BOARD_SPOTS=['market','plaza_talk'];
+const BOARD_READ={
+  work: ['路过广场，看见公告栏上贴着你写的「{句}」，站着看了会儿。','写得还挺像你会说的话。'],
+  clerk:['路过广场，在公告栏前停下，把你贴的「{句}」念了一遍。','念出声就有点不好意思了。'],
+  trade:['路过广场，扫了一眼公告栏上你写的「{句}」，脚步慢了半拍。','贴在那儿，谁路过都看得见啊。'],
+  write:['路过广场，看到公告栏上贴着你的「{句}」，掏出手机记了两笔。','下一段就用这个开头。'],
+};
+/* 贴一条上板（只认"今天发过的短信"的现成账）；返回是否贴上 */
+function 贴留言(w, idx){
+  if(!w || !Array.isArray(w.sentToday)) return false;
+  const m=w.sentToday[idx]; if(!m) return false;
+  const txt=String(m.label||'').replace(/\s+/g,' ').trim().slice(0,60);
+  if(!txt) return false;
+  w.boardNote={txt, toName:String(m.to||''), t:w.t, read:false};
+  return true;
+}
+/* 每拍：有贴且还没被读到，广场（街市／夜谈角）又恰好有人 ⇒ 他读到了（一贴一读） */
+function boardStep(w){
+  const n=w.boardNote;
+  if(!n || typeof n!=='object' || Array.isArray(n) || n.read) return;
+  if(!String(n.txt||'').trim()) return;
+  const mod=PURE.minuteOfDay(w.t);
+  if(mod<8*60 || mod>=22*60) return;              // 白天到夜里；半夜没人"路过"
+  const 人=w.agents.find(a=>BOARD_SPOTS.indexOf(a.anchor)>=0);
+  if(!人) return;
+  n.read=true;
+  const 句=BOARD_READ[人.workKind]||BOARD_READ.work;
+  logAct(w,人,句[0].replace('{句}', n.txt), 句[1]);
+}
+/*POST-END*/
 /*MORNING-START*/
 /* ---------- 第 58 单·云港晨报（把"今天是什么日子"每天说一次）----------
    调研出处（2026-10-03 实测可访问）：
@@ -3966,6 +4008,7 @@ function advance10(w){
   festivalStep(w);  // 第 62 单·江灯节（一年一次：提前一周预告／开灯／收灯）
   talkStep(w);      // 第 70 单·周日夜谈（周日 20:00–22:00，22:00 散场播报）
   catStep(w);       // 第 210 单·云港的猫（每天 15:00–17:00；零 rng）
+  boardStep(w);     // 第 217 单·玩家留言进板（有人路过广场就读到；一贴一读）
   missStep(w);      // 第 74 单·住户主动惦记你（周日 18:00；这周没收到短信的人各留一条）
   noteStep(w);      // 第 77 单·别的时候也开口（每天 21:00；生日／放灯／目标达成各留一句）
   reqStep(w);       // 第 212 单·居民委托（每天 09:00 发请求、20:00 结算；零 rng）
@@ -4195,6 +4238,7 @@ const Sim={makeWorld, step, sendMessage, sendCustomMessage, decide, MSGS, ANCHOR
   NOTE, NOTE_LINES, NOTE_LINES_NEAR, 贴己池, noteStep,   // 第 77／121 单·别的时候也开口（门禁按真值读：每天 21:00、一天一句；③期按档位换池）
   REQ, REQ_LINES, REQ_DONE, reqOfDay, reqStep,   // 第 212 单·居民委托（门禁按真值读：一天至多一件、零 rng）
   公告内容, 公告有活,   // 第 216 单·云港公告栏（门禁按真值读：纯读既有系统、零 rng）
+  贴留言, boardStep, BOARD_READ, BOARD_SPOTS,   // 第 217 单·玩家留言进板（门禁按真值读：一贴一读、零 rng）
   BIRTHDAYS, BDAY, bdayInDays, thisYearBdayAt, bdayAt, inBirthday,   // 第 64 单·住户生日（门禁按真值读同一份日历）
   GIFT,   // 第 81 单·生日礼物（门禁按真值读：窗口与价钱一处定义）
   REL, REL_TIERS, relV, relTier, relTierName, relGet,   // 第 88 单·关系状态机 A 档（门禁按真值读：档位表一处定义）
@@ -4934,15 +4978,26 @@ $('#roles-grid').addEventListener('click', e=>{
   if(b.dataset.act==='follow'){ state.selected=b.dataset.id; state.cam.manual=false; renderRoles(); renderTopbar(); }
   else openAgentDialog(b.dataset.id);
 });
-/* 第 216 单·云港公告栏：点板子开的面板（内容由 SIM 现算，DOM 只排版） */
+/* 第 216 单·云港公告栏：点板子开的面板（内容由 SIM 现算，DOM 只排版）
+   第 217 单·二期：你发过的短信也能贴上去（贴完重开一次，版面即刷新） */
 function openBoardDialog(){
-  const 条=Sim.公告内容(state.world);
+  const w=state.world, 条=Sim.公告内容(w);
+  const 贴=(w.boardNote&&typeof w.boardNote==='object'&&!Array.isArray(w.boardNote))?w.boardNote:null;
+  const 发过=(Array.isArray(w.sentToday)?w.sentToday:[]).slice(-3)
+    .map((m,i,arr)=>({m, idx:w.sentToday.length-arr.length+i})).reverse();
   openDialog('<div class="dlg-head"><span class="grab"></span>'
     +'<b class="ellip grow">⚑ 云港公告栏</b>'
     +'<button class="btn small" data-fx data-close>✕</button></div>'
     +'<div class="dlg-body"><ul class="board-notes">'
     +条.map(t=>'<li>'+esc(t)+'</li>').join('')
-    +'</ul><div class="faint" style="margin-top:.5rem">居民和店主有什么要说的，都贴在这儿。</div></div>');
+    +'</ul>'
+    +(贴&&String(贴.txt||'').trim()?'<div class="board-posted">板上贴着你写的「'+esc(贴.txt)+'」'+(贴.toName?'（写给'+esc(贴.toName)+'）':'')+'。</div>':'')
+    +(发过.length?'<div class="board-post"><div class="faint">把你的话也贴上去：</div>'
+      +发过.map(x=>'<button class="btn small" data-post="'+x.idx+'">给'+esc(x.m.to)+'的「'+esc(x.m.label)+'」</button>').join('')+'</div>':'')
+    +'<div class="faint" style="margin-top:.5rem">居民和店主有什么要说的，都贴在这儿；发过短信后，也能把你的话贴上去。</div></div>');
+  $('#dialog-root').querySelectorAll('[data-post]').forEach(b=>b.addEventListener('click',()=>{
+    if(Sim.贴留言(state.world, +b.dataset.post)) openBoardDialog();
+  }));
 }
 function openAgentDialog(id){
   const ag=state.world.agents.find(a=>a.id===id); if(!ag) return;
