@@ -73,7 +73,12 @@ const 点小人 = async id => {
   await page.waitForTimeout(250);
   return page.evaluate(i => {
     const v = __pv.state.vis[i], r = document.querySelector('#cv').getBoundingClientRect();
-    return { x: r.x + __pv.sx(v.dspX), y: r.y + __pv.sy(v.dspY) - 30 * (__pv.state.view.s / 20), 底: __pv.state.view.s };  // 点位抬到精灵上半身（点选判定以视觉中心/头部为准）
+    /* 第 209 单修：点位算式与**游戏自己的命中锚点**同口径——像素精灵 2 格高、脚贴格底
+       （绘制 dy0=py+0.5s−2s ⇒ 视觉中心＝底−0.5s，游戏 pointerup 的锚点也是它）。
+       旧的 `-30*(s/20)` 固定抬 1.5 格（＝精灵顶边）：s=13 时靠 18px 半径地板勉强命中，
+       第 208 单竖屏 s=13→30.14 后偏移 -45px 越出 27px 半径 ⇒ 点空假红
+       （实测：偏移 0～−40 全中、−45 起全空）。 */
+    return { x: r.x + __pv.sx(v.dspX), y: r.y + __pv.sy(v.dspY) - __pv.state.view.s * 0.5, 底: __pv.state.view.s };
   }, id);
 };
 
