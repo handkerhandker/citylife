@@ -28,6 +28,18 @@ const html = raw.replace(/\}\)\(\);\s*<\/script>/,
   'window.__pv={get state(){return state},get Sim(){return Sim},get AI_GATE(){return AI_GATE}};\n})();\n</script>');
 if (html === raw) { console.error('注入点没找到'); process.exit(2); }
 const PORT = 18961;
+/* 第 179 单·另起一个**不同源**的 mock 中转站，专门验"AI 中转地址"这一项 */
+const 自填端口 = 18962;
+let 自填命中 = 0;
+const 自填站 = http.createServer((q, r) => {
+  const 头 = { 'content-type': 'application/json; charset=UTF-8',
+    'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type,x-pass' };
+  if (q.method === 'OPTIONS') { r.writeHead(200, 头); r.end(); return; }
+  自填命中++;
+  r.writeHead(200, 头);
+  r.end(JSON.stringify({ text: JSON.stringify({ inner: '（自填站·内心）', reply: '（自填站）收到，这就去。' }) }));
+}).listen(自填端口);
 const srv = http.createServer((q, r) => {
   const u = decodeURIComponent(q.url.split('?')[0]);
   if (u === '/' || u.endsWith('city-life-framework.html')) { r.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }); r.end(html); return; }
@@ -86,7 +98,8 @@ async function 开场(){
     错.push('console: ' + m.text().slice(0, 120));
   });
   await page.route('**api.anthropic.com**', r => r.abort());
-  await page.route('**/relay', async r => {
+  /* 只拦**同源**那一个（第 179 单：通配的 relay 路由会把自填站的请求也拦下来——第 ⑥ 幕第一版就栽在这） */
+  await page.route('http://127.0.0.1:' + PORT + '/relay', async r => {
     let prompt = '';
     try { prompt = String((r.request().postDataJSON() || {}).prompt || ''); } catch (_) {}
     await page.evaluate(x => {
@@ -102,12 +115,20 @@ async function 开场(){
   return { ctx, page, 错 };
 }
 const 短信命中 = p => p.evaluate(() => window.__relaySms);
+/* 发完短信后：①把忙点拨回此刻（读信那一段在 decide 最前、睡眠分支之前）⇒ 读信几乎立刻发生；
+   ②把额度卡到"手里还剩 2 次"——堵住"别的挂点先吃掉额度"这条随机路（第 69 单的教训：
+   判据要量性质，别量会随相位翻红的极值）。 */
+const 催读并留额度 = async p => {
+  await p.evaluate(() => { const S = window.__pv.state; for (const a of S.world.agents) a.busyUntil = S.world.t; });
+  await 卡额度(p, 2);
+};
 
 /* ── 幕 A：基线 ＋ 用尽即走模板（不发请求） ───────────────────────────── */
 {
   const { ctx, page, 错 } = await 开场();
   await 卡额度(page, 2);
   const 发好 = await 发短信(page);
+  await 催读并留额度(page);
   const 有AI = await 等条件(page, async () => {
     const L = await 读日志(page);
     return L.some(e => e.sms === 'reply' && e.llm && e.thought.includes('收到，我这就去。'))
@@ -141,6 +162,7 @@ const 短信命中 = p => p.evaluate(() => window.__relaySms);
   const { ctx, page, 错 } = await 开场();
   await 卡额度(page, 2);
   await 发短信(page);
+  await 催读并留额度(page);
   await 等条件(page, async () => (await 短信命中(page)) >= 1);
   const 前 = await 额度(page);
   await page.waitForTimeout(1500);              // 等自动存档落一笔
@@ -173,14 +195,13 @@ const 短信命中 = p => p.evaluate(() => window.__relaySms);
   await 卡额度(page, 2);
   const 命中0 = await 短信命中(page);
   const 发1 = await 发短信(page);
+  await 催读并留额度(page);
   const 零点前发得出去 = await 等条件(page, async () => (await 短信命中(page)) > 命中0, 20000);
   await page.waitForTimeout(3500);               // 10 真实秒 ≈ 100 游戏分钟：足够从 23:50 跨过零点
   await 卡额度(page, 2);
   const 命中前 = await 短信命中(page);
   const 发2 = await 发短信(page);
-  /* 午夜后人多半已"回卧室睡觉"，忙点直挂到早上——探针不陪它等天亮：
-     把忙点拨回此刻，逼它跑一次 decide（读信那一段在 decide 最前，睡眠分支之前）。 */
-  await page.evaluate(() => { const S = window.__pv.state; for (const a of S.world.agents) a.busyUntil = S.world.t; });
+  await 催读并留额度(page);   // 午夜后人多半已睡着，忙点直挂到早上——逼它跑一次 decide（读信在 decide 最前）
   const 零点后也发得出去 = await 等条件(page, async () => (await 短信命中(page)) > 命中前, 20000);
   const 命中后 = await 短信命中(page);
   const 后 = await 额度(page);
@@ -212,7 +233,51 @@ const 短信命中 = p => p.evaluate(() => window.__relaySms);
   await ctx.close();
 }
 
+/* ── 幕 D（第 179 单）：AI 中转地址——填了就走自填地址，清空回同源 ─────────────── */
+{
+  const { ctx, page, 错 } = await 开场();
+  const 自填地址 = 'http://127.0.0.1:' + 自填端口 + '/relay';
+  /* 填地址：走真设置页（输入框 + 保存按钮） */
+  await page.click('button.tab[data-tab="settings"]').catch(() => {});
+  await page.waitForTimeout(250);
+  await page.fill('#set-llm-relay', 'http://127.0.0.1:' + 自填端口).catch(() => {});
+  await page.click('#set-llm-relay-save').catch(() => {});
+  await page.waitForTimeout(200);
+  const 存下 = await page.evaluate(() => { try { return localStorage.getItem('citylife-relay-v1') || ''; } catch (_) { return 'ERR'; } });
+  await page.click('button.tab[data-tab="live"]').catch(() => {});
+  判('⑥-1 设置页保存：填站点地址 ⇒ 自动补 /relay 存进 localStorage（设备设置，不进存档）',
+    存下 === 自填地址, { 存下, 期望: 自填地址 });
+  await 卡额度(page, 2);
+  const 同源前 = await 短信命中(page);
+  const 自填前 = 自填命中;
+  await 发短信(page);
+  await 催读并留额度(page);
+  const 走自填 = await 等条件(page, async () => 自填命中 > 自填前, 25000);
+  const 有自填回信 = await 等条件(page, async () => (await 读日志(page)).some(e => e.sms === 'reply' && e.thought.includes('（自填站）收到')));
+  const 同源后 = await 短信命中(page);
+  判('⑥-2 填了地址：请求真发到自填站（那边 +1、同源 0 命中）、回信来自它',
+    走自填 && 有自填回信 && 同源后 === 同源前, { 自填前, 自填后: 自填命中, 同源前, 同源后, 有自填回信 });
+  /* 清空 ⇒ 回同源（默认行为一字不变） */
+  await page.click('button.tab[data-tab="settings"]').catch(() => {});
+  await page.waitForTimeout(250);
+  await page.click('#set-llm-relay-clear').catch(() => {});
+  await page.waitForTimeout(200);
+  const 清后 = await page.evaluate(() => { try { return localStorage.getItem('citylife-relay-v1') || ''; } catch (_) { return 'ERR'; } });
+  await page.click('button.tab[data-tab="live"]').catch(() => {});
+  await 卡额度(page, 2);
+  const 自填前2 = 自填命中;
+  await 发短信(page);
+  await 催读并留额度(page);
+  const 回同源 = await 等条件(page, async () => (await 短信命中(page)) > 同源后, 25000);
+  判('⑥-3 清空地址：回到同源 /relay（自填站这一笔 0 命中）',
+    清后 === '' && 回同源 && 自填命中 === 自填前2, { 清后, 回同源, 自填前2, 自填后2: 自填命中 });
+  判('幕D 零页错', 错.length === 0, 错.slice(0, 3));
+  await page.screenshot({ path: path.join(OUT, '幕D-自填中转地址.png') }).catch(() => {});
+  await ctx.close();
+}
+
 await browser.close();
 srv.close();
+自填站.close();
 console.log(红 ? ('成本闸·客户端侧：' + 红 + ' 条判红（图在 ' + OUT + '）') : ('成本闸·客户端侧：全绿（图在 ' + OUT + '）'));
 process.exit(红 ? 1 : 0);
