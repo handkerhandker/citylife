@@ -33,6 +33,7 @@ public class MainActivity extends BridgeActivity {
     private static final int 底色 = 0xFF171C26;      // ＝ 游戏的 --bg0，与 styles.xml 一致
     private static final String 全屏开关键 = "citylife-immersive";   // '1'＝沉浸（藏系统栏）；空/其它＝铺满
     private int 上, 下, 左, 右;
+    private boolean 上为兜底 = false;                    // 第 190 单：上值是否来自系统声明高度（宿主不报数时）
     private View 顶渐隐;
     private int 推过上 = -1, 推过下 = -1, 推过左 = -1, 推过右 = -1;
 
@@ -44,9 +45,17 @@ public class MainActivity extends BridgeActivity {
         建顶渐隐();
         推值();
         挂全屏开关();
-        for (long t : new long[] { 120, 400, 1200, 2500 }) {     // 页面加载完前几次推送会落空，补几拍
+        for (long t : new long[] { 120, 400, 1200, 2500, 5000, 8000 }) {   // 页面加载完前几次推送会落空，补几拍（第 190 单补到 8 秒——鸿蒙冷启动慢）
             getWindow().getDecorView().postDelayed(this::推值, t);
         }
+    }
+
+    /* 第 190 单·窗口拿到焦点时再推一次：首次显示/回到前台往往正是页面刚加载完的那一刻，
+       比固定补拍更准；推值() 只在值变化时才写页面，重复调用无害。 */
+    @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        if (hasFocus) 推值();
     }
 
     @Override
@@ -84,6 +93,20 @@ public class MainActivity extends BridgeActivity {
                 }
                 @JavascriptInterface
                 public int getImmersive() { return 沉浸中 ? 1 : 0; }
+                /* 第 190 单·安全区投递"第二条腿"：页面主动来问。
+                   返回 CSS px 的 "上,下,左,右"（除过 density；横屏 top 已按实测坑强制 0）。
+                   主线程时顺手现量一次；JS 桥线程调用时返回最近一次量的缓存值（页面会重试几拍）。 */
+                @JavascriptInterface
+                public String getInsets() {
+                    try {
+                        if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) 量insets();
+                        float d = getResources().getDisplayMetrics().density;
+                        return Math.round(上 / d) + "," + Math.round(下 / d) + ","
+                             + Math.round(左 / d) + "," + Math.round(右 / d) + "," + (上为兜底 ? 1 : 0);
+                    } catch (Throwable ignored) {
+                        return "";
+                    }
+                }
             }, "SZGOShell");
             // 开机读一次页面里存的选择（页面还没加载完就再补几拍）
             for (long t : new long[] { 600, 1500, 3000 }) {
@@ -144,6 +167,7 @@ public class MainActivity extends BridgeActivity {
     }
 
     private void 量insets() {
+        上为兜底 = false;
         WindowInsets ins = null;
         try { ins = getWindow().getDecorView().getRootWindowInsets(); } catch (Throwable ignored) { }
         if (ins == null) { 上 = 下 = 左 = 右 = 0; return; }
@@ -163,7 +187,21 @@ public class MainActivity extends BridgeActivity {
         }
         if (getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE) {
             上 = 0;                                  // 实测坑：横屏没有状态栏，宿主却仍报竖屏的 112px
+        } else if (上 <= 0) {
+            /* 第 190 单·兜底：宿主（卓易通/鸿蒙容器）压根不报上值时，用系统声明的状态栏高度——
+               否则顶栏一直钻在状态栏底下（真机复现）。只在竖屏兜，横屏上面已强制 0。 */
+            上 = 取系统尺寸("status_bar_height");
+            上为兜底 = 上 > 0;
         }
+    }
+
+    /** 读系统声明的尺寸（如 status_bar_height）；读不到返回 0。 */
+    private int 取系统尺寸(String 名) {
+        try {
+            int id = getResources().getIdentifier(名, "dimen", "android");
+            if (id > 0) return getResources().getDimensionPixelSize(id);
+        } catch (Throwable ignored) { }
+        return 0;
     }
 
     private int dp(float v) { return Math.round(v * getResources().getDisplayMetrics().density); }

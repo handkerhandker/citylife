@@ -36,7 +36,7 @@ const 清单 = [
   { 路径: 'tools/llm-audit/relay-mock.mjs',   档: 2, 参数: ['{OUT}/llm-audit'],         超时: 300000, 备注: 'AI 链路联调（mock 中转站：成功／非 JSON／500／语气词重写／超时五幕）' },
   { 路径: 'tools/ai-gate/client.mjs',         档: 2, 参数: ['{OUT}/ai-gate-client'],    超时: 300000, 备注: 'AI 成本闸·客户端侧（第 177 单：额度用尽即不发请求／刷新不清零／跨日重置／旧档兼容）' },
   { 路径: 'tools/back-audit/probe.mjs',       档: 2, 参数: ['{OUT}/back-audit'],        超时: 180000, 备注: '手机返回键（第 183 单：没弹窗 false／有弹窗关弹窗 true／不在现场页回现场页 true／次序不粘）' },
-  { 路径: 'tools/diag-overlay/probe.mjs',     档: 2, 参数: ['{OUT}/diag-overlay'],      超时: 180000, 备注: '诊断浮层（第 184 单：默认不显示／绝不拦触摸／刷新保持／再点关掉；第 189 单：五行读数齐——含平台原始安全区与画布/地图/边带）' },
+  { 路径: 'tools/diag-overlay/probe.mjs',     档: 2, 参数: ['{OUT}/diag-overlay'],      超时: 180000, 备注: '诊断浮层（第 184 单：默认不显示／绝不拦触摸／刷新保持／再点关掉；第 189 单：五行读数齐；第 190 单：页面主动问壳的第二腿＋屏/壳读数）' },
   { 路径: 'tools/safearea-audit/probe.mjs',   档: 2, 参数: ['{OUT}/safearea-audit'],    超时: 180000, 备注: '安全区取数（第 186 单：不注入=0／平台注入 37px 顶栏内容让位／壳自补 24px 也认；官方 SystemBars 配方）' },
   { 路径: 'tools/cookbook-audit/probe.mjs',   档: 2, 参数: ['{OUT}/cookbook-audit'],    超时: 180000, 备注: '菜谱本（第 188 单：有菜按顺序全列／空账照实说／只读不动世界／零报错）' },
   { 路径: 'tools/sms-audit/unread.mjs',       档: 2, 参数: ['{OUT}/sms-audit'],         超时: 180000, 备注: '短信页分人未读（发一条→他的角标非 0／点别人不清／点他清零／刷新仍 0）' },

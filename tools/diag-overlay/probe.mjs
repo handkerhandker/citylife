@@ -37,6 +37,8 @@ const srv = http.createServer((q, r) => {
 
 const browser = await chromium.launch({ executablePath: process.env.CITYLIFE_CHROME || undefined });
 const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 2 });
+/* 第 190 单：注入一个假的壳接口——页面启动后会主动问它要安全区（投递第二腿）。 */
+await ctx.addInitScript(() => { window.SZGOShell = { getInsets: () => '17,9,2,0,1' }; });
 const page = await ctx.newPage();
 const 错 = [];
 page.on('pageerror', e => 错.push(String(e && e.message || e)));
@@ -48,8 +50,21 @@ page.on('console', m => {
 });
 await page.route('**api.anthropic.com**', r => r.abort());
 await page.route('**/relay', r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ text: '{}' }) }));
+
+let 红 = 0;
+const 判 = (名, ok, 读) => { if (!ok) 红++; console.log((ok ? ' ok  ' : ' FAIL ') + 名 + '：' + JSON.stringify(读)); };
+const 显不显 = () => page.evaluate(() => {
+  const el = document.getElementById('dbg');
+  return { on: el.classList.contains('on'), display: getComputedStyle(el).display, 文: (el.textContent || '').slice(0, 400) };
+});
+
 await page.goto(`http://127.0.0.1:${PORT}/city-life-framework.html`, { waitUntil: 'load' });
 await page.waitForTimeout(900);
+/* 第 190 单·第二腿：页面自己问壳 —— 在没有任何平台/壳注入的情况下，--sa-t 应被拉到 17px。 */
+{
+  const 拉190 = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--sa-t').trim());
+  判('⑥ 页面主动问壳（第二腿）：拿到壳测值 ⇒ --sa-t=17px', 拉190 === '17px', { '--sa-t': 拉190 });
+}
 /* 模拟安卓壳推下来的安全区（第 181 单那套） */
 await page.evaluate(() => {
   const s = document.documentElement.style;
@@ -59,13 +74,6 @@ await page.evaluate(() => {
      浮层现在两套并排打——真机截图能区分"平台没给值、壳兜的底"与"平台给了别的值"。 */
   s.setProperty('--safe-area-inset-top', '11px'); s.setProperty('--safe-area-inset-bottom', '8px');
   s.setProperty('--safe-area-inset-left', '3px'); s.setProperty('--safe-area-inset-right', '0px');
-});
-
-let 红 = 0;
-const 判 = (名, ok, 读) => { if (!ok) 红++; console.log((ok ? ' ok  ' : ' FAIL ') + 名 + '：' + JSON.stringify(读)); };
-const 显不显 = () => page.evaluate(() => {
-  const el = document.getElementById('dbg');
-  return { on: el.classList.contains('on'), display: getComputedStyle(el).display, 文: (el.textContent || '').slice(0, 200) };
 });
 
 const 默 = await 显不显();
@@ -82,6 +90,8 @@ const 齐 = 开.on && 开.display !== 'none'
   && /安全区 t11px b8px l3px r0px/.test(开.文)
   && /平台 t11px b8px l3px r0px/.test(开.文)                       // 第 189 单：平台原始值并排
   && /画布 \d+×\d+（buf \d+×\d+） · 地图 \d+×\d+ @ -?\d+,-?\d+ · 边带 t\d+ b\d+ l\d+ r\d+/.test(开.文)  // 第 189 单：画布/地图/边带
+  && /· 屏 \d+×\d+/.test(开.文)                                     // 第 190 单：屏幕尺寸
+  && /· 壳 t17 b9 l2 r0\(备\)/.test(开.文)                          // 第 190 单：壳测安全区（含兜底标记）
   && 开.文.indexOf('屏 ' + 真屏) >= 0          // 与当前屏一致（点开关时人在设置页，就应显示 settings）
   && /帧 \d+ fps · p95 [\d.]+ms/.test(开.文);
 判('② 点开 ⇒ 显示且五行读数齐（视口/密度·安全区四值＋平台原始值·画布/地图/边带·当前屏·帧率p95）', 齐, { 文: 开.文, 真屏 });

@@ -513,7 +513,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v154</span>
+<span class="num dim" id="set-build">v155</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -538,7 +538,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row"><span class="lbl">实时读数</span><span class="num dim" id="set-viewport">—</span></div>
       <div class="set-row">
-        <span class="lbl">诊断浮层<small>打在左上角：视口／密度／布局档／安全区（页面用的＋平台原始值）／画布与地图边带／当前屏／帧率。截图就能当证据（鸿蒙上没有 adb）；只读、不拦触摸。</small></span>
+        <span class="lbl">诊断浮层<small>打在左上角：视口／屏幕／密度／布局档／安全区（页面用的＋平台原始值＋壳测值）／画布与地图边带／当前屏／帧率。截图就能当证据（鸿蒙上没有 adb）；只读、不拦触摸。</small></span>
         <button class="btn small" id="set-dbg" data-fx>关</button>
       </div>
       <p class="faint" style="font-size:.72rem;margin:var(--sp4) 0 0">美术素材：Modern Interiors / Modern Exteriors by LimeZu（limezu.itch.io）</p>
@@ -5990,6 +5990,39 @@ function resizeCanvas(){
   state.view.s=Math.max(fit, 铺宽, Math.min(13, box.width/14, box.height/10));
 }
 new ResizeObserver(resizeCanvas).observe($('#live-wrap'));
+
+/* 第 190 单·安全区投递"第二条腿"：页面主动向壳要一次。
+   为什么：壳只在开机后 0.12–8 秒推几拍；页面若加载更慢，那几拍全落在空白文档上、值就丢了
+   （鸿蒙/卓易通冷启动慢，交接文档也点名过"首帧别靠加载完再写"这条）。这里让页面启动后自己问壳，
+   旋转/尺寸变化时再问；仍然只补"平台没给值"的轴（口径同第 186 单，不跟平台抢）。 */
+function 拉壳安全区(){
+  try{
+    const sh=window.SZGOShell; if(!sh||typeof sh.getInsets!=='function') return false;
+    const p=String(sh.getInsets()||'').split(',').map(n=>Math.max(0,Math.round(Number(n)||0)));
+    if(p.length<4) return false;
+    const cs=getComputedStyle(document.documentElement), st=document.documentElement.style;
+    const 缺=k=>{const v=cs.getPropertyValue(k);return !v||!v.trim()||v.trim()==='0px';};
+    if(缺('--safe-area-inset-top')) st.setProperty('--sa-t',p[0]+'px');
+    if(缺('--safe-area-inset-bottom')) st.setProperty('--sa-b',p[1]+'px');
+    if(缺('--safe-area-inset-left')) st.setProperty('--sa-l',p[2]+'px');
+    if(缺('--safe-area-inset-right')) st.setProperty('--sa-r',p[3]+'px');
+    return true;
+  }catch(e){ return false; }
+}
+/* 浮层里那行"壳 t.. b.. l.. r.."——直接读壳最近一次量到的值（只读，不改布局）。 */
+function 壳安全区读(){
+  try{
+    const sh=window.SZGOShell;
+    if(sh&&typeof sh.getInsets==='function'){
+      const p=String(sh.getInsets()||'').split(',');
+      if(p.length>=4) return 't'+p[0]+' b'+p[1]+' l'+p[2]+' r'+p[3]+(p[4]==='1'?'(备)':'');
+    }
+  }catch(e){}
+  return '—';
+}
+[80,500,1500,3500,7000].forEach(t=>setTimeout(拉壳安全区,t));
+addEventListener('resize',拉壳安全区);
+addEventListener('orientationchange',拉壳安全区);
 function updateCamera(dt){
   const v=state.view, mw=Sim.MAPW*v.s, mh=Sim.MAPH*v.s;
   if(!state.cam.manual){
@@ -7663,10 +7696,11 @@ function 诊断画(){
   const 带=a=>Math.max(0,Math.round(a));
   el.textContent='视口 '+innerWidth+'×'+innerHeight+' · dpr '+(devicePixelRatio||1).toFixed(2)
     +' · '+((document.getElementById('app')||{}).dataset||{}).layout
+    +' · 屏 '+screen.width+'×'+screen.height
     +'\n安全区 t'+cs.getPropertyValue('--sa-t').trim()+' b'+cs.getPropertyValue('--sa-b').trim()
     +' l'+cs.getPropertyValue('--sa-l').trim()+' r'+cs.getPropertyValue('--sa-r').trim()
     +'（平台 t'+值('--safe-area-inset-top')+' b'+值('--safe-area-inset-bottom')
-    +' l'+值('--safe-area-inset-left')+' r'+值('--safe-area-inset-right')+'）'
+    +' l'+值('--safe-area-inset-left')+' r'+值('--safe-area-inset-right')+'） · 壳 '+壳安全区读()
     +'\n画布 '+Math.round(cw)+'×'+Math.round(ch)+'（buf '+cv.width+'×'+cv.height+'）'
     +' · 地图 '+Math.round(mw)+'×'+Math.round(mh)+' @ '+Math.round(vv.ox)+','+Math.round(vv.oy)
     +' · 边带 t'+带(vv.oy)+' b'+带(ch-(vv.oy+mh))+' l'+带(vv.ox)+' r'+带(cw-(vv.ox+mw))
