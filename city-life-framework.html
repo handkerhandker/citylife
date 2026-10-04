@@ -470,7 +470,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v135</span>
+<span class="num dim" id="set-build">v136</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -6912,6 +6912,46 @@ function seasonSnow(now){
   ctx.restore();
 }
 /*SNOW-END*/
+/*SNOWGROUND-START*/
+/* ---------- 第 168 单·冬日积雪（"the settling of the snow"）----------------------------------
+   调研出处（Nookipedia·Winter，2026-10-04 HTTP 200 复核）：
+     · "The weather of winter consists mainly of snowy, cloudy days. Snow will fall during the
+        late fall period, but **will not settle on the ground, trees, and buildings until the 11th
+        day of the first month of winter**…"；
+     · "**With the settling of the snow**, snowballs can be found dotted around the town."
+     星露谷 wiki·Weather（HTTP 200）："Snow transparency can be changed in the Options Menu."
+   ⇒ 同类里"下雪"与"积雪"是两个阶段；本作第 163 单只做了"下"（空中飘的白），地面一年同色。
+   本段：纯渲染层（零 rng、零存档、不改 SIM）——**入冬第 11 天起**给**室外可走地面**
+   （街道／岸线步道／广场／公园／江边步道）盖一层白＋几处雪堆；**室内与江面不吃**；
+   画在各自地面之后、树木／摊位／人物之前（雪在地面、东西踩在雪上）；夜里随夜色一起变暗。
+   与 reduceMotion 无关（静态景物，照「四季罩层」口径；探针按"动效关"量地面本身）。 */
+const SNOW_GROUND={street:'rgba(232,238,248,.55)', walk:'rgba(232,238,248,.62)',
+                   plaza:'rgba(232,238,248,.58)', park:'rgba(238,244,252,.72)'};
+const SNOW_MOUNDS=[[2,19.5],[8,22],[13,22],[16.5,20.5],[20.5,22.5],[28.5,22.5],[44,22]];  // 固定雪堆（格坐标；避开树/长椅/摊位）
+function 冬内天(t){ const d=((PURE.dayOf(t)-1)%360+360)%360; return d-270+1; }   // 入冬第几天（1 起）
+function 冬积雪(t){ return seasonTint(PURE.dayOf(t)-1).key==='冬' && 冬内天(t)>=11; }
+function snowGround(t){                       // 街道／岸线／广场——房间循环之后、摊位与人物之前调用
+  if(!冬积雪(t)) return;
+  const s=state.view.s;
+  ctx.fillStyle=SNOW_GROUND.street;
+  ctx.fillRect(sx(0), sy(Sim.STREET_Y-1), Sim.MAPW*s, 3*s);
+  ctx.fillStyle=SNOW_GROUND.walk;
+  ctx.fillRect(sx(0), sy(SHORE_Y), Sim.MAPW*s, s);
+  ctx.fillStyle=SNOW_GROUND.plaza;
+  ctx.fillRect(sx(PLAZA.x)+2, sy(PLAZA.y)+2, PLAZA.w*s-4, PLAZA.h*s-4);   // 内缩 2px 留住广场边界
+  ctx.fillStyle='rgba(244,248,255,.9)';       // 雪堆：亮一档的小丘（"snowballs dotted around the town"）
+  for(const m of SNOW_MOUNDS){
+    ctx.beginPath(); ctx.ellipse(sx(m[0]), sy(m[1]), s*0.28, s*0.17, 0, 0, Math.PI*2); ctx.fill();
+  }
+}
+function snowRoom(r){                          // 公园／江边步道——房间循环里、家具与树之前调用
+  if(r.id!=='park' && r.id!=='river') return;
+  if(!冬积雪(state.world.t)) return;
+  const s=state.view.s;
+  ctx.fillStyle=(r.id==='park')?SNOW_GROUND.park:SNOW_GROUND.walk;
+  ctx.fillRect(sx(r.x)+2, sy(r.y)+2, r.w*s-4, r.h*s-4);                    // 内缩 2px 留住房间边界
+}
+/*SNOWGROUND-END*/
 /*STARS-START*/
 /* ---------- 第 164 单·晴夜的星空与流星（"making a wish on a shooting star"）------------------
    调研出处（Nookipedia·Meteor shower，2026-10-04 HTTP 200 复核）：
@@ -7040,9 +7080,11 @@ function draw(now){
     ctx.fillStyle='#171c26';
     if(r.door.side==='b') ctx.fillRect(sx(dx-0.5),sy(r.y+r.h)-3,s,4);
     else ctx.fillRect(sx(dx-0.5),sy(r.y)-1,s,4);
+    snowRoom(r);                                   // 第 168 单：冬日积雪——公园/江边步道的地面（在树/长椅之前）
     if(TILE_ROOMS.indexOf(r.id)>=0) roomTile(r);   // 第 36 单：店面铺装（只对没被拼合图接管的房间）
     roomFurn(r);                                   // 第 143／144 单：陈设（表外房间自动跳过；家具占格在 PIX_SOLID）
   }
+  snowGround(state.world.t);   // 第 168 单：冬日积雪——街道/岸线/广场＋雪堆（房间循环之后、摊位与人物之前）
   // 广场常设件（B 案）：街市摊位 ×3 贴排于广场西列（已撤离步行动脉）＋夜谈角＋江畔景观锚；脚底全部 ≥ 行 15，零压主干道
   /* 第 85 单·门洞记号（**零素材**）：此前门洞就是墙上一个"纯地板留口"——尤其被拼合图接管的
      公寓三间（两格门洞），一眼看过去像断墙。本单给**每个有 door 的房间**补两样记号：
