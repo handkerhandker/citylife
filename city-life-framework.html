@@ -520,7 +520,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v168</span>
+<span class="num dim" id="set-build">v169</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -670,6 +670,7 @@ const ANCHORS={
      渲染层那张 `PLAZA_TALK` 矩形是它的**几何来源**——门禁钉住"这个锚点必须在矩形内"，
      挪了矩形而忘了挪锚点当场判红（与第 24 单那条"门禁常量与导演层 200 是显式耦合"同型）。 */
   plaza_talk:{room:'street',x:25,y:16,label:'广场·夜谈角', s:'广场'},
+  board:{room:'street',x:23.4,y:16.8,label:'广场·公告栏', s:'广场'},   // 第 216 单·云港公告栏（手绘、可点，纯读世界）
 };
 const MSGS=[
   {id:'eat',  label:'记得吃饭'},
@@ -2383,6 +2384,40 @@ function 谢礼(ag, w){
   }
 }
 /*REQ-END*/
+/*BOARD-START*/
+/* ---------- 第 216 单·云港公告栏（把"今天有什么事"摆到广场上；193 单调研登记的显示层半件）----------
+   出处（docs/规划/借鉴调研-2026-10-04-夜.md）：动森公告板"居民/店主/镇务都往板上贴小事"；
+   星露谷 Help Wanted 的"黄感叹号"＝一眼可见的"今天有活"。
+   口径：牌子上的内容**全部由既有系统现算**（委托／生日／夜市／夜谈／江灯节）——纯读、
+   零新状态、零 rng；板上小角标＝"今天有活"（有人托你搭把手且还没办完）。 */
+function 公告有活(w){
+  const day=PURE.dayOf(w.t);
+  return w.agents.some(a=>{ const q=a&&a.req; return q&&typeof q==='object'&&!Array.isArray(q)&&q.day===day&&!q.done; });
+}
+function 公告内容(w){
+  const day=PURE.dayOf(w.t), out=[];
+  // ① 今日委托（"有活／已应下"两态各一句——照星露谷那条"今天有活"）
+  for(const a of w.agents){
+    const q=a&&a.req;
+    if(q&&typeof q==='object'&&!Array.isArray(q)&&q.day===day&&!q.done){
+      out.push(q.ok?'有人托了你一件小事——已经应下，晚上见结果。':'有事想请你帮忙——翻翻短信，回他一句就行。');
+      break;
+    }
+  }
+  // ② 生日（今天／明天）
+  for(const a of w.agents){
+    if(inBirthday(w,a)) out.push('今天是'+a.name+'的生日。');
+    else if(bdayInDays(w,a)===1) out.push('明天是'+a.name+'的生日。');
+  }
+  // ③ 城里的活动（今晚的）
+  if(PURE.weekday(w.t)===4) out.push('今晚夜市开张。');
+  if(PURE.weekday(w.t)===6) out.push('今晚夜谈角见。');
+  if(inFestival(w)) out.push('今天是江灯节——晚上江边放灯。');
+  // ④ 兜底
+  if(!out.length) out.push('今天没什么大事，日子照常。');
+  return out;
+}
+/*BOARD-END*/
 /*MORNING-START*/
 /* ---------- 第 58 单·云港晨报（把"今天是什么日子"每天说一次）----------
    调研出处（2026-10-03 实测可访问）：
@@ -4159,6 +4194,7 @@ const Sim={makeWorld, step, sendMessage, sendCustomMessage, decide, MSGS, ANCHOR
   MISS_NOTE, missNoteOf,   // 第 76 单·居民的留言池（门禁按真值读：按周号取句、不摇 rng）
   NOTE, NOTE_LINES, NOTE_LINES_NEAR, 贴己池, noteStep,   // 第 77／121 单·别的时候也开口（门禁按真值读：每天 21:00、一天一句；③期按档位换池）
   REQ, REQ_LINES, REQ_DONE, reqOfDay, reqStep,   // 第 212 单·居民委托（门禁按真值读：一天至多一件、零 rng）
+  公告内容, 公告有活,   // 第 216 单·云港公告栏（门禁按真值读：纯读既有系统、零 rng）
   BIRTHDAYS, BDAY, bdayInDays, thisYearBdayAt, bdayAt, inBirthday,   // 第 64 单·住户生日（门禁按真值读同一份日历）
   GIFT,   // 第 81 单·生日礼物（门禁按真值读：窗口与价钱一处定义）
   REL, REL_TIERS, relV, relTier, relTierName, relGet,   // 第 88 单·关系状态机 A 档（门禁按真值读：档位表一处定义）
@@ -4898,6 +4934,16 @@ $('#roles-grid').addEventListener('click', e=>{
   if(b.dataset.act==='follow'){ state.selected=b.dataset.id; state.cam.manual=false; renderRoles(); renderTopbar(); }
   else openAgentDialog(b.dataset.id);
 });
+/* 第 216 单·云港公告栏：点板子开的面板（内容由 SIM 现算，DOM 只排版） */
+function openBoardDialog(){
+  const 条=Sim.公告内容(state.world);
+  openDialog('<div class="dlg-head"><span class="grab"></span>'
+    +'<b class="ellip grow">⚑ 云港公告栏</b>'
+    +'<button class="btn small" data-fx data-close>✕</button></div>'
+    +'<div class="dlg-body"><ul class="board-notes">'
+    +条.map(t=>'<li>'+esc(t)+'</li>').join('')
+    +'</ul><div class="faint" style="margin-top:.5rem">居民和店主有什么要说的，都贴在这儿。</div></div>');
+}
 function openAgentDialog(id){
   const ag=state.world.agents.find(a=>a.id===id); if(!ag) return;
   const recent=ag.personalLog.slice(-5).reverse().map(e=>
@@ -7656,6 +7702,41 @@ function 门洞记号(r){
   ctx.fillRect(x0, y0, 边, 垫H);
   ctx.fillRect(x0+垫W-边, y0, 边, 垫H);
 }
+/* 第 216 单·云港公告栏（手绘图元；读 `公告有活` 决定小角标，零世界改动） */
+function 画布告板(){
+  const s=state.view.s, A=Sim.ANCHORS.board; if(!A) return null;
+  const bx=sx(A.x), by=sy(A.y), u=s;
+  const 有活=Sim.公告有活(state.world);
+  ctx.save();
+  // 影子
+  ctx.fillStyle='rgba(0,0,0,.25)';
+  ctx.beginPath(); ctx.ellipse(bx,by+u*0.06,u*0.62,u*0.14,0,0,7); ctx.fill();
+  // 两根立柱
+  ctx.fillStyle='#6b4f33';
+  ctx.fillRect(bx-u*0.42, by-u*0.55, u*0.1, u*0.6);
+  ctx.fillRect(bx+u*0.32, by-u*0.55, u*0.1, u*0.6);
+  // 板面（木框＋内板）
+  ctx.fillStyle='#8a6a45'; ctx.fillRect(bx-u*0.56, by-u*1.02, u*1.12, u*0.55);
+  ctx.fillStyle='#d9c9a6'; ctx.fillRect(bx-u*0.5, by-u*0.96, u*1.0, u*0.43);
+  // 贴着的两张纸
+  ctx.fillStyle='#f4efe2'; ctx.fillRect(bx-u*0.4, by-u*0.9, u*0.34, u*0.3);
+  ctx.fillStyle='#efe6cf'; ctx.fillRect(bx+u*0.04, by-u*0.92, u*0.34, u*0.34);
+  // 纸上的字（几道横线）
+  ctx.strokeStyle='#9a8f7a'; ctx.lineWidth=Math.max(0.8, u*0.03);
+  for(let i=0;i<3;i++){ ctx.beginPath(); ctx.moveTo(bx-u*0.36, by-u*0.82+i*u*0.075); ctx.lineTo(bx-u*0.12, by-u*0.82+i*u*0.075); ctx.stroke(); }
+  for(let i=0;i<3;i++){ ctx.beginPath(); ctx.moveTo(bx+u*0.08, by-u*0.84+i*u*0.08); ctx.lineTo(bx+u*0.32, by-u*0.84+i*u*0.08); ctx.stroke(); }
+  // "今天有活"的小角标（金感叹号；照星露谷那条）
+  if(有活){
+    const gx=bx+u*0.5, gy=by-u*1.0;
+    ctx.fillStyle='#e8c65a';
+    ctx.beginPath(); ctx.arc(gx,gy,u*0.16,0,7); ctx.fill();
+    ctx.fillStyle='#4a3a12'; ctx.font='bold '+Math.max(9,Math.round(u*0.22))+'px sans-serif';
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText('!', gx, gy+u*0.01);
+  }
+  ctx.restore();
+  return {l:bx-u*0.6, r:bx+u*0.6, t:by-u*1.1, b:by+u*0.1};
+}
 /* 第 213 单·让猫看得见（纯渲染层；读 `catOfDay` 与时间窗，零世界改动）：
    蹲坐小猫，约半格宽×四分之三格高，三档花色都手绘（照家具/精灵先例全是 canvas 图元）。
    画进 `ents` 的"按脚底 y 排序"队列（有人站在同一点时猫先画、人在前），盒子进"房间名让位"账。 */
@@ -7825,6 +7906,7 @@ function draw(now){
   /* 第 213 单·让猫看得见：在来访窗口（15:00–17:00）且有猫的日子，把小猫塞进排序队列 */
   const 猫今=(()=>{ const mod=PURE.minuteOfDay(state.world.t); if(mod<Sim.CAT.on||mod>=Sim.CAT.off) return null; return Sim.catOfDay(state.world); })();
   if(猫今 && Sim.ANCHORS[猫今.spot]) ents.push({kind:'c', 猫:猫今, fy:Sim.ANCHORS[猫今.spot].y+0.4});
+  if(Sim.ANCHORS.board) ents.push({kind:'b', fy:Sim.ANCHORS.board.y+0.5});   // 第 216 单·公告栏（固定一处、按脚底排序）
   ents.sort((a,b)=>a.fy-b.fy);
   const 本帧道=分名牌道(Object.fromEntries(state.world.agents.map(a=>[a.id, sx(dispPos[a.id].x)])),
                          Object.fromEntries(state.world.agents.map(a=>[a.id, sy(dispPos[a.id].y)])));   // 第 125 单 / 第 149 单补纵轴
@@ -7835,6 +7917,7 @@ function draw(now){
       continue;
     }
     if(en.kind==='c'){ 画猫(en.猫); continue; }
+    if(en.kind==='b'){ const bb=画布告板(); if(bb) labelBlockBoxes.push(bb); continue; }
     const ag=en.ag;
     const v=state.vis[ag.id];
     const px=sx(dispPos[ag.id].x), py=sy(dispPos[ag.id].y);
@@ -7966,6 +8049,16 @@ cv.addEventListener('pointerup',e=>{
     state.selected=best.id; state.cam.manual=false;
     renderTopbar(); openAgentDialog(best.id);
     if(e.pointerType==='touch') 吞点击=performance.now();   // 第 145 单：吞掉紧随而来的合成 click
+  } else {
+    /* 第 216 单·公告栏：点板子开"云港公告栏"（agents 优先；板子在广场固定一处、命中小一号） */
+    const A=Sim.ANCHORS.board;
+    if(A){
+      const s=state.view.s, bx=sx(A.x), by=sy(A.y);
+      if(cxp>=bx-s*0.52 && cxp<=bx+s*0.52 && cyp>=by-s*1.02 && cyp<=by+s*0.08){
+        openBoardDialog();
+        if(e.pointerType==='touch') 吞点击=performance.now();
+      }
+    }
   }
 });
 cv.addEventListener('pointercancel',()=>{ drag=null; });
