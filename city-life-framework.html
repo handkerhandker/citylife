@@ -520,7 +520,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v165</span>
+<span class="num dim" id="set-build">v166</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -7641,6 +7641,58 @@ function 门洞记号(r){
   ctx.fillRect(x0, y0, 边, 垫H);
   ctx.fillRect(x0+垫W-边, y0, 边, 垫H);
 }
+/* 第 213 单·让猫看得见（纯渲染层；读 `catOfDay` 与时间窗，零世界改动）：
+   蹲坐小猫，约半格宽×四分之三格高，三档花色都手绘（照家具/精灵先例全是 canvas 图元）。
+   画进 `ents` 的"按脚底 y 排序"队列（有人站在同一点时猫先画、人在前），盒子进"房间名让位"账。 */
+function 画猫(猫){
+  const s=state.view.s, A=Sim.ANCHORS[猫.spot]; if(!A) return;
+  const C={
+    三花:{底:'#ece5d8', 深:'#3b3b40', 斑:'#d98f5a'},
+    黑:  {底:'#2c2c33', 深:'#141418', 斑:'#c9a24a'},
+    橘:  {底:'#e0923f', 深:'#a8631f', 斑:'#f3c98f'},
+  }[猫.花色]||{底:'#ece5d8',深:'#3b3b40',斑:'#d98f5a'};
+  const u=s/2, bx=sx(A.x), by=sy(A.y)+s*0.16;
+  ctx.save();
+  // 影子
+  ctx.fillStyle='rgba(0,0,0,.28)';
+  ctx.beginPath(); ctx.ellipse(bx,by+u*0.42,u*0.62,u*0.18,0,0,7); ctx.fill();
+  // 尾巴（先画、垫在身后）
+  ctx.strokeStyle=C.深; ctx.lineWidth=Math.max(1.5,u*0.18); ctx.lineCap='round';
+  ctx.beginPath(); ctx.moveTo(bx-u*0.5,by+u*0.2); ctx.quadraticCurveTo(bx-u*1.0,by+u*0.05,bx-u*0.78,by-u*0.42); ctx.stroke();
+  // 身体（坐姿：上面窄、下面宽）
+  ctx.fillStyle=C.底;
+  ctx.beginPath();
+  ctx.moveTo(bx-u*0.46,by+u*0.4);
+  ctx.quadraticCurveTo(bx,by+u*0.6,bx+u*0.46,by+u*0.4);
+  ctx.quadraticCurveTo(bx+u*0.4,by-u*0.2,bx+u*0.26,by-u*0.34);
+  ctx.lineTo(bx-u*0.26,by-u*0.34);
+  ctx.quadraticCurveTo(bx-u*0.4,by-u*0.2,bx-u*0.46,by+u*0.4);
+  ctx.closePath(); ctx.fill();
+  // 前爪（两只小方块，颜色略深）
+  ctx.fillStyle=C.深;
+  ctx.fillRect(bx-u*0.3,by+u*0.24,u*0.2,u*0.18);
+  ctx.fillRect(bx+u*0.1,by+u*0.24,u*0.2,u*0.18);
+  // 头
+  ctx.fillStyle=C.底;
+  ctx.beginPath(); ctx.arc(bx,by-u*0.62,u*0.4,0,7); ctx.fill();
+  // 耳朵（两个三角）
+  ctx.beginPath(); ctx.moveTo(bx-u*0.34,by-u*0.86); ctx.lineTo(bx-u*0.2,by-u*1.18); ctx.lineTo(bx-u*0.02,by-u*0.94); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(bx+u*0.34,by-u*0.86); ctx.lineTo(bx+u*0.2,by-u*1.18); ctx.lineTo(bx+u*0.02,by-u*0.94); ctx.closePath(); ctx.fill();
+  // 花色点缀（照猫的三档：额头/身侧的斑、深色尾巴尖）
+  if(猫.花色==='三花'){ ctx.fillStyle=C.斑;
+    ctx.beginPath(); ctx.arc(bx-u*0.22,by-u*0.92,u*0.14,0,7); ctx.fill();
+    ctx.fillStyle='#3b3b40'; ctx.beginPath(); ctx.arc(bx+u*0.3,by+u*0.05,u*0.15,0,7); ctx.fill(); }
+  if(猫.花色==='橘'){ ctx.fillStyle=C.深;
+    ctx.beginPath(); ctx.arc(bx-u*0.78,by-u*0.42,Math.max(1.2,u*0.14),0,7); ctx.fill(); }
+  // 眼睛（够大才画：黑猫给黄眼，其它给深色点）
+  if(s>=12){
+    ctx.fillStyle=(猫.花色==='黑')?'#e8c65a':'#2a2a2e';
+    ctx.beginPath(); ctx.arc(bx-u*0.14,by-u*0.66,Math.max(0.9,u*0.07),0,7); ctx.fill();
+    ctx.beginPath(); ctx.arc(bx+u*0.14,by-u*0.66,Math.max(0.9,u*0.07),0,7); ctx.fill();
+  }
+  ctx.restore();
+  labelBlockBoxes.push({l:bx-u*1.1, r:bx+u*0.5, t:by-u*1.2, b:by+u*0.5});   // 房间名给猫让位（照第 42 单先例）
+}
 function draw(now){
   const {s,ox,oy}=state.view;
   ctx.setTransform(state.dpr,0,0,state.dpr,0,0);
@@ -7755,6 +7807,9 @@ function draw(now){
   nameChipReset();   // 第 32 单：名牌登记表按帧清账；第 125 单：道号改由 分名牌道() 先算（与绘制顺序无关）
   const ents=state.world.agents.map(ag=>({kind:'a',ag,fy:dispPos[ag.id].y+0.5}));
   if(pixOn) for(const f of PIX_FURN_TALL) ents.push({kind:'f',f,fy:f[4]});
+  /* 第 213 单·让猫看得见：在来访窗口（15:00–17:00）且有猫的日子，把小猫塞进排序队列 */
+  const 猫今=(()=>{ const mod=PURE.minuteOfDay(state.world.t); if(mod<Sim.CAT.on||mod>=Sim.CAT.off) return null; return Sim.catOfDay(state.world); })();
+  if(猫今 && Sim.ANCHORS[猫今.spot]) ents.push({kind:'c', 猫:猫今, fy:Sim.ANCHORS[猫今.spot].y+0.4});
   ents.sort((a,b)=>a.fy-b.fy);
   const 本帧道=分名牌道(Object.fromEntries(state.world.agents.map(a=>[a.id, sx(dispPos[a.id].x)])),
                          Object.fromEntries(state.world.agents.map(a=>[a.id, sy(dispPos[a.id].y)])));   // 第 125 单 / 第 149 单补纵轴
@@ -7764,6 +7819,7 @@ function draw(now){
       ctx.drawImage(pix.apt, fr[0],fr[1],fr[2],fr[3], sx(APT.x+fr[0]/48), sy(APT.y+fr[1]/48), fr[2]/48*s, fr[3]/48*s);
       continue;
     }
+    if(en.kind==='c'){ 画猫(en.猫); continue; }
     const ag=en.ag;
     const v=state.vis[ag.id];
     const px=sx(dispPos[ag.id].x), py=sy(dispPos[ag.id].y);
