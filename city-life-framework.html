@@ -470,7 +470,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v130</span>
+<span class="num dim" id="set-build">v131</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -6866,6 +6866,43 @@ function seasonLeaves(now){
   ctx.restore();
 }
 /*LEAVES-END*/
+/*SNOW-START*/
+/* ---------- 第 163 单·冬日的间歇飘雪（"snowflakes floating in the air"）----------------------
+   调研出处（Nookipedia·Winter，2026-10-04 HTTP 200 复核）：
+     · "…heavy snowfall throughout the entire region. With the settling of the snow…"；
+     · "…the player can **catch snowflakes floating in the air**…"（雪花在空气中飘）。
+   ⇒ 同类里"冬天有雪花在空气里飘"是直接可见的季节记号（且是**天气/一阵一阵**的，不是天天满屏）。
+   本段：纯渲染层（零 rng、零存档、不改 SIM）——**冬季**画布上**间歇**飘雪：
+   确定性周期（每 140 秒里飘 50 秒，首尾各 4 秒渐入渐出，不"啪"地出现消失）；
+   白色小雪花慢速下落＋横向摆动；室外裁剪（evenodd 复用 152 的室内矩）；`reduceMotion` 跳过。 */
+const SNOW_N=60, SNOW_RGB='235,240,250', SNOW_CYCLE=140, SNOW_WINDOW=50;
+function seasonSnow(now){
+  const w=state.world;
+  if(state.reduceMotion) return;
+  if(seasonTint(PURE.dayOf(w.t)-1).key!=='冬') return;      // 季节判定与四季罩层同源一处
+  const 相位=(now/1000)%SNOW_CYCLE;
+  if(!(相位<SNOW_WINDOW)) return;                            // 间歇窗（确定性；"一阵一阵"）
+  const 淡=Math.min(1, 相位/4, (SNOW_WINDOW-相位)/4);        // 窗首尾各 4 秒渐入渐出
+  const s=state.view.s, cvW=state.cvW, cvH=state.cvH;
+  const 相0=now/1000;
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0,0,cvW,cvH);
+  for(const q of 室内矩()) ctx.rect(q[0],q[1],q[2],q[3]);
+  ctx.clip('evenodd');                                       // 雪只飘在室外上空（复用 152 室内矩）
+  for(let i=0;i<SNOW_N;i++){
+    const 相=相0*(0.5+(i%4)*0.1)+i*2.7;
+    const x=((i*71+相*9+Math.sin(相*0.5+i)*22)%(cvW+60))-30;
+    const y=((i*163+相*26)%(cvH+60))-30;
+    const 甲=(0.9+0.1*(i%3)/2)*淡;     // 雪核够亮（叠底后仍是白）
+    ctx.fillStyle='rgba('+SNOW_RGB+','+甲.toFixed(3)+')';
+    ctx.beginPath(); ctx.arc(x,y,Math.max(0.8,s*0.05),0,Math.PI*2); ctx.fill();
+    ctx.fillStyle='rgba('+SNOW_RGB+','+(0.35*淡).toFixed(3)+')';
+    ctx.beginPath(); ctx.arc(x,y,Math.max(1.4,s*0.11),0,Math.PI*2); ctx.fill();   // 柔光晕
+  }
+  ctx.restore();
+}
+/*SNOW-END*/
 /* 第 85 单·门洞记号：门框柱 ＋ 地垫（**零素材**，只读 ROOMS[].door，一处定义）
    第 142 单·可见度增强：141 单目验巡查在 4× 放大下都几乎认不出记号——柱只有 2.5px 高 4px、
    地垫是与木地板同系的淡黄半透明（木地板上糊、深色地板上也糊）。本单按"同一处定义"加两件：
@@ -7078,6 +7115,7 @@ function draw(now){
   fireworkPaint(now);                             // 第 148 单：江灯节烟花——画在最上层（自发光），只在节日夜
   seasonPetals(now);                              // 第 157 单：春季落花——画在最末（近景飘过，压在最上）
   seasonLeaves(now);                              // 第 161 单：深秋枫叶——与落花同层（深秋飘过天空）
+  seasonSnow(now);                                // 第 163 单：冬日间歇飘雪——与落花/枫叶同层
 }
 // 画布：拖动=平移镜头，点按=选中小人
 let drag=null;

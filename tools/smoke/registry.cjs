@@ -53,6 +53,7 @@ const 清单 = [
   { 路径: 'tools/petal-audit/probe.mjs',      档: 2, 参数: ['{OUT}/petal-audit'],      超时: 180000, 备注: '春季落花（天空带粉像素：春 ≥60／其余三季 ≤10；--改前 判红）' },
   { 路径: 'tools/firefly-audit/probe.mjs',    档: 2, 参数: ['{OUT}/firefly-audit'],    超时: 180000, 备注: '夏夜萤火虫（江面带黄绿亮点：夏夜 ≥40／夏昼·冬夜 ≤10；--改前 判红）' },
   { 路径: 'tools/leaf-audit/probe.mjs',       档: 2, 参数: ['{OUT}/leaf-audit'],       超时: 180000, 备注: '深秋枫叶（天空带橙红像素：深秋 ≥60／初秋·夏·春 ≤10；--改前 判红）' },
+  { 路径: 'tools/snow-audit/probe.mjs',       档: 2, 参数: ['{OUT}/snow-audit'],       超时: 300000, 备注: '冬日间歇飘雪（帧间白像素对称差：冬窗内均值 ≥120 且 ≥3×窗外；--改前 判红）' },
   { 路径: 'tools/fresh-gate/probe.mjs',       档: 2, 参数: ['{OUT}/fresh'],        超时: 120000, 备注: '「有新版」四场景' },
   { 路径: 'tools/page-sweep/sweep.mjs',       档: 2, 参数: ['{OUT}/sweep'],        超时: 180000, 备注: '六页两档 ＋ 全按钮扫描' },
   { 路径: 'tools/soak/soak.mjs',              档: 2, 参数: ['{OUT}/soak','--天=30','--分钟=5'], 超时: 600000, 备注: '满状态巡检 ＋ 浸泡（默认 5 分钟档）' },
