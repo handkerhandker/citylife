@@ -118,7 +118,11 @@ FURNITURE = [
     dict(name='bed1',    sheet='4_Bedroom_48x48.png',    src=(147, 1863, 255, 1938), size=(108, 75),  pos=(588, 48)),
     dict(name='bed2',    sheet='4_Bedroom_48x48.png',    src=(144, 1987, 252, 2112), size=(105, 75),  pos=(744, 48), clean=(2060, 2110, False)),
     dict(name='bed3',    sheet='4_Bedroom_48x48.png',    src=(147, 1863, 255, 1938), size=(108, 75),  pos=(588, 171)),
-    dict(name='bed4',    sheet='4_Bedroom_48x48.png',    src=(147, 2151, 255, 2226), size=(108, 75),  pos=(744, 171)),
+    # 第 167 单：bed4 的裁窗把**贴邻杂件**一起带了进来（画在床头上方、与床体不相连的
+    # 一条"漂件"——决策者实报"床上有一根不明物体"）。照 bed2 先例加 clean=：只保留与
+    # 源区纵带 2171–2226（本地 y 20–75＝床体那一段）相交的连通域，顶带孤件当场丢掉。
+    # 已用合成图单测过 clean_components（孤件清掉、床体全留）；成品用 tools/asset-pipeline/check_beds.py 验收。
+    dict(name='bed4',    sheet='4_Bedroom_48x48.png',    src=(147, 2151, 255, 2226), size=(108, 75),  pos=(744, 171), clean=(2171, 2226, False)),
 ]
 
 # 游戏侧登记(与上表联动;世界格 = 图格 + 1;此两表须与 city-life-framework.html 硬编码一致):
