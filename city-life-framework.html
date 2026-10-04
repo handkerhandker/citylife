@@ -470,7 +470,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v127</span>
+<span class="num dim" id="set-build">v128</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -6757,6 +6757,43 @@ function festLights(t){
   }
 }
 /*FESTLIGHTS-END*/
+/*PETALS-START*/
+/* ---------- 第 157 单·春季落花（花瓣飘过天空）----------------------------------------------
+   调研出处（2026-10-04 两处 HTTP 200 复核）：
+     · Nookipedia·Weather——"In early April … trees will grow **cherry blossoms**, and those
+       **cherry blossoms will float through the sky**, much like confetti does…"；
+     · 星露谷 wiki·Spring——"Trees regain their leaves, and **pink petals blow through the air
+       on windy days**."
+   ⇒ 同类里"春季有花瓣在空中飘"是标配；本作第 111 单给了四季色调，但**春季画面上没有任何
+   "春"的动的东西**。本段：纯渲染层（零 rng、零存档字段、不改 SIM）——春季画布上飘一小把
+   粉色花瓣（14 片、斜向缓飘、相位由真实时钟驱动——照烟花的 `now` 驱动先例）；
+   `reduceMotion` 跳过（照雨幕/滑动/烟花同口径）。本作没有"风天"，故取"春季全程"。 */
+const PETAL_N=18, PETAL_RGB='255,120,170';
+function seasonPetals(now){
+  const w=state.world;
+  if(state.reduceMotion) return;
+  if(seasonTint(PURE.dayOf(w.t)-1).key!=='春') return;   // 季节判定与四季罩层同源一处
+  const s=state.view.s, cvW=state.cvW, cvH=state.cvH;
+  const 相0=now/1000;
+  /* 花瓣只飘在"室外上空"：evenodd 裁掉三块室内矩形（复用第 152 单的室内矩——一处定义），
+     屋顶下的房间看不到外面的花。 */
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0,0,cvW,cvH);
+  for(const q of 室内矩()) ctx.rect(q[0],q[1],q[2],q[3]);
+  ctx.clip('evenodd');
+  for(let i=0;i<PETAL_N;i++){
+    const 相=相0*(0.85+(i%4)*0.12)+i*3.7;
+    const x=((i*97+相*26)%(cvW+80))-40;
+    const y=((i*211+相*11+Math.sin(相*0.9+i)*26)%(cvH+80))-40;
+    ctx.fillStyle='rgba('+PETAL_RGB+','+(0.8+(i%3)*0.06).toFixed(2)+')';
+    ctx.beginPath();
+    ctx.ellipse(x,y, Math.max(1,s*0.125), Math.max(0.6,s*0.07), Math.sin(相+i)*1.3, 0, Math.PI*2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+/*PETALS-END*/
 /* 第 85 单·门洞记号：门框柱 ＋ 地垫（**零素材**，只读 ROOMS[].door，一处定义）
    第 142 单·可见度增强：141 单目验巡查在 4× 放大下都几乎认不出记号——柱只有 2.5px 高 4px、
    地垫是与木地板同系的淡黄半透明（木地板上糊、深色地板上也糊）。本单按"同一处定义"加两件：
@@ -6966,6 +7003,7 @@ function draw(now){
   streetGlow(state.world.t);                      // 第 38 单：室外路灯光斑——同样画在天色之上；只画地面，不占格
   festLights(state.world.t);                      // 第 156 单：挂灯期的河岸灯串——画在天色与路灯光斑之上、烟花之下
   fireworkPaint(now);                             // 第 148 单：江灯节烟花——画在最上层（自发光），只在节日夜
+  seasonPetals(now);                              // 第 157 单：春季落花——画在最末（近景飘过，压在最上）
 }
 // 画布：拖动=平移镜头，点按=选中小人
 let drag=null;
