@@ -467,7 +467,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">今日额度<small>本地小账，每游戏日零点重置；用尽自动走模板、不再联网（中转站另有限流与熔断）</small></span>
-        <span class="num dim" id="set-llm-quota">— / 60</span>
+        <span class="num dim" id="set-llm-quota">— / 200</span>
       </div>
       <div class="set-row">
         <span class="lbl">通道</span>
@@ -475,7 +475,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v143</span>
+<span class="num dim" id="set-build">v144</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -5330,9 +5330,12 @@ function syncLLMStat(){
    与服务端（functions/relay.js：通行证／限流／缓存／预算熔断／台账）是**两道独立的闸**：
    这道管"这台机器别把自己刷爆"，那道管"谁也别把服务器刷爆"。
    计数走**存档信封**（刷新／重开不清零，防"刷新即绕过"）；按游戏日重置（与短信额度同一个零点）。
-   定标：本机 5 分钟浸泡（第 177 单）实测 D1→D18 共 258 次 ⇒ ≈15 次/日（含重试；自然量口径见交付件），
-   取 60 ⇒ 约 4 倍余量。改这个数只影响"什么时候回退模板"，对世界零影响（一帧都不走 SIM）。 */
-const AI_GATE={daily:60};   // 可调：每天最多请求次数
+   定标（第 177／178 单）：自然量实测 ≈ 8–13 次/日——30 天社交对白 170／173／191 场（三颗种子）
+   ⇒ 5.7–6.4 场/日，加睡前日记 1 次/日（四人一车）、玩家短信 ≤3 条/日及其重写；
+   AI 全线失败时因重试翻倍（5 分钟浸泡 D1→D18 实测 258 次 ≈ 15 次/日）。
+   取 200 ⇒ 约 15–25 倍余量：正常玩永远够用，仍能把"跑飞的循环"刹住。
+   改这个数只影响"什么时候回退模板"，对世界零影响（一帧都不走 SIM）。 */
+const AI_GATE={daily:200};   // 可调：每天最多请求次数（真正的钱包护栏在服务端：每人/天 + 全站/天）
 function aiGateDay(){ return PURE.dayOf(state.world.t); }
 function aiGateCap(){ return (isFinite(AI_GATE.daily)&&AI_GATE.daily>0)?Math.floor(AI_GATE.daily):0; }
 function aiGateLeft(){
