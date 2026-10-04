@@ -513,7 +513,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v156</span>
+<span class="num dim" id="set-build">v157</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -6033,6 +6033,27 @@ function 壳安全区读(){
   }catch(e){}
   return '—';
 }
+/* 第 201 单·设备三样（纯 DOM 读数，给真机排查用）：内存／GPU 渲染器／visualViewport。
+   GPU 那条**只在浮层开着时**惰性建一次 WebGL 上下文（浮层默认关 ⇒ 默认零开销；只建一次，缓存在下面这个变量里）。
+   出处照 184 单登记的遗留："浮层未画 ABI/GLES/内存（需要再加，纯 DOM）"。 */
+let 诊断GPU=null;
+function 设备三样(){
+  let 内存='—';
+  try{ if(performance.memory) 内存=Math.round(performance.memory.usedJSHeapSize/1048576)+'MB'; }catch(e){}
+  if(诊断GPU===null){
+    try{
+      const c=document.createElement('canvas');
+      const gl=c.getContext('webgl')||c.getContext('experimental-webgl');
+      if(gl){
+        const dbg=gl.getExtension('WEBGL_debug_renderer_info');
+        诊断GPU=String((dbg&&gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL))||gl.getParameter(gl.RENDERER)||gl.getParameter(gl.VERSION)||'—').slice(0,42);
+      } else 诊断GPU='—';
+    }catch(e){ 诊断GPU='—'; }
+  }
+  let vv='—';
+  try{ if(window.visualViewport) vv=Math.round(visualViewport.width)+'×'+Math.round(visualViewport.height)+'@'+visualViewport.scale.toFixed(2); }catch(e){}
+  return '设备 内存 '+内存+' · GPU '+诊断GPU+' · 视口(vv) '+vv;
+}
 [80,500,1500,3500,7000].forEach(t=>setTimeout(拉壳安全区,t));
 addEventListener('resize',拉壳安全区);
 addEventListener('orientationchange',拉壳安全区);
@@ -7718,7 +7739,8 @@ function 诊断画(){
     +' · 地图 '+Math.round(mw)+'×'+Math.round(mh)+' @ '+Math.round(vv.ox)+','+Math.round(vv.oy)
     +' · 边带 t'+带(vv.oy)+' b'+带(ch-(vv.oy+mh))+' l'+带(vv.ox)+' r'+带(cw-(vv.ox+mw))
     +'\n屏 '+state.screen+(($('#dialog-root')&&$('#dialog-root').classList.contains('open'))?' · 弹窗开':'')
-    +'\n帧 '+(均?Math.round(1000/均):0)+' fps · p95 '+p95.toFixed(1)+'ms · 缩放 '+state.view.s.toFixed(1)+' · 速度 '+速;
+    +'\n帧 '+(均?Math.round(1000/均):0)+' fps · p95 '+p95.toFixed(1)+'ms · 缩放 '+state.view.s.toFixed(1)+' · 速度 '+速
+    +'\n'+设备三样();
 }
 function loop(now){
   dtFrame=Math.min(0.1,(now-state.lastTs)/1000); state.lastTs=now;

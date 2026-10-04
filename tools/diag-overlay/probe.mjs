@@ -55,7 +55,7 @@ let 红 = 0;
 const 判 = (名, ok, 读) => { if (!ok) 红++; console.log((ok ? ' ok  ' : ' FAIL ') + 名 + '：' + JSON.stringify(读)); };
 const 显不显 = () => page.evaluate(() => {
   const el = document.getElementById('dbg');
-  return { on: el.classList.contains('on'), display: getComputedStyle(el).display, 文: (el.textContent || '').slice(0, 400) };
+  return { on: el.classList.contains('on'), display: getComputedStyle(el).display, 文: (el.textContent || '').slice(0, 800) };
 });
 
 await page.goto(`http://127.0.0.1:${PORT}/city-life-framework.html`, { waitUntil: 'load' });
@@ -92,6 +92,7 @@ const 齐 = 开.on && 开.display !== 'none'
   && /画布 \d+×\d+（buf \d+×\d+） · 地图 \d+×\d+ @ -?\d+,-?\d+ · 边带 t\d+ b\d+ l\d+ r\d+/.test(开.文)  // 第 189 单：画布/地图/边带
   && /· 屏 \d+×\d+/.test(开.文)                                     // 第 190 单：屏幕尺寸
   && /· 壳 t17 b9 l2 r0\(备\)/.test(开.文)                          // 第 190 单：壳测安全区（含兜底标记）
+  && /设备 内存 \S+ · GPU .+? · 视口\(vv\) \S+/.test(开.文)         // 第 201 单：设备三样（内存/GPU/vv）
   && 开.文.indexOf('屏 ' + 真屏) >= 0          // 与当前屏一致（点开关时人在设置页，就应显示 settings）
   && /帧 \d+ fps · p95 [\d.]+ms/.test(开.文);
 判('② 点开 ⇒ 显示且五行读数齐（视口/密度·安全区四值＋平台原始值·画布/地图/边带·当前屏·帧率p95）', 齐, { 文: 开.文, 真屏 });
