@@ -497,7 +497,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v148</span>
+<span class="num dim" id="set-build">v149</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -4303,6 +4303,14 @@ $$('#tabbar .tab').forEach(t=>t.addEventListener('click',()=>setScreen(t.dataset
 Input.on('tabPrev',()=>{ const i=TAB_ORDER.indexOf(state.screen); setScreen(TAB_ORDER[(i-1+TAB_ORDER.length)%TAB_ORDER.length]); });
 Input.on('tabNext',()=>{ const i=TAB_ORDER.indexOf(state.screen); setScreen(TAB_ORDER[(i+1)%TAB_ORDER.length]); });
 Input.on('back',()=>{ if($('#dialog-root').classList.contains('open')) closeDialog(); else if(state.screen!=='live') setScreen('live'); });
+/* 第 183 单·手机返回键：安卓壳的返回键先问页面一句"这一按你能消化吗"——
+   打开的弹窗先关、不在现场页先回现场页，都消化不了才真退 App（照上面 Input.back 同一套次序，
+   不另立第二套判据）。返回 true＝页面处理了；false＝壳照常退出。 */
+window.__back=()=>{
+  if($('#dialog-root').classList.contains('open')){ closeDialog(); return true; }
+  if(state.screen!=='live'){ setScreen('live'); return true; }
+  return false;
+};
 
 /* ---------- 对话框 ---------- */
 function openDialog(html){

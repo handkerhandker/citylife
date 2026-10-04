@@ -55,6 +55,24 @@ public class MainActivity extends BridgeActivity {
         super.onDestroy();
     }
 
+    /* 第 183 单·返回键：先问页面"这一按你能消化吗"（关弹窗／回现场页），
+       页面说消化不了才真退 App —— 与页面里 Input.back 的次序同一套，不另立判据。
+       真机提醒（交接文档 §5.4）：卓易通里"边缘返回退游戏"要单独试，别无条件吞返回。 */
+    @Override
+    public void onBackPressed() {
+        try {
+            if (getBridge() != null && getBridge().getWebView() != null) {
+                getBridge().getWebView().evaluateJavascript(
+                    "(function(){try{return (window.__back&&window.__back())?'1':'0'}catch(e){return '0'}})();",
+                    v -> { if (v == null || v.indexOf("1") < 0) 真退出(); });
+                return;
+            }
+        } catch (Throwable ignored) { }
+        super.onBackPressed();
+    }
+
+    private void 真退出() { super.onBackPressed(); }
+
     /** 第 181 单·全屏开关：页面里的「全屏方式」写 localStorage，也直接叫这里一声（同一台设备，两处都记）。 */
     private void 挂全屏开关() {
         try {
