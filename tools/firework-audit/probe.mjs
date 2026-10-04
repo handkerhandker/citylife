@@ -77,22 +77,24 @@ const 摆 = (t, 动效减) => page.evaluate(([t, rm]) => {
    节日夜读数 15678，其中几乎全是镜头残影（改前无烟花版同样 15678），烟花信号被淹没。
    阈值 0.02px 仍不够：亚像素残留在 dd>6 口径下还能贡献 ~5800 像素（改前版实测），
    故收紧到 0.002px——残差对应的每帧位移 <0.0003px，边缘像素变化 dd<1。
-   第 148 单取证还发现：画布存在一次"单帧脉冲"（江面带 ~5858 像素、一帧即散；疑为布局
-   微调引起的一次性整屏重绘）。取证结论：① 它不随"页面加载绝对时刻"走——等稳之后再停
-   1 秒，它仍出现在采样第 2 帧；② 改前无烟花版也有它。故探针**不去踩死它**，改用
-   "大差帧数"判据（见文件头）：脉冲最多贡献 1 帧，而真烟花实测 8 帧。等稳这里保留
-   **布局盒尺寸**看门 + 1 秒保险（对"镜头/尺寸"本身的稳定性仍必要）。 */
+   第 153 单·"单帧脉冲"溯源结案：它是**页面加载后 ~2.2 秒的一次布局微调**——live-wrap 高度
+   少 0.55px → ResizeObserver 触发 resizeCanvas → 画布高度 -1px、view.oy -0.27px →
+   **整屏平移一帧**（dd 6–24 口径下江面带 ~5858 像素，一帧即散；改前无烟花版同样有）。
+   修法：等稳把**画布尺寸**也纳入看门、布局盒阈值 0.5→0.1px、放行后再等 1.5 秒——
+   把这次微调让过去；"大差帧数"判据（见文件头）保留作双保险。 */
 const 等稳 = async () => {
   let 上 = null;
   for (let i = 0; i < 80; i++) {
     const v = await page.evaluate(() => {
       const box = document.querySelector('#live-wrap').getBoundingClientRect();
+      const cv = document.querySelector('#cv');
       const st = __pv.state;
-      return [box.width, box.height, st.view.ox, st.view.oy, st.view.s];
+      return [box.width, box.height, st.view.ox, st.view.oy, st.view.s, cv.width, cv.height];
     });
-    if (上 && Math.abs(v[0] - 上[0]) < 0.5 && Math.abs(v[1] - 上[1]) < 0.5
-      && Math.abs(v[2] - 上[2]) < 0.002 && Math.abs(v[3] - 上[3]) < 0.002 && v[4] === 上[4]) {
-      await page.waitForTimeout(1000);   // 保险：把"页面加载后的一次性重排"让过去
+    if (上 && Math.abs(v[0] - 上[0]) < 0.1 && Math.abs(v[1] - 上[1]) < 0.1
+      && Math.abs(v[2] - 上[2]) < 0.002 && Math.abs(v[3] - 上[3]) < 0.002
+      && v[4] === 上[4] && v[5] === 上[5] && v[6] === 上[6]) {
+      await page.waitForTimeout(1500);   // 保险：把"页面加载后的一次性布局微调"整个让过去
       return;
     }
     上 = v; await page.waitForTimeout(100);
