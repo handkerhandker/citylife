@@ -36,6 +36,7 @@ const 清单 = [
   { 路径: 'tools/llm-audit/relay-mock.mjs',   档: 2, 参数: ['{OUT}/llm-audit'],         超时: 300000, 备注: 'AI 链路联调（mock 中转站：成功／非 JSON／500／语气词重写／超时五幕）' },
   { 路径: 'tools/ai-gate/client.mjs',         档: 2, 参数: ['{OUT}/ai-gate-client'],    超时: 300000, 备注: 'AI 成本闸·客户端侧（第 177 单：额度用尽即不发请求／刷新不清零／跨日重置／旧档兼容）' },
   { 路径: 'tools/back-audit/probe.mjs',       档: 2, 参数: ['{OUT}/back-audit'],        超时: 180000, 备注: '手机返回键（第 183 单：没弹窗 false／有弹窗关弹窗 true／不在现场页回现场页 true／次序不粘）' },
+  { 路径: 'tools/diag-overlay/probe.mjs',     档: 2, 参数: ['{OUT}/diag-overlay'],      超时: 180000, 备注: '诊断浮层（第 184 单：默认不显示／四行读数齐／绝不拦触摸／刷新保持／再点关掉）' },
   { 路径: 'tools/sms-audit/unread.mjs',       档: 2, 参数: ['{OUT}/sms-audit'],         超时: 180000, 备注: '短信页分人未读（发一条→他的角标非 0／点别人不清／点他清零／刷新仍 0）' },
   { 路径: 'tools/miles-audit/probe.mjs',      档: 2, 参数: ['{OUT}/miles-audit'],       超时: 180000, 备注: '云港手账（开局 0/10／发一条→勾两条／刷新不重不漏）' },
   { 路径: 'tools/save-audit/probe.mjs',       档: 2, 参数: ['{OUT}/save-audit'],        超时: 180000, 备注: '存档两条真实路径（导出/导入往返＋坏码不崩；离线两天补算＋回城弹窗＋补算零 AI）' },

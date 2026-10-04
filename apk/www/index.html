@@ -194,6 +194,13 @@ h2.sec:first-child{ margin-top:0; }
 #content{ background:transparent; }
 .screen{ background:var(--bg0); }
 #scr-live{ background:transparent; }
+/* 第 184 单·诊断浮层：默认不显示，设置里手动开；**pointer-events:none**（绝不拦触摸） */
+#dbg{ position:fixed; left:calc(var(--sp2) + var(--sa-l)); top:calc(var(--sp2) + var(--sa-t));
+  z-index:60; display:none; pointer-events:none; white-space:pre;
+  font:.68rem/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;
+  background:rgba(10,13,20,.82); border:1px solid var(--line); border-radius:var(--r);
+  padding:2px 6px; color:var(--ink-dim); }
+#dbg.on{ display:block; }
 .overlay{ position:absolute; background:color-mix(in srgb, var(--bg1) 88%, transparent);
   border:2px solid var(--line); border-radius:var(--r); padding:var(--sp2) var(--sp3);
   backdrop-filter:blur(2px); max-width:min(70%, 20rem); min-width:0; }
@@ -497,7 +504,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v149</span>
+<span class="num dim" id="set-build">v150</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -521,6 +528,10 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
         </span>
       </div>
       <div class="set-row"><span class="lbl">实时读数</span><span class="num dim" id="set-viewport">—</span></div>
+      <div class="set-row">
+        <span class="lbl">诊断浮层<small>打在左上角：视口／密度／布局档／壳推下来的安全区／当前屏／帧率。截图就能当证据（鸿蒙上没有 adb）；只读、不拦触摸。</small></span>
+        <button class="btn small" id="set-dbg" data-fx>关</button>
+      </div>
       <p class="faint" style="font-size:.72rem;margin:var(--sp4) 0 0">美术素材：Modern Interiors / Modern Exteriors by LimeZu（limezu.itch.io）</p>
     </section>
   </main>
@@ -531,6 +542,8 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
   </aside>
 
   <footer id="hintbar"><span id="hint-text"></span></footer>
+  <!-- 第 184 单·诊断浮层（设置里手动开；只读不拦触摸）——鸿蒙 NEXT 上没有 adb，出问题靠屏幕上的字 -->
+  <div id="dbg"></div>
   <div id="dialog-root"></div>
 </div>
 
@@ -4311,6 +4324,20 @@ window.__back=()=>{
   if(state.screen!=='live'){ setScreen('live'); return true; }
   return false;
 };
+/* 第 184 单·诊断浮层开关（设置里手动开／关；状态存在本设备 localStorage，不进存档、不进世界）。
+   画什么、多久刷一次在下面主循环那一段（节流到 4Hz，不让它自己变成性能负担）。 */
+(function(){
+  const 键='citylife-dbg';
+  const 要=()=>{ try{ return localStorage.getItem(键)==='1'; }catch(_){ return false; } };
+  const 画=()=>{
+    const el=$('#dbg'), b=$('#set-dbg'), on=要();
+    if(el) el.classList.toggle('on', on);
+    if(b) b.textContent=on?'开 ✓':'关';
+  };
+  const b=$('#set-dbg');
+  if(b) b.addEventListener('click',()=>{ try{ localStorage.setItem(键, 要()?'0':'1'); }catch(_){} 画(); });
+  画();
+})();
 
 /* ---------- 对话框 ---------- */
 function openDialog(html){
@@ -7552,8 +7579,26 @@ $('#ov-follow').addEventListener('click',()=>{ state.cam.manual=false; });
 
 /* ---------- 主循环 ---------- */
 let dtFrame=0, lastTick=-1;
+/* 第 184 单·诊断浮层的取数与刷新（节流 4Hz）：帧时环形缓冲算 fps 与 p95；只读状态，零世界写入 */
+const 帧时=new Array(60).fill(0); let 帧游标=0, 诊断上次=0;
+function 诊断画(){
+  const el=$('#dbg'); if(!el) return;
+  const doc=document.documentElement, cs=getComputedStyle(doc);
+  const 有效=帧时.filter(x=>x>0).slice().sort((a,b)=>a-b);
+  const 均=有效.length? (有效.reduce((a,b)=>a+b,0)/有效.length):0;
+  const p95=有效.length? 有效[Math.min(有效.length-1,Math.floor(有效.length*0.95))]:0;
+  const 速=(((state.world||{}).speed===0)?'暂停':(((state.world||{}).speed||1)+'×'));
+  el.textContent='视口 '+innerWidth+'×'+innerHeight+' · dpr '+(devicePixelRatio||1).toFixed(2)
+    +' · '+((document.getElementById('app')||{}).dataset||{}).layout
+    +'\n安全区 t'+cs.getPropertyValue('--sa-t').trim()+' b'+cs.getPropertyValue('--sa-b').trim()
+    +' l'+cs.getPropertyValue('--sa-l').trim()+' r'+cs.getPropertyValue('--sa-r').trim()
+    +'\n屏 '+state.screen+(($('#dialog-root')&&$('#dialog-root').classList.contains('open'))?' · 弹窗开':'')
+    +'\n帧 '+(均?Math.round(1000/均):0)+' fps · p95 '+p95.toFixed(1)+'ms · 缩放 '+state.view.s.toFixed(1)+' · 速度 '+速;
+}
 function loop(now){
   dtFrame=Math.min(0.1,(now-state.lastTs)/1000); state.lastTs=now;
+  帧时[帧游标]=dtFrame*1000; 帧游标=(帧游标+1)%60;
+  if(now-诊断上次>250 && $('#dbg') && $('#dbg').classList.contains('on')){ 诊断上次=now; 诊断画(); }
   Input.pollPad(now);
   const w=state.world;
   if(w.speed>0){
