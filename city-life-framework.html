@@ -520,7 +520,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v164</span>
+<span class="num dim" id="set-build">v165</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -2294,6 +2294,89 @@ function noteStep(w){
   }
 }
 /*MISS-END*/
+/*REQ-START*/
+/* ---------- 第 212 单·居民委托（方案 A"一句话的忙"；出处：星露谷 Help Wanted＋动森公告板）----------
+   出处（逐字原文见 docs/规划/借鉴调研-2026-10-04-夜.md；方案见 docs/规划/居民委托方案_v1.md）：
+     · 星露谷 Help Wanted："…completed in exchange for money and sometimes increased friendship…"
+     · 动森公告板：居民／店主／镇务都往板上贴"今天的小事"。
+   口径（方案 A 推荐项＋推荐默认值——决策者未回复，照目标"按自己最推荐的选项继续"落地）：
+     · **每天 09:00** 按日号散列定"今天有没有一件委托"（起步 1/3 天；**零 rng**）；
+       只在**和你有过来往的人**里挑（`relYouGet>0`，照第 118 单"只惦记真有来往的人"先例——
+       陌生人不开口求人；**默认没互动的世界里一条都不发，世界轨迹零扰动**）；
+       他生日当天／江灯节当天**不发**（别在有大事的日子添乱）；**全城每天至多一件**；
+     · 请求走既有"他给你留话"通道（`type:'player'`／`sms:'note'`）并挂 `ag.waiting`
+       ⇒ 短信页照旧显示"在等你回话"；顺带占掉他当天的"一天一句"额度（不与 21:00 那条撞车）；
+     · **你回他一条短信（任何一条）＝答应**（读信处翻 `ok`）；**当晚 20:00 结算**：
+       答应了 ⇒ 他做那件小事（一条日志"忙完了：…"，心里那句就是答谢）＋**你在他心里 +1**；
+       没回 ⇒ **什么都不发生**（不扣钱、不掉关系、不叨叨——不夺走）；
+     · 零经济、零 UI 改动、**零新 rng**；默认没人回信的档里一次都不会结算（世界轨迹不动）。
+   留给以后：方案 B（带样东西）／C（替他拿主意）等决策者挑。 */
+const REQ={ at:9*60, settle:20*60 };
+const REQ_LINES={   // 四类各一句：全是"远方的朋友能回答"的小事
+  work: '帮我拿个主意：晚上吃点什么好？',
+  clerk:'今天有点闷，晚上陪我说两句呗？',
+  trade:'帮我看看：今晚夜市开不开？',
+  write:'晚上想听点别的——有什么想聊的？',
+};
+const REQ_DONE={    // 答应之后：他做的那件小事（前缀固定"忙完了："——归类靠前缀）＋心里那句（即答谢）
+  work: ['忙完了：晚上认认真真做了顿饭，吃完叹了口气。','有人接话，饭都香一点。'],
+  clerk:['忙完了：收了工，跟楼下的人聊了好一会儿。','有人肯搭话，一天就过得快些。'],
+  trade:['忙完了：去夜市门口看了一眼——开着，人还不少。','问了半天，最后还是自己走一趟最稳。'],
+  write:['忙完了：晚上没开电脑，随手翻了一晚上旧笔记。','想说的东西，翻着翻着就自己出来了。'],
+};
+// 今天的委托（没有就 null）：日号散列＋两道"别添乱"——零 rng
+function reqOfDay(w){
+  const day=PURE.dayOf(w.t), h=(day*2654435761)>>>0;
+  if((h%3)!==0) return null;                 // 起步 1/3 天（先量后定标）
+  if(inFestival(w)) return null;             // 全城大事当天不添乱
+  /* 第 118 单先例：只找"和你真有来往"的人——没有账的人不开口求人；
+     默认（没人给玩家发过信、玩家也没发过）世界里合格集为空 ⇒ 一条委托都不发。 */
+  const 合格=w.agents.filter(a=>relYouGet(a)>0);
+  if(!合格.length) return null;
+  const ag=合格[(h>>>5)%合格.length]; if(!ag) return null;
+  if(inBirthday(w,ag)) return null;          // 他生日当天不开口求人
+  return {day, ag};
+}
+function reqStep(w){
+  const mod=PURE.minuteOfDay(w.t), day=PURE.dayOf(w.t);
+  if(mod===REQ.at){
+    const r=reqOfDay(w);
+    if(r && !(r.ag.req && r.ag.req.day===day)){
+      const 句=REQ_LINES[r.ag.workKind]||REQ_LINES.work;
+      r.ag.req={day, ok:false, done:false};
+      /* 子类单开 `ask`（不是 `note`）：跟"他给你留了什么话"分开账——留言那本账（第 76／77／98 单）
+         的门禁按"条数"判，混进来会串。短信页/未读角标两处已认 `ask`（渲染按 type 走，无需改）。 */
+      pushLog(w,{type:'player',sms:'ask',agent:r.ag.id,name:r.ag.name,text:'有事想问你：'+句,thought:''});
+      /* 不挂 `ag.waiting`：那套的回复话是"（等了两天，总算等到了。）"——按天计的长等；
+         委托是同一天上午问、晚上结算的短窗，未读角标＋这句"有事想问你"已够清楚。
+         只占掉他当天的"一天一句"额度（不与 21:00 那条撞车）。 */
+      r.ag.noteDay=day;
+    }
+  } else if(mod===REQ.settle){
+    for(const ag of w.agents){
+      const q=ag.req;
+      if(!q || typeof q!=='object' || Array.isArray(q) || q.day!==day || q.done) continue;
+      q.done=true;
+      if(!q.ok) continue;                       // 没回 ⇒ 什么都不发生（不夺走）
+      const 句=REQ_DONE[ag.workKind]||REQ_DONE.work;
+      logAct(w,ag,句[0],句[1]);
+      谢礼(ag, w);                              // 你在他心里 +1（只加不减；每天至多一件由触发保证）
+    }
+  }
+}
+/* 第 212 单·委托的"+1"：与 `relYouBump` 同一笔账、同一次升档外显，但不吃"一天一次"的闸——
+   那闸管的是"你发一条消息 +1"；委托是"你回了他才成"的另一件事，各记各的。 */
+function 谢礼(ag, w){
+  const r=relYouOf(ag);
+  const 旧底=relTier(r.v).lo;
+  r.v=relV(r.v+1);
+  if(relTier(r.v).lo>旧底){
+    const 句='关系：和你处成了「'+relTierName(r.v)+'」';
+    ag.lastRelYou={ t:w.t, tier:relTierName(r.v), v:relV(r.v), tx:句 };
+    logAct(w, ag, 句, '有人记着，日子就不一样。');
+  }
+}
+/*REQ-END*/
 /*MORNING-START*/
 /* ---------- 第 58 单·云港晨报（把"今天是什么日子"每天说一次）----------
    调研出处（2026-10-03 实测可访问）：
@@ -3322,8 +3405,9 @@ const CLIP_LOGCAT=[
   ['rel',   ['关系：']],             // 第 88 单·关系涨档／冷线两句（前缀固定"关系："，一处管两句话）
   ['heart', ['交心：']],             // 第 91 单·交心那两条日志（前缀固定"交心："，两人各一条都归这类）
   ['cat',   ['蹲下来看', '🐈']],     // 第 210 单·云港的猫（住户照面那句与城市那条都归"猫事"；v1 只保覆盖率，不出卡）
+  ['req',   ['忙完了：']],           // 第 212 单·居民委托（答应后那条日志；前缀固定，覆盖率闸照管）
 ];
-const CLIP_CATNAME={eat:'吃饭', work:'上班', nap:'小憩', stroll:'散步', sleep:'睡觉', chat:'闲聊', goal:'目标', fest:'放灯', bday:'生日', talk:'夜谈', miss:'惦记', rel:'关系', heart:'交心', visit:'串门', cat:'猫事'};
+const CLIP_CATNAME={eat:'吃饭', work:'上班', nap:'小憩', stroll:'散步', sleep:'睡觉', chat:'闲聊', goal:'目标', fest:'放灯', bday:'生日', talk:'夜谈', miss:'惦记', rel:'关系', heart:'交心', visit:'串门', cat:'猫事', req:'委托'};
 // 丙级只数这几类。刻意不含 chat：闲聊次数已由甲级 social_burst 按同一个数出活，
 // 两级同时命中会在同一张卡上把同一句话印两遍（实测 D10 「闲聊 4 次，平常 2 次」印了两行）。
 // 也不含 idle：在家待着 logText 恒为 null、不上墙，本层「只数上了墙的事」故无从计数。
@@ -3834,6 +3918,7 @@ function advance10(w){
   catStep(w);       // 第 210 单·云港的猫（每天 15:00–17:00；零 rng）
   missStep(w);      // 第 74 单·住户主动惦记你（周日 18:00；这周没收到短信的人各留一条）
   noteStep(w);      // 第 77 单·别的时候也开口（每天 21:00；生日／放灯／目标达成各留一句）
+  reqStep(w);       // 第 212 单·居民委托（每天 09:00 发请求、20:00 结算；零 rng）
   if(w.weather.rain && w.t>=w.weather.until){
     w.weather.rain=false; logSys(w,'雨停了，街道亮得像洗过。'); w.lastSpark=w.t;
   }
@@ -3891,6 +3976,10 @@ function sendMessage(w, agentId, msgId){
   if(!ag||!m) return false;
   w.credits--; ag.inbox.push(m);
   relYouBump(w, ag, m.id==='birthday'&&inBirthday(w,ag));   // 第 115 单·玩家篇①期：你在他心里 +1（生日当天那句 +3）
+  /* 第 212 单·居民委托：**发送即答应**（回信窗口＝当天 09:00–20:00；不靠他读到——
+     他 19:55 还忙着、20:10 才读到时，也算你当天回了） */
+  if(ag.req && typeof ag.req==='object' && !Array.isArray(ag.req)
+     && ag.req.day===PURE.dayOf(w.t) && !ag.req.done) ag.req.ok=true;
   w.sentToday.push({to:ag.name,label:m.label,t:w.t});
   pushLog(w,{type:'player',sms:'out',name:'你',text:'给'+ag.name+'发了短信「'+m.label+'」',thought:'剩余 ✉×'+w.credits});
   return true;
@@ -3902,6 +3991,9 @@ function sendCustomMessage(w, agentId, text, urgent){
   if(!ag||!t) return false;
   w.credits--; ag.inbox.push({id:'custom', label:t, urgent:!!urgent});   // 第 171 单：加急标记随信进收件箱
   relYouBump(w, ag, t.indexOf('生日快乐')>=0&&inBirthday(w,ag));   // 第 115 单：自写的祝福也算（同样一天只记一次）
+  /* 第 212 单·居民委托：自写的那条同样"发送即答应"（与上表同一条口径） */
+  if(ag.req && typeof ag.req==='object' && !Array.isArray(ag.req)
+     && ag.req.day===PURE.dayOf(w.t) && !ag.req.done) ag.req.ok=true;
   w.sentToday.push({to:ag.name,label:t,t:w.t});
   pushLog(w,{type:'player',sms:'out',name:'你',text:'给'+ag.name+'发了'+(urgent?'一条加急短信':'短信')+'「'+t+'」',thought:'剩余 ✉×'+w.credits});
   return true;
@@ -4051,6 +4143,7 @@ const Sim={makeWorld, step, sendMessage, sendCustomMessage, decide, MSGS, ANCHOR
   MISS, missStep,   // 第 74 单·惦记（门禁按真值读：周日 18:00、一周零来信才留一条）
   MISS_NOTE, missNoteOf,   // 第 76 单·居民的留言池（门禁按真值读：按周号取句、不摇 rng）
   NOTE, NOTE_LINES, NOTE_LINES_NEAR, 贴己池, noteStep,   // 第 77／121 单·别的时候也开口（门禁按真值读：每天 21:00、一天一句；③期按档位换池）
+  REQ, REQ_LINES, REQ_DONE, reqOfDay, reqStep,   // 第 212 单·居民委托（门禁按真值读：一天至多一件、零 rng）
   BIRTHDAYS, BDAY, bdayInDays, thisYearBdayAt, bdayAt, inBirthday,   // 第 64 单·住户生日（门禁按真值读同一份日历）
   GIFT,   // 第 81 单·生日礼物（门禁按真值读：窗口与价钱一处定义）
   REL, REL_TIERS, relV, relTier, relTierName, relGet,   // 第 88 单·关系状态机 A 档（门禁按真值读：档位表一处定义）
@@ -4891,7 +4984,7 @@ function 未读条数(w, 水位, id){    // 第 129 单：带 id ⇒ 只数那�
        `out` 是**你发出去的**——刚发完就给自己点个红点，那是噪声。 */
     if(id && e && e.agent!==id) continue;
     if(e && e.type==='player' && isFinite(e.lid) && e.lid>起
-       && (e.sms==='read'||e.sms==='noreply'||e.sms==='note')) n++;
+      && (e.sms==='read'||e.sms==='noreply'||e.sms==='note'||e.sms==='ask')) n++;
   }
   return n;
 }
