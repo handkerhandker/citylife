@@ -470,7 +470,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v124</span>
+<span class="num dim" id="set-build">v125</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -5758,7 +5758,10 @@ function 分名牌道(屏x, 屏y){
        无谓分道由此而来。成形：dy＜盒高；保持：dy＜盒高+20（与 x 迟滞同余量）。 */
     const dy=Math.abs(屏y[A]-屏y[B]);
     const 上=!!(上次名牌对&&上次名牌对.indexOf(k)>=0);
-    const 近= d<T-3 && dy<名盒高();
+    /* 第 151 单·过渡叠收窄：成形阈值从"盒将相触"（T−3）提前到"还差 9px"（T+6）——
+       给浮道滑动留出提前量（实测两人相向 ~200px/s 时，T−3 触发那刻到盒子相触只剩 ~30ms，
+       滑动 167ms/道根本来不及）。保持侧 T+20 不动（迟滞带仍 14px）。 */
+    const 近= d<T+6 && dy<名盒高();
     const 带= 上 && d<T+20 && dy<名盒高()+20;    // 第 149 单：拆开迟滞 3→20（6px 带宽在走路速度下 30ms 就穿带，"落了又升"成串）
     if(近 || 带) 对.push(k);
   }
