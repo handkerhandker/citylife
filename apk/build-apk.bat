@@ -24,6 +24,10 @@ cd ..
 echo [4/4] copy apk to out ...
 if not exist "out" mkdir "out"
 copy /y "android\app\build\outputs\apk\debug\app-debug.apk" "out\citylife-debug.apk" >nul || goto :err
+echo [5/5] verify versionCode (must not be the template default 1) ...
+"%ANDROID_HOME%\build-tools\36.0.0\aapt.exe" dump badging "out\citylife-debug.apk" > "out\badging.txt" || goto :err
+findstr /c:"versionCode='1'" "out\badging.txt" >nul && (echo BADGE STILL versionCode=1 - set-version did not take & goto :err)
+findstr /b "package:" "out\badging.txt"
 echo.
 echo DONE: %~dp0out\citylife-debug.apk
 exit /b 0
