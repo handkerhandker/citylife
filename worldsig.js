@@ -24,9 +24,10 @@
 //     python3 -c "import re,hashlib;s=open('city-life-framework.html').read();print(hashlib.md5(re.search(r'/\*SIM-START\*/([\s\S]*?)/\*SIM-END\*/',s).group(1).encode()).hexdigest())"
 //
 // 本文件是**诊断工具，不是门禁**：不进 .github/workflows/gate.yml，不判红，只印一个数。
-// 用法：先按门禁第 1 步生成 app.js，再 `node worldsig.js`
+// 用法：node worldsig.js （第 249 单起自带"先解包现场"——不必再手动生成 app.js）
 
 const crypto = require('crypto');
+require('./tools/lib/sync-app.cjs').同步();   // 第 249 单：先解包现场再 require（单跑不吃旧副本）
 const {Sim} = require('./app.js');
 const SEEDS=[20260803, 424242];       // 与 sim30.js 同一组种子（两边须一致）
 const DAYS=30;

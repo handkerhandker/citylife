@@ -1,3 +1,6 @@
+/* 第 249 单·批后审计修：先把 HTML 当场解包到 app.js（一处定义 tools/lib/sync-app.cjs），再 require——
+   单跑 harness 绝不再跑旧副本（门禁第 1 步与冒烟清单首位同走这一支）。 */
+require('./tools/lib/sync-app.cjs').同步();
 const {PURE, Sim} = require('./app.js');
 let fails=0;
 const ok=(cond,msg)=>{ if(!cond){fails++; console.log('FAIL:',msg);} else console.log(' ok :',msg); };

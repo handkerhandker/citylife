@@ -8,8 +8,9 @@
 //   规矩二 · 全程不得穿实体 ——第 19 单只校验静止落位，本单扩到移动全程
 //   规矩三 · 显示位置只有一个来源——反向断言：绘制期对站位表零引用
 //
-// 用法：node walkgate.js （须先由 gate.yml 抽出 app.js）
+// 用法：node walkgate.js （第 249 单起自带"先解包现场"——单跑不必再手动抽 app.js）
 const fs=require('fs'), path=require('path');
+require('./tools/lib/sync-app.cjs').同步();   // 第 249 单：先解包现场再 require（单跑不吃旧副本）
 const {Sim}=require('./app.js');
 
 // ── 阈值集中区（可调；放宽须在交付件里说明理由） ──
