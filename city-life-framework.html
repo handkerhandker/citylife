@@ -554,7 +554,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v194</span>
+<span class="num dim" id="set-build">v195</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -7432,19 +7432,71 @@ function 雷雨场(w){
   return ((((u*2654435761)>>>0)%100) < STORM_PCT);
 }
 /* 闪电：把游戏时间切成 10 分钟的桶，约 8% 的桶里闪一记、一记亮 1.2 分钟（1× 速度≈1.2 秒、单调衰减）。
-   全部由 w.t 现算 ⇒ 同一条时间线上"哪一拍闪"是确定的（探针钉得住），且不摇任何随机源。 */
-function 雷雨闪光(){
-  const w=state.world;
+   全部由 w.t 现算 ⇒ 同一条时间线上"哪一拍闪"是确定的（探针钉得住），且不摇任何随机源。
+   第 252 单起拆出一枚**纯函数** 雷雨闪档(w)：画面（雷雨闪光）与声音（雷声步）同读这一处口径。 */
+function 雷雨闪档(w){
   if(!雷雨场(w)) return 0;
   const 桶=Math.floor(w.t/10), 相=w.t-桶*10;
   if(((((桶*2654435761)>>>0)%100) >= 闪电率)) return 0;
   if(!(相<1.2)) return 0;
-  const a=0.22*(1-相/1.2);
+  return 0.22*(1-相/1.2);
+}
+function 雷雨闪光(){
+  const a=雷雨闪档(state.world);
+  if(!(a>0)) return 0;
   ctx.fillStyle='rgba(226,236,255,'+a.toFixed(3)+')';
   ctx.fillRect(0,0,state.cvW,state.cvH);
   return a;
 }
 /*STORM-END*/
+/*THUNDER-START*/
+/* ---------- 第 252 单·雷声（把那一记白闪补上"听"的那半）----------------------------------
+   调研出处（2026-10-06 复核 HTTP 200）：
+     · 星露谷 wiki·Weather（电视天气稿）：「Storm — Looks like a storm is approaching.
+       **Thunder and lightning is expected.**」——风暴在原作里就是"雷 + 闪"成对出现；
+     · 星露谷 wiki·Soundtrack：「Outside areas and most stores are **silent during Rain and Storm
+       days**.」——雨／风暴是一档**专门处理过的听觉状态**（136 单已照这条做了雨声底，本单补雷）；
+     · Nookipedia·Rain（251 单已引）：「On rare occasions, lightning can be seen.」
+   ⇒ 本段：环境音开着、且正处在"闪"的那一拍 ⇒ 起一记**雷声**（WebAudio 现场合成、零素材）：
+     ① 光先到、声后到（推迟 0.4 秒）；② 闷而长（低通 900Hz→140Hz、2 秒衰减）；
+     ③ 同一个"闪桶"只响一记（`上次雷声桶`）；④ 关环境音／切走标签页／非雷雨／减动效 一律不响。
+   纯音频层：零 rng（确定性噪声 xorshift32）、零存档、零 SIM。 */
+let 雷声缓冲=null, 上次雷声桶=-1;
+function 雷声缓冲取(ac){
+  if(雷声缓冲) return 雷声缓冲;
+  const sr=ac.sampleRate||44100, n=Math.max(1,Math.round(sr*2.5));
+  const buf=ac.createBuffer(1,n,sr), d=buf.getChannelData(0);
+  let s=88675123|0;                                       // 与雨声不同的种子，两段噪声互不相关
+  for(let i=0;i<n;i++){ s^=s<<13; s^=s>>>17; s^=s<<5; d[i]=((s>>>0)/4294967296*2-1); }
+  雷声缓冲=buf; return buf;
+}
+function 雷声(){
+  const ac=音频上下文(); if(!ac) return false;
+  try{
+    const t0=ac.currentTime+0.4;                          // 光先到、声后到——"打雷"的感觉来源
+    const src=ac.createBufferSource(); src.buffer=雷声缓冲取(ac);
+    const lp=ac.createBiquadFilter(); lp.type='lowpass';
+    lp.frequency.setValueAtTime(900,t0);
+    lp.frequency.exponentialRampToValueAtTime(140,t0+1.6);
+    const g=ac.createGain();
+    g.gain.setValueAtTime(0.0001,t0);
+    g.gain.exponentialRampToValueAtTime(0.085,t0+0.05);
+    g.gain.exponentialRampToValueAtTime(0.0001,t0+2.0);
+    src.connect(lp); lp.connect(g); g.connect(ac.destination);
+    src.start(t0); src.stop(t0+2.1);
+    return true;
+  }catch(_){ return false; }
+}
+function 雷声步(){
+  if(!state.ambienceOn || document.visibilityState==='hidden') return;   // 与 136 单雨声同口径：关环境音/切走就不响
+  const w=state.world;
+  if(!(雷雨闪档(w)>0)) return;                                           // 只在"闪"的那一拍
+  const 桶=Math.floor(w.t/10);
+  if(桶===上次雷声桶) return;                                            // 同一个闪桶只响一记
+  上次雷声桶=桶;
+  雷声();
+}
+/*THUNDER-END*/
 /*BUBBLE-START*/
 /* ---------- 第 51 单·气泡一期：把「这个人此刻在做什么」写成一句话挂在他头顶 ----------
    定义（本仓第一次把「气泡」写成**可验收的定义**，办待办里第 31 单那条「下一次真要做气泡，先定义再开工」）：
@@ -9028,6 +9080,7 @@ function loop(now){
   updateWalkers(dtFrame);
   stepAllDisplays(dtFrame);        // 第 25 单：显示位每帧必推，与当前在哪一页无关（下面 draw() 是有条件的，这里不许有条件）
   脚印步(w);                        // 第 242 单·雪地脚印：按步距在雪面落痕（纯渲染、零 rng）
+  雷声步();                         // 第 252 单·雷声：闪的那一拍起一记闷雷（纯音频、零 rng；每帧采一次点）
   updateCamera(dtFrame);
   drainLog();
   penSweep(now);   // 第 29 单：占位符收尾死线按真实时钟在这里判（不用 setTimeout：后台标签页会把它节流到分钟级）

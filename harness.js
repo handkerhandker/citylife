@@ -10016,6 +10016,63 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   }
 }
 
+// ═══ 第 252 单·雷声（把 251 的闪电补上"听"的那半；纯音频层）══════════════════════════
+/* 被验的是生产源码（端到端由 `tools/audio-audit/probe.mjs` 的真浏览器节点计数钩子验：
+   环境音开＋闪刻 ⇒ createBufferSource +1（雷声）／同一闪桶不重复／换桶再响／环境音关·普通雨 各 0）：
+     ① 结构：THUNDER 段可抽取；剥注释后零 Math.random／零 localStorage／零 fetch（确定性噪声、不出网）；
+     ② 守门：`雷声步` 同时认 state.ambienceOn 与 visibilityState（与 136 单雨声同口径）、只认 雷雨闪档；
+     ③ 一次性：`上次雷声桶` 去重（同一个 10 分钟桶只响一记）；
+     ④ 真求值（假 state／假 document／假 ac）：闪桶响一记、同桶不重复、换桶再响、非闪/关环境音/切走 各 0；
+     ⑤ 反向自查×2：抠掉"环境音开关"守卫 ⇒ 判红；抠掉"同桶去重" ⇒ 判红。 */
+{
+  const fsT=require('fs'), pathT=require('path');
+  const srcT=fsT.readFileSync(pathT.resolve(__dirname,'city-life-framework.html'),'utf8');
+  const 段T=(srcT.match(/\/\*THUNDER-START\*\/([\s\S]*?)\/\*THUNDER-END\*\//)||['',''])[1];
+  ok(段T.length>0, '第 252 单·结构：雷声段可抽取（'+段T.length+' 字）');
+  const 净T=段T.replace(/\/\*[\s\S]*?\*\//g,'').replace(/\/\/[^\n]*/g,'');
+  ok(!/Math\.random/.test(净T) && !/localStorage|fetch\(/.test(净T),
+     '第 252 单·结构：段内零 Math.random／零 localStorage／零 fetch（确定性噪声、不出网）');
+  ok(/state\.ambienceOn/.test(段T) && /document\.visibilityState==='hidden'/.test(段T) && /雷雨闪档\(w\)/.test(段T),
+     '第 252 单·结构：守门＝环境音开 ∩ 页面可见 ∩ 正在闪（三关齐）');
+  ok(/桶===上次雷声桶/.test(段T), '第 252 单·结构：同一个"闪桶"只响一记（上次雷声桶 去重）');
+  ok((srcT.match(/雷声步\(\);/g)||[]).length===1 && /雷声步\(\);\s*\/\/ 第 252 单/.test(srcT),
+     '第 252 单·结构：雷声步 在主循环里恰好一处调用（每帧采点）');
+  const 录音={启:0, 停:0, 缓:0};
+  const 假ac={
+    sampleRate:44100, currentTime:0, destination:{},
+    createBuffer:(ch,n)=>({getChannelData:()=>new Float32Array(n)}),
+    createBufferSource:()=>({ buffer:null, connect(){}, start(){录音.启++;}, stop(){录音.停++;} }),
+    createBiquadFilter:()=>({ type:'', frequency:{setValueAtTime(){},exponentialRampToValueAtTime(){录音.缓++;}}, Q:0, connect(){} }),
+    createGain:()=>({ gain:{setValueAtTime(){},exponentialRampToValueAtTime(){录音.缓++;},cancelScheduledValues(){}}, connect(){} }),
+  };
+  const 造T=(st,doc)=>new Function('state','document','音频上下文','雷雨闪档',
+      段T+'; return {雷声步};')(st, doc, ()=>假ac, w=>(w && w.__闪) ? 0.2 : 0);
+  {
+    const st={ambienceOn:true, world:{t:100,__闪:true}};
+    const 机=造T(st, {visibilityState:'visible'});
+    机.雷声步(); const 一=录音.启;                    // 闪桶第一拍 ⇒ 响一记
+    机.雷声步(); 机.雷声步(); const 二=录音.启;        // 同桶再采样 ⇒ 不重复
+    st.world.t=110; 机.雷声步(); const 三=录音.启;     // 换一个闪桶 ⇒ 再响
+    st.world.__闪=false; st.world.t=120; 机.雷声步(); const 四=录音.启;   // 非闪 ⇒ 不响
+    st.ambienceOn=false; st.world.__闪=true; st.world.t=130; 机.雷声步(); const 五=录音.启;
+    st.ambienceOn=true; const 机隐=造T(st, {visibilityState:'hidden'}); 机隐.雷声步(); const 六=录音.启;
+    ok(一===1 && 二===1 && 三===2 && 四===2 && 五===2 && 六===2,
+       '第 252 单·行为：闪桶响一记／同桶不重复／换桶再响／非闪·关环境音·切走 各 0（实测 '+[一,二,三,四,五,六].join('/')+'）');
+  }
+  {
+    const 病=段T.replace("if(!state.ambienceOn || document.visibilityState==='hidden') return;",'');
+    const 好=/if\(!state\.ambienceOn \|\| document\.visibilityState==='hidden'\) return;/.test(段T);
+    const 坏=/if\(!state\.ambienceOn \|\| document\.visibilityState==='hidden'\) return;/.test(病);
+    ok(好 && !坏, '第 252 单·反向自查·拦得住：把"环境音开关"守卫抠掉 ⇒ 结构判据当场判红');
+  }
+  {
+    const 病=段T.replace('if(桶===上次雷声桶) return;','');
+    const 好=/if\(桶===上次雷声桶\) return;/.test(段T);
+    const 坏=/if\(桶===上次雷声桶\) return;/.test(病);
+    ok(好 && !坏, '第 252 单·反向自查·拦得住：把"同桶去重"抠掉 ⇒ 结构判据当场判红');
+  }
+}
+
 // ═══ 第 35 单·入夜点灯（屋里亮起来）═════════════════════════════════════════
 /* 被验的是生产源码原文：SKYTINT ＋ NIGHTLAMP 两段一起抠出来求值（灯要调 skyTint，两段必须同源），
    在一个只记账的假 ctx 上跑。四条闸：
@@ -10664,7 +10721,7 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   // 闸三 · 反向自查登记（防整条被删）
   const 登记=['第 48 单','第 49 单','第 51 单','第 52 单','第 53 单','第 54 单','第 56 单','第 57 单',
                '第 58 单','第 59 单','第 62 单','第 63 单','第 64 单','第 65 单','第 67 单','第 70 单','第 71 单','第 72 单','第 73 单','第 74 单','第 75 单','第 76 单','第 77 单','第 79 单','第 80 单','第 81 单','第 84 单','第 85 单','第 87 单','第 88 单','第 90 单','第 91 单','第 92 单','第 93 单','第 94 单','第 95 单','第 96 单','第 97 单','第 98 单','第 99 单','第 100 单','第 102 单','第 103 单','第 106 单','第 107 单','第 109 单','第 110 单','第 111 单','第 112 单','第 113 单','第 115 单','第 116 单','第 117 单','第 118 单','第 119 单','第 120 单','第 121 单','第 123 单','第 124 单','第 125 单','第 126 单','第 129 单','第 131 单','第 135 单','第 136 单','第 139 单','第 142 单','第 143 单','第 144 单','第 145 单','第 148 单','第 149 单','第 150 单','第 151 单','第 152 单','第 156 单','第 157 单','第 158 单','第 204 单','第 205 单','第 161 单','第 163 单','第 164 单','第 165 单','第 166 单','第 167 单','第 168 单','第 169 单','第 170 单','第 171 单','第 172 单','第 174 单','第 175 单','第 177 单','第 179 单','第 180 单','第 183 单','第 184 单','第 185 单','第 186 单','第 188 单','第 189 单','第 190 单','第 192 单','第 198 单','第 199 单','第 201 单','第 202 单','第 206 单','第 207 单','第 208 单','第 210 单','第 211 单','第 212 单','第 213 单','第 214 单','第 215 单','第 216 单','第 217 单','第 220 单','第 221 单','第 224 单','第 225 单','第 227 单','第 229 单','第 232 单','第 233 单','第 240 单',
-              '第 242 单','第 243 单','第 244 单','第 246 单','第 247 单','第 250 单','第 251 单','闸四','闸五','闸十','闸十一','闸十二'];
+              '第 242 单','第 243 单','第 244 单','第 246 单','第 247 单','第 250 单','第 251 单','第 252 单','闸四','闸五','闸十','闸十一','闸十二'];
   const 实有=[...new Set((自源.match(/(第 \d+ 单|闸[一二三四五六七八九十]+)·反向自查/g)||[])
                             .map(x=>x.replace('·反向自查','')))];
   const 缺=登记.filter(x=>实有.indexOf(x)<0);
