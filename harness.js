@@ -8895,21 +8895,26 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
      '第 220 单·结构：两拍时刻一处定义；归类表新开 gossip（前缀"念叨起"/"总觉得"）');
   {
     const w=Sim.makeWorld(20260803);
-    let 天=0, 甲=null, 乙=null, 单日=new Map();
-    for(let i=0;i<60*144;i++){
-      const 前=w.log.length, 日=PURE.dayOf(w.t)+1;
+    let 天=0, 甲=null, 乙=null, 日念=new Map(), 日回=new Map(), 已=0, 念=0, 回=0;
+    for(let i=0;i<400*144;i++){
+      const 日=PURE.dayOf(w.t)+1;
       Sim.step(w,10);
       if(PURE.minuteOfDay(w.t)===10*60+40 && Sim.闲话今(w)) 天++;
-      for(const e of w.log.slice(前)){
-        if(String(e.text).indexOf('念叨起')===0){ if(!甲) 甲=e; 单日.set(日,(单日.get(日)||0)+1); }
-        if(String(e.text).indexOf('总觉得')===0){ if(!乙) 乙=e; }
+      /* 第 222 单·批后审计补闸：日志墙满 400 条会从头裁剪——按 `slice(前)` 数新增会"满墙即失明"，
+         必须按单调 `lid` 数（照页面的 drainLog 口径）。本闸从 60 天扩到 400 天并逐条对账。 */
+      for(const e of w.log){
+        const lid=e.lid|0; if(lid<=已) continue;
+        if(String(e.text).indexOf('念叨起')===0){ 念++; if(!甲) 甲=e; 日念.set(日,(日念.get(日)||0)+1); }
+        if(String(e.text).indexOf('总觉得')===0){ 回++; if(!乙) 乙=e; 日回.set(日,(日回.get(日)||0)+1); }
       }
+      for(const e of w.log){ const lid=e.lid|0; if(lid>已) 已=lid; }
     }
-    ok(天>=15&&天<=25,'第 220 单·行为：60 天里 '+天+' 天有闲话（约 1/3；日号哈希、零 rng）');
+    ok(天>=120&&天<=150&&念===天&&回===天,
+       '第 220 单·行为：400 天里 '+天+' 天有闲话、say=back='+念+'（约 1/3；按 lid 计数，日志墙裁剪不漏账）');
     ok(!!甲&&!!乙&&甲.agent!==乙.agent&&w.agents.some(a=>甲.text.indexOf(a.name)>=0&&a.id===乙.agent),
        '第 220 单·行为：一场完整闲话——说话方「'+((甲&&甲.text)||'—')+'」＋当事人当晚回一句「'+((乙&&乙.text)||'—')+'」');
-    ok([...单日.values()].every(n=>n<=1),
-       '第 220 单·行为：每天至多念一条（实测最多 '+Math.max(0,...单日.values())+' 条/天）');
+    ok([...日念.values()].every(n=>n<=1)&&[...日回.values()].every(n=>n<=1),
+       '第 220 单·行为：每天至多念一条、回一条（实测最多 '+Math.max(0,...日念.values())+'／'+Math.max(0,...日回.values())+' 条/天）');
   }
   {
     const w=Sim.makeWorld(20260803);
