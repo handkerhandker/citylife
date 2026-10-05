@@ -525,7 +525,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v172</span>
+<span class="num dim" id="set-build">v173</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -2418,6 +2418,7 @@ function 公告内容(w){
   if(PURE.weekday(w.t)===4) out.push('今晚夜市开张。');
   if(PURE.weekday(w.t)===6) out.push('今晚夜谈角见。');
   if(inFestival(w)) out.push('今天是江灯节——晚上江边放灯。');
+  if(inSummer(w)) out.push('今晚是夏夜纳凉会——江边乘凉。');
   // ④ 兜底
   if(!out.length) out.push('今天没什么大事，日子照常。');
   return out;
@@ -2557,6 +2558,10 @@ function morningFacts(w){
   // 第 63 单：前一天与后一天的晨报各提一句（气氛占住三天）
   if(PURE.dayOf(w.t)===PURE.dayOf(thisYearFestAt(w))-1) 条.push('明晚是'+FESTIVAL.name+'，江边开始挂灯了。');
   if(PURE.dayOf(w.t)===PURE.dayOf(thisYearFestAt(w))+1) 条.push('昨晚的'+FESTIVAL.name+'收了，江边还留着灯影。');
+  /* 第 224 单·夏夜纳凉会：同一套"当天／前一天／后一天"三条晨报（照江灯节先例）。 */
+  if(PURE.dayOf(w.t)===PURE.dayOf(thisYearSummerAt(w))) 条.push('今晚是'+SUMMER.name+'，江边见。');
+  if(PURE.dayOf(w.t)===PURE.dayOf(thisYearSummerAt(w))-1) 条.push('明晚是'+SUMMER.name+'，江边支起竹椅了。');
+  if(PURE.dayOf(w.t)===PURE.dayOf(thisYearSummerAt(w))+1) 条.push('昨晚的'+SUMMER.name+'散了，江边还留着江风。');
   /* 第 64 单·住户生日：提前 3 天预告 ＋ 当天提一句（照动森"公告栏提前通知 ＋ 当天公告再提"）。
      两句都走 `morning` 这一个桶——本单**不新增世界级播报**，故取材表不用动。 */
   for(const ag of w.agents){
@@ -2633,6 +2638,58 @@ function festivalStep(w){
   }
 }
 /*FESTIVAL-END*/
+/*SUMMER-START*/
+/* ---------- 第 224 单·夏夜纳凉会（第二个年度节日；出处见 `docs/规划/借鉴调研-2026-10-05-年度节日.md`）----------
+   调研出处（2026-10-05 实测 HTTP 200）：
+     · 星露谷 wiki·Festivals：节日**按季节铺**（春夏秋冬各有）；「a letter **in advance**…when and
+       where」＋「On the day…a pop-up…has begun」⇒ 提前预告＋当天开场两段（本作照江灯节同一套）；
+     · Nookipedia·Event：「…can occur as often as **four times a year**…」⇒ 一年不止一场大事；
+     · Nookipedia·Fireworks Show：「held regularly through **summer**…」「7 PM – 9 PM」⇒
+       夏日、晚上、固定时间窗。
+   落成（零素材、零 AI、**零经济**、**零 rng**）：
+     · 每年第 150 天（＝第 5 个月 30 号）19:00–21:00，江边步道（既有的 `river_walk` 锚点）；
+     · 提前 7 天预告／前一日 18:00 支竹椅／当天 19:00 开场／21:00 收场报人数／次日 10:00 收场
+       （照江灯节"气氛占住三天"三段）；
+     · 当晚空闲的人按**日号哈希**去纳凉（不摇骰子——世界 rng 流一字不动）；每人每晚至多一次
+       （`ag.coolDay` 记账）；**不花钱**（与周五夜市"花 ¥8"、江灯节"放 ¥5"刻意分工）；
+     · v1 不进剪辑候选（照夜谈／猫分单先例）。 */
+const SUMMER={ name:'夏夜纳凉会', month:5, dayOfMonth:30, open:19*60, close:21*60, p:70,
+               noticeMin:7*1440, yearDays:FESTIVAL.yearDays };
+// 本年的夏夜纳凉会（19:00 的世界时间戳；"已过"也照样算得出来——照第 62 单 `thisYearFestAt`）
+function thisYearSummerAt(w){
+  const d=PURE.dayOf(w.t), 年内=(d-1)%SUMMER.yearDays;                     // 今年的第几天（0 起）
+  const 节内=(SUMMER.month-1)*30+SUMMER.dayOfMonth-1;                      // 纳凉会在年内的第几天
+  return (w.t-PURE.minuteOfDay(w.t)+SUMMER.open)+(节内-年内)*1440;
+}
+// 下一个夏夜纳凉会（本年的已过 ⇒ 排到明年）
+function summerAt(w){
+  const 本=thisYearSummerAt(w);
+  return (本+SUMMER.close-SUMMER.open)>w.t ? 本 : 本+SUMMER.yearDays*1440;
+}
+function inSummer(w){
+  const 本=thisYearSummerAt(w), mod=PURE.minuteOfDay(w.t);
+  return w.t>=本 && w.t<本+SUMMER.close-SUMMER.open;
+}
+// 城市级：提前一周预告／支竹椅／开场／散场／次日收场各一条（换年自动重置；旧档缺字段＝当作没说过）
+function summerStep(w){
+  const 本=thisYearSummerAt(w);
+  if(w.summerNext!==本){ w.summerNext=本; w.summerNotice=0; w.summerCount=0; }
+  const 日=PURE.dayOf(w.t), 节日=PURE.dayOf(本), mod=PURE.minuteOfDay(w.t);
+  if(日===节日-1 && mod===18*60 && w.summerEve!==本){ w.summerEve=本; logSys(w,'江边支起了一排竹椅，明晚是'+SUMMER.name+'。'); }
+  if(日===节日+1 && mod===10*60 && w.summerAfter!==本){ w.summerAfter=本; logSys(w,SUMMER.name+'收场了，江边还剩几把没收的竹椅。'); }
+  if(!w.summerNotice && 本>w.t && 本-w.t<=SUMMER.noticeMin){
+    w.summerNotice=本;
+    logSys(w,'今年的'+SUMMER.name+'在'+SUMMER.month+'月'+SUMMER.dayOfMonth+'日晚上 '+Math.floor(SUMMER.open/60)
+      +':00，江边步道见。（'+PURE.fmtStamp(本)+'）');
+  }
+  if(inSummer(w) && w.summerOpen!==本){ w.summerOpen=本; w.summerCount=0; logSys(w,SUMMER.name+'开场了，江边坐了一片人。'); }
+  const 闭=本+SUMMER.close-SUMMER.open;
+  if(w.t>=闭 && w.summerClosed!==本){
+    w.summerClosed=本;
+    logSys(w,SUMMER.name+'散了，今晚江边坐了 '+(w.summerCount|0)+' 个人。');
+  }
+}
+/*SUMMER-END*/
 /*BIRTHDAY-START*/
 /* ---------- 第 64 单·住户生日（把"年"这把尺从城市推到人）----------
    第 62／63 单把日历尺推到"年"，但那是**城市**的节日（全城同一晚去江边）。
@@ -3317,6 +3374,23 @@ function decide(w, ag){
       '在江边放了一盏灯（¥'+FESTIVAL.cost+'）');
     return;
   }
+  /* 第 224 单·夏夜纳凉会：当晚空闲的人去江边纳凉——**零经济、零 rng**（日号哈希定人去不去，
+     不摇骰子；世界 rng 流一字不动）。每人每晚至多一次（`ag.coolDay`）。
+     放在江灯节之后、生日之前（一年一次的取舍与江灯节同档）。 */
+  if(inSummer(w) && ag.coolDay!==PURE.dayOf(w.t)){
+    const 年=PURE.dayOf(w.t)-((PURE.dayOf(w.t)-1)%SUMMER.yearDays);
+    const i=w.agents.indexOf(ag);
+    /* 每人那一路要**散开**：只用 `+ (i+1)*97` 时四个人的哈希只差 97/100，落在同一段里
+       （实测第 150 天四人全去）；改成各乘一个黄金比常数再异或（照 rng 内部同族手法）。 */
+    const h=(Math.imul(PURE.dayOf(w.t),2654435761) ^ Math.imul(年,40503) ^ Math.imul(i+1,0x9E3779B1))>>>0;
+    if((h%100)<SUMMER.p){
+      ag.coolDay=PURE.dayOf(w.t);
+      w.summerCount=(w.summerCount|0)+1;
+      setActivity(w,ag,'river_walk','stroll','纳凉',tempoDur(w,ag,40),天气词(w,STROLL_THOUGHTS,RAIN_STROLL_THOUGHTS,ag,'lo'),
+        '在江边纳凉，江风把白天吹散了。');
+      return;
+    }
+  }
   /* 第 64 单·生日：当天**他本人**给自己买块蛋糕（一年一次，−¥12）。
      只占空闲那一档，且限在 15:00–22:00（下班后那一段）；撞上周五夜市时**生日优先**——
      与第 62／63 单同一条取舍（一年一次 > 每周一次）。**不掷骰子**：他的日子，必买（可计数、可复现）。 */
@@ -3559,7 +3633,7 @@ const CLIP_LOGCAT=[
   // 第 52／53 单：目标事件（定下／做到／没做成／**前提破裂**）与周记忆——只归类，不单独出卡。
   // 「本来想做的事，眼下做不成了」这一句第 53 单漏登过，第 56 单的世界位移把它顶进了日志窗口才被抓出来。
   ['goal',  ['这周想的事','上周的日子记一笔','本来想做的事']],
-  ['fest',  ['在江边放了一盏灯']],   // 第 62 单·江灯节放灯（世界级播报另在 BACK_SUM 里登记）
+  ['fest',  ['在江边放了一盏灯', '在江边纳凉']],   // 第 62 单·江灯节放灯 ＋ 第 224 单·夏夜纳凉（世界级播报另在 BACK_SUM 里登记）
   ['bday',  ['给自己买了块蛋糕','陪着','有人陪着']],   // 第 64 单·生日蛋糕 ＋ 第 110 单·陪坐那两句（前缀都固定；覆盖率闸照查）
   ['rel',   ['关系：']],             // 第 88 单·关系涨档／冷线两句（前缀固定"关系："，一处管两句话）
   ['heart', ['交心：']],             // 第 91 单·交心那两条日志（前缀固定"交心："，两人各一条都归这类）
@@ -4082,6 +4156,7 @@ function advance10(w){
   nightMktStep(w);
   morningStep(w);   // 第 58 单·云港晨报（每天 08:10 一条，只用已存在的事实拼）
   festivalStep(w);  // 第 62 单·江灯节（一年一次：提前一周预告／开灯／收灯）
+  summerStep(w);    // 第 224 单·夏夜纳凉会（第二个年度节日；一年一次、零经济、零 rng）
   talkStep(w);      // 第 70 单·周日夜谈（周日 20:00–22:00，22:00 散场播报）
   catStep(w);       // 第 210 单·云港的猫（每天 15:00–17:00；零 rng）
   boardStep(w);     // 第 217 单·玩家留言进板（有人路过广场就读到；一贴一读）
@@ -4306,6 +4381,7 @@ const Sim={makeWorld, step, sendMessage, sendCustomMessage, decide, MSGS, ANCHOR
   NIGHT_MKT, nightMktStartAt, thisWeekMktAt, inNightMkt, nightMktStep,   // 第 56／57 单·周五夜市（门禁按真值读）
   MORNING, morningFacts, morningStep,   // 第 58 单·云港晨报（门禁按真值读同一份日历）
   FESTIVAL, festAt, thisYearFestAt, inFestival, festivalStep,   // 第 62 单·江灯节（门禁按真值读同一份日历）
+  SUMMER, summerAt, thisYearSummerAt, inSummer, summerStep,   // 第 224 单·夏夜纳凉会（门禁按真值读同一份日历）
   TALK, nightTalkStartAt, inTalk, thisWeekTalkAt, talkStep,   // 第 70 单·周日夜谈（门禁按真值读）
   TALK_TOPICS, TALK_TOPICS_RAIN, talkTopicOf,   // 第 71 单·夜谈话题（第 199 单补雨池；门禁按真值读：不摇 rng）
   TALK_OPEN, talkOpenLine, talkTopicOnDay,   // 第 72 单·题面带着台词走（门禁按真值读：占位符一处替换）
@@ -8342,6 +8418,12 @@ const BACK_SUM=[
   {k:'festPlan', hit:(e,tx)=>e.type==='sys' && tx.indexOf('江灯节在')>=0, line:n=>'城里预告过 '+n+' 回江灯节。'},
   {k:'festOpen', hit:(e,tx)=>e.type==='sys' && tx.indexOf('开灯了，江边')>=0, line:n=>'江边亮过 '+n+' 回灯。'},
   {k:'festShut', hit:(e,tx)=>e.type==='sys' && tx.indexOf('收灯了')>=0, line:n=>'江灯收过 '+n+' 回。'},
+  // 第 224 单·夏夜纳凉会的五条世界级播报（预告／支竹椅／开场／散场／次日收场）——各占一桶
+  {k:'smPlan', hit:(e,tx)=>e.type==='sys' && tx.indexOf('夏夜纳凉会在')>=0, line:n=>'城里预告过 '+n+' 回纳凉会。'},
+  {k:'smEve',  hit:(e,tx)=>e.type==='sys' && tx.indexOf('支起了一排竹椅')>=0, line:n=>'江边支过 '+n+' 回竹椅。'},
+  {k:'smOpen', hit:(e,tx)=>e.type==='sys' && tx.indexOf('纳凉会开场')>=0, line:n=>'纳凉会开过 '+n+' 回场。'},
+  {k:'smShut', hit:(e,tx)=>e.type==='sys' && tx.indexOf('纳凉会散了')>=0, line:n=>'纳凉会散过 '+n+' 回。'},
+  {k:'smAfter',hit:(e,tx)=>e.type==='sys' && tx.indexOf('收场了，江边')>=0, line:n=>'节后收过 '+n+' 回场子。'},
   {k:'market', hit:(e,tx)=>e.type==='act' && tx.indexOf('街市')>=0,     line:n=>'有 '+n+' 回去了周日街市。'},
   {k:'chat',   hit:(e,tx)=>e.type==='chat',                             line:n=>'住户之间搭话 '+n+' 次。'},
   {k:'diary',  hit:(e,tx)=>e.type==='diary',                            line:n=>'住户写下 '+n+' 篇睡前日记。'},
