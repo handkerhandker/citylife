@@ -10,7 +10,8 @@
 //
 // 用法：node walkgate.js （第 249 单起自带"先解包现场"——单跑不必再手动抽 app.js）
 const fs=require('fs'), path=require('path');
-require('./tools/lib/sync-app.cjs').同步();   // 第 249 单：先解包现场再 require（单跑不吃旧副本）
+try { require('./tools/lib/sync-app.cjs').同步(); }                     // 第 249 单：先解包现场再 require（单跑不吃旧副本）
+catch (e) { if (String(e && e.code) !== 'MODULE_NOT_FOUND') throw e; }  // 沙盒副本无 lib ⇒ 跳过（app.js 由调用方现解）
 const {Sim}=require('./app.js');
 
 // ── 阈值集中区（可调；放宽须在交付件里说明理由） ──

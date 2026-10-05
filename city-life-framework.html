@@ -554,7 +554,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v192</span>
+<span class="num dim" id="set-build">v193</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -804,11 +804,24 @@ const RAIN_STROLL_THOUGHTS=['没带伞，索性慢慢走——反正都湿了。
 const RAIN_IDLE_THOUGHTS=['雨敲在窗上，一下一下，很匀。','把窗户开了一条缝，听外面的雨。','下雨天，什么都不想干。',
   '晾在阳台的衣服白洗了。','泡了杯热的，看雨从玻璃上往下爬。','雨下大了，不知道他们带伞没有。',
   '把伞立在门口，水淌了一小摊。','翻了翻天气预报，明天还是雨。'];
-/* 天气词：下雨就从雨池里抽，**键也跟着换**（`lo`→`lor`）——两个数组共键会把去重账串了。
-   除此之外一个字不多做：抽签次数、时机、去重口径都与晴天一模一样。 */
-function 天气词(w, 晴池, 雨池, ag, 键){
-  const 雨=!!(w.weather&&w.weather.rain);
-  return pickV(w, 雨?雨池:晴池, ag, 雨?(键+'r'):键);
+/* ---------- 第 250 单·冬日的独白（雨天独白的"第二季"）----------
+   出处（2026-10-06 复核 HTTP 200，逐字见 `docs/规划/借鉴调研-2026-10-06-冬日独白.md`）：
+     · Nookipedia·Weather：「Weather … changing daily and **reflecting the seasons**… Weather is
+       **mentioned by villagers**」——天气要被住户说出口（97 单已按这条做雨天，本单补冬天）；
+     · 168／242 的"**积雪＝入冬第 11 天起**"同一口径——地上有了雪，话才说得着雪。
+   口径与 97 单**逐条同款**：只换池、换键（`lo→low`），**抽签次数一字不改**（零 rng 位移）。 */
+const SNOW_STROLL_THOUGHTS=['雪踩上去咯吱咯吱的，回头一看，一串脚印跟着。','呼出的白气一路跟着，像个不说话的伴。',
+  '把手揣进兜里，走快一点就暖了。','屋檐下挂着细细的冰凌，亮了一路。','江边风大，围巾裹紧了两圈。',
+  '路灯把雪照得发亮，像撒了一层糖。','有人在路边堆了个小雪人，鼻子是根胡萝卜。','鞋底沾了雪，进屋前在门口跺了两下。'];
+const SNOW_IDLE_THOUGHTS=['窗玻璃上哈了口气，画了个圈，又化回去了。','把厚被子翻出来晒了晒，晚上一定睡得香。',
+  '煮了锅热汤，窗上起了雾。','暖气片边上待久了，脸有点发烫。','看外面的雪看了很久，手机都忘了刷。',
+  '给绿萝挪了个晒太阳的位置，冬天也得晒晒。','翻出毛线，想织点什么，起了个头又放下。','睡前把明天的厚袜子放在床头。'];
+function 冬厚天(w){ const Y=FESTIVAL.yearDays, d=((PURE.dayOf(w.t)-1)%Y+Y)%Y; return d>=Y*3/4+10; }   // 入冬第 11 天起（168／242 同一口径）
+/* 天气词：**三池一函数**——下雨走雨池（键 `lo→lor`）、雪厚了走雪池（键 `lo→low`）、否则晴池；
+   优先级 **雨＞雪＞晴**（雨里的雪话说不出口）。抽签次数/时机/去重口径与 97 单一字不改。 */
+function 天气词(w, 晴池, 雨池, 雪池, ag, 键){
+  const 雨=!!(w.weather&&w.weather.rain), 雪=!雨&&冬厚天(w);
+  return pickV(w, 雨?雨池:(雪?雪池:晴池), ag, 雨?(键+'r'):(雪?(键+'w'):键));
 }
 const STORE_GEN=['加了个便当，犒劳一下自己。','顺手拿了瓶想喝很久的饮料。','今天值得吃好一点。'];
 const STORE_PLAIN=['随便对付一口。','吃什么不重要，别饿着就行。','收银台前想了三秒，还是老几样。','关东煮的汤面前，人人平等。','拿了和昨天一样的，省得选。','微波炉转的时候顺手看了眼杂志。','伸手够到第二层那个，不用想。','结账才想起冰箱里还有一盒没吃。'];
@@ -3569,7 +3582,7 @@ function decide(w, ag){
   if(周末 && !sunday && mod>=10*60 && mod<17*60 && w.rng()<Math.min(0.90,(raining?RAIN_RULES.dayOut:WEEKEND_OUT.dayOut)*seasonOutMul(w))){
     const spots=WEEKEND_OUT.daySpots;                 // 表只有这一处取用（门禁按出现次数钉住）
     const spot=spots[Math.floor(w.rng()*spots.length)%spots.length];
-    setActivity(w,ag,spot,'stroll','出门逛逛',tempoDur(w,ag,40),天气词(w,STROLL_THOUGHTS,RAIN_STROLL_THOUGHTS,ag,'lo'),'周末出门逛逛');
+    setActivity(w,ag,spot,'stroll','出门逛逛',tempoDur(w,ag,40),天气词(w,STROLL_THOUGHTS,RAIN_STROLL_THOUGHTS,SNOW_STROLL_THOUGHTS,ag,'lo'),'周末出门逛逛');
     return;
   }
   // 第 52 单：目标旋钮（out）加在**晴天那一档**之上（雨天该压还是压；上班与吃饭一概不动）
@@ -3597,7 +3610,7 @@ function decide(w, ag){
     ag.money-=FESTIVAL.cost;
     const 年=PURE.dayOf(w.t)-((PURE.dayOf(w.t)-1)%FESTIVAL.yearDays);   // 今年是哪一年（按年号去重剪辑项）
     if(ag.festYear!==年){ ag.festYear=年; ag.lastFest={ t:w.t, spent:FESTIVAL.cost, tx:'在江边放了一盏灯（¥'+FESTIVAL.cost+'）' }; }
-    setActivity(w,ag,'river_walk','stroll','放灯',tempoDur(w,ag,40),天气词(w,STROLL_THOUGHTS,RAIN_STROLL_THOUGHTS,ag,'lo'),
+    setActivity(w,ag,'river_walk','stroll','放灯',tempoDur(w,ag,40),天气词(w,STROLL_THOUGHTS,RAIN_STROLL_THOUGHTS,SNOW_STROLL_THOUGHTS,ag,'lo'),
       '在江边放了一盏灯（¥'+FESTIVAL.cost+'）');
     return;
   }
@@ -3617,7 +3630,7 @@ function decide(w, ag){
       ag.coolDay=PURE.dayOf(w.t);
       w.summerCount=(w.summerCount|0)+1;
       if(ag.summerYear!==年){ ag.summerYear=年; ag.lastSummer={ t:w.t, tx:'在江边纳凉，江风把白天吹散了。' }; }
-      setActivity(w,ag,'river_walk','stroll','纳凉',tempoDur(w,ag,40),天气词(w,STROLL_THOUGHTS,RAIN_STROLL_THOUGHTS,ag,'lo'),
+      setActivity(w,ag,'river_walk','stroll','纳凉',tempoDur(w,ag,40),天气词(w,STROLL_THOUGHTS,RAIN_STROLL_THOUGHTS,SNOW_STROLL_THOUGHTS,ag,'lo'),
         '在江边纳凉，江风把白天吹散了。');
       return;
     }
@@ -3631,7 +3644,7 @@ function decide(w, ag){
       ag.bdayYear=年;
       ag.money-=BDAY.cost;
       ag.lastBday={ t:w.t, spent:BDAY.cost, tx:'给自己买了块蛋糕（¥'+BDAY.cost+'）' };
-      setActivity(w,ag,'market','stroll','买蛋糕',tempoDur(w,ag,40),天气词(w,STROLL_THOUGHTS,RAIN_STROLL_THOUGHTS,ag,'lo'),
+      setActivity(w,ag,'market','stroll','买蛋糕',tempoDur(w,ag,40),天气词(w,STROLL_THOUGHTS,RAIN_STROLL_THOUGHTS,SNOW_STROLL_THOUGHTS,ag,'lo'),
         '给自己买了块蛋糕（¥'+BDAY.cost+'）');
       return;
     }
@@ -3743,7 +3756,7 @@ function decide(w, ag){
     /* 第 73 单：把"去了一趟夜谈"落一个**事件锚**（每人每周至多一条），剪辑层据此上卡——
        照第 57 单夜市 `mktWeek`／第 62 单江灯节 `festYear` 那一套（落点带原文，摘原文不必回头捞日志墙）。 */
     if(ag.talkWeek!==周号){ ag.talkWeek=周号; ag.lastTalk={ t:w.t, topic:题面, tx:'在夜谈角坐下，听人说话（今晚聊：'+题面+'）' }; }
-    setActivity(w,ag,'plaza_talk','stroll','夜谈',tempoDur(w,ag,60),天气词(w,STROLL_THOUGHTS,RAIN_STROLL_THOUGHTS,ag,'lq'),
+    setActivity(w,ag,'plaza_talk','stroll','夜谈',tempoDur(w,ag,60),天气词(w,STROLL_THOUGHTS,RAIN_STROLL_THOUGHTS,SNOW_STROLL_THOUGHTS,ag,'lq'),
       '在夜谈角坐下，听人说话（今晚聊：'+题面+'）');
     return;
   }
@@ -3756,11 +3769,11 @@ function decide(w, ag){
     const spot=友?友.anchor:掷;
     if(友) ag.visitWeek=Math.floor(w.t/(7*1440));      // 记一笔"这周已经串过了"（照 missWeek／talkWeek 先例）
     setActivity(w,ag,spot,'stroll',友?'串门':'散步',tempoDur(w,ag,40),
-      天气词(w,STROLL_THOUGHTS,RAIN_STROLL_THOUGHTS,ag,'lo'),友?('去看看'+友.name):'出门散步');
+      天气词(w,STROLL_THOUGHTS,RAIN_STROLL_THOUGHTS,SNOW_STROLL_THOUGHTS,ag,'lo'),友?('去看看'+友.name):'出门散步');
     return;
   }
   const spot=w.rng()<0.5?'home_table':'home_tv';
-  setActivity(w,ag,spot,'idle',(raining?RAIN_RULES.indoorLabel:'在家待着'),tempoDur(w,ag,30),天气词(w,IDLE_THOUGHTS,RAIN_IDLE_THOUGHTS,ag,'li'),null);
+  setActivity(w,ag,spot,'idle',(raining?RAIN_RULES.indoorLabel:'在家待着'),tempoDur(w,ag,30),天气词(w,IDLE_THOUGHTS,RAIN_IDLE_THOUGHTS,SNOW_IDLE_THOUGHTS,ag,'li'),null);
 }
 
 /*CLIP-START*/
@@ -4728,7 +4741,7 @@ const Sim={makeWorld, step, sendMessage, sendCustomMessage, decide, MSGS, ANCHOR
   DISH_POOL, 试新菜,   // 第 170 单·自己研究一道菜（门禁按真值读：池子一处定义＋纯哈希取词）
   REPORT_TOPICS, REPORT_SPOTS, 采访日, 采访点, 采访题,   // 第 172 单·出门采访（门禁按真值读：纯哈希、零 rng）
   HEART, heartMate,   // 第 91 单·交心（门禁按真值读：门槛与时长一处定义）
-  RAIN_STROLL_THOUGHTS, RAIN_IDLE_THOUGHTS, 天气词,   // 第 97 单·雨天的独白（门禁按真值读同一份池）
+  RAIN_STROLL_THOUGHTS, RAIN_IDLE_THOUGHTS, SNOW_STROLL_THOUGHTS, SNOW_IDLE_THOUGHTS, 冬厚天, 天气词,   // 第 97／250 单·天气独白：晴／雨／雪三池一函数（门禁按真值读同一份池）
   IDLE_THOUGHTS, STROLL_THOUGHTS,                     // 第 97 单：两张基础池也一并导出（门禁要按真值比对"串没串池"）
   CATCHUP_MIN_PER_MIN, CATCHUP_MAX_DAYS, REFLECT_MIN, SMS_NOREPLY,
   catchUpPlan, catchUp, reflectFallback, clipTopDay,

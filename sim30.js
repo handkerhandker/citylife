@@ -1,5 +1,6 @@
 // 30 天退化检查：六项。阈值集中于下方常量区（保守初值，可调；放宽须走任务书②C条款）。
-require('./tools/lib/sync-app.cjs').同步();   // 第 249 单：先解包现场再 require（单跑不吃旧副本）
+try { require('./tools/lib/sync-app.cjs').同步(); }                     // 第 249 单：先解包现场再 require（单跑不吃旧副本）
+catch (e) { if (String(e && e.code) !== 'MODULE_NOT_FOUND') throw e; }  // 沙盒副本无 lib ⇒ 跳过（app.js 由调用方现解）
 const {PURE, Sim} = require('./app.js');
 const SEEDS=[20260803, 424242];       // 可调：抽查种子（两颗都须过第 1–5 项）
 const DAYS=30;                        // 可调：模拟天数

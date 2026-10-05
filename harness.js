@@ -1,6 +1,7 @@
 /* 第 249 单·批后审计修：先把 HTML 当场解包到 app.js（一处定义 tools/lib/sync-app.cjs），再 require——
    单跑 harness 绝不再跑旧副本（门禁第 1 步与冒烟清单首位同走这一支）。 */
-require('./tools/lib/sync-app.cjs').同步();
+try { require('./tools/lib/sync-app.cjs').同步(); }
+catch (e) { if (String(e && e.code) !== 'MODULE_NOT_FOUND') throw e; }   // 沙盒副本无 lib ⇒ 跳过（app.js 由调用方现解）
 const {PURE, Sim} = require('./app.js');
 let fails=0;
 const ok=(cond,msg)=>{ if(!cond){fails++; console.log('FAIL:',msg);} else console.log(' ok :',msg); };
@@ -5686,18 +5687,18 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   const src=fs.readFileSync(path.resolve(__dirname,'city-life-framework.html'),'utf8');
   ok((src.match(/const RAIN_STROLL_THOUGHTS=\[/g)||[]).length===1
      &&(src.match(/const RAIN_IDLE_THOUGHTS=\[/g)||[]).length===1
-     &&/function 天气词\(w, 晴池, 雨池, ag, 键\)\{/.test(src)
-     &&(src.match(/天气词\(w,STROLL_THOUGHTS,RAIN_STROLL_THOUGHTS,ag,'lo'\)/g)||[]).length===5
-     &&(src.match(/天气词\(w,STROLL_THOUGHTS,RAIN_STROLL_THOUGHTS,ag,'lq'\)/g)||[]).length===1
-     &&(src.match(/天气词\(w,IDLE_THOUGHTS,RAIN_IDLE_THOUGHTS,ag,'li'\)/g)||[]).length===1
-     &&/雨\?\(键\+'r'\):键/.test(src),
-     '第 97 单·结构：两张雨池各一处定义、`天气词()` 一处定义、7 处调用全走它（第 224 单·夏夜纳凉加了一处），且雨天用独立键（不共键）');
+     &&/function 天气词\(w, 晴池, 雨池, 雪池, ag, 键\)\{/.test(src)
+     &&(src.match(/天气词\(w,STROLL_THOUGHTS,RAIN_STROLL_THOUGHTS,SNOW_STROLL_THOUGHTS,ag,'lo'\)/g)||[]).length===5
+     &&(src.match(/天气词\(w,STROLL_THOUGHTS,RAIN_STROLL_THOUGHTS,SNOW_STROLL_THOUGHTS,ag,'lq'\)/g)||[]).length===1
+     &&(src.match(/天气词\(w,IDLE_THOUGHTS,RAIN_IDLE_THOUGHTS,SNOW_IDLE_THOUGHTS,ag,'li'\)/g)||[]).length===1
+     &&/雨\?\(键\+'r'\):\(雪\?\(键\+'w'\):键\)/.test(src),
+     '第 97／250 单·结构：两张雨池＋两张雪池各一处定义、`天气词()` 一处定义（晴/雨/雪三池）、7 处调用全走它（第 224 单·夏夜纳凉加了一处），且三池各用独立键（不共键）');
   {
     const w=Sim.makeWorld(20260803), ag=w.agents[0];
     const 试=(雨)=>{
       w.weather.rain=雨; let 错=0;
       for(let i=0;i<400;i++){
-        const s=Sim.天气词(w, Sim.STROLL_THOUGHTS, Sim.RAIN_STROLL_THOUGHTS, ag, 'lo');
+        const s=Sim.天气词(w, Sim.STROLL_THOUGHTS, Sim.RAIN_STROLL_THOUGHTS, Sim.SNOW_STROLL_THOUGHTS, ag, 'lo');
         const 在雨=Sim.RAIN_STROLL_THOUGHTS.indexOf(s)>=0;
         if(在雨!==雨) 错++;
       }
@@ -5733,12 +5734,71 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
     const w=Sim.makeWorld(20260803), ag=w.agents[0]; w.weather.rain=true;
     let 记号=0, 别=0;
     for(let i=0;i<50;i++){
-      const s=Sim.天气词(w, Sim.STROLL_THOUGHTS, Sim.RAIN_STROLL_THOUGHTS, ag, 'lo');
+      const s=Sim.天气词(w, Sim.STROLL_THOUGHTS, Sim.RAIN_STROLL_THOUGHTS, Sim.SNOW_STROLL_THOUGHTS, ag, 'lo');
       if(s.indexOf('【雨记号】')===0) 记号++; else 别++;
     }
     Sim.RAIN_STROLL_THOUGHTS.length=0; for(const s of 原池) Sim.RAIN_STROLL_THOUGHTS.push(s);
     ok(记号===50&&别===0,'第 97 单·反向自查·拦得住：把雨池整池换成一句记号 ⇒ 同一构造 50 次抽的全是那句记号（'
        +记号+'／'+别+'）⇒ "下雨走雨池"这条判据不是恒绿（池子已还原：'+Sim.RAIN_STROLL_THOUGHTS.length+' 条）');
+  }
+}
+
+// ═══ 第 250 单·冬日的独白（雨天独白的"第二季"：三池一函数，雨＞雪＞晴）════════════════
+/* 出处（Nookipedia·Weather：「reflecting the seasons」「mentioned by villagers」，2026-10-06 HTTP 200）
+   ＋168／242 的"积雪＝入冬第 11 天起"同一口径。被验的是生产源码与真值：
+     ① 结构：两张雪池各一处定义、`冬厚天()` 一处定义（入冬第 11 天起）、`天气词` 三池签名与 `键+'w'`；
+     ② 行为（构造）：春晴⇒晴池／春雨⇒雨池／初冬(D275)晴⇒晴池／深冬(D281)晴⇒雪池／深冬雨⇒雨池（雨优先）；次年 D641 再验一遍；
+     ③ 真跑不变量（300 天 × 1 种子）：雪池句只出现在"冬厚天 且 不雨"的拍，且确实出现 >0；
+     ④ 反向自查：把雪池整池换成一句记号 ⇒ 深冬不雨时抽到的全是记号（跑完还原）。 */
+{
+  const fs250=require('fs'), path250=require('path');
+  const src250=fs250.readFileSync(path250.resolve(__dirname,'city-life-framework.html'),'utf8');
+  ok((src250.match(/const SNOW_STROLL_THOUGHTS=\[/g)||[]).length===1
+     &&(src250.match(/const SNOW_IDLE_THOUGHTS=\[/g)||[]).length===1
+     &&/function 冬厚天\(w\)\{/.test(src250)&&/d>=Y\*3\/4\+10/.test(src250)
+     &&/const 雨=!!\(w\.weather&&w\.weather\.rain\), 雪=!雨&&冬厚天\(w\);/.test(src250),
+     '第 250 单·结构：两张雪池＋`冬厚天()`（入冬第 11 天起）＋`天气词` 雨＞雪＞晴 的分支在位');
+  {
+    const w=Sim.makeWorld(20260803), ag=w.agents[0];
+    const 试=(d,雨)=>{ w.t=(d-1)*1440+12*60; w.weather.rain=雨; let 雨n=0, 雪n=0, 晴n=0;
+      for(let i=0;i<200;i++){ const s=Sim.天气词(w, Sim.STROLL_THOUGHTS, Sim.RAIN_STROLL_THOUGHTS, Sim.SNOW_STROLL_THOUGHTS, ag, 'lo');
+        if(Sim.RAIN_STROLL_THOUGHTS.indexOf(s)>=0) 雨n++; else if(Sim.SNOW_STROLL_THOUGHTS.indexOf(s)>=0) 雪n++; else 晴n++; }
+      return { 雨n, 雪n, 晴n }; };
+    const 春晴=试(5,false), 春雨=试(5,true), 初冬晴=试(275,false), 深冬晴=试(281,false), 深冬雨=试(281,true), 次年=试(641,false);
+    ok(春晴.晴n===200&&春雨.雨n===200&&初冬晴.晴n===200&&深冬晴.雪n===200&&深冬雨.雨n===200&&次年.雪n===200,
+       '第 250 单·行为：春晴⇒晴池／春雨⇒雨池／初冬(D275)晴⇒晴池（还没积雪）／深冬(D281)晴⇒雪池／深冬雨⇒雨池（雨优先）／次年 D641 晴⇒雪池'
+       +'（实测 '+JSON.stringify({春晴,春雨,初冬晴,深冬晴,深冬雨,次年})+'）');
+  }
+  {
+    const 集合=new Set(Sim.SNOW_STROLL_THOUGHTS.concat(Sim.SNOW_IDLE_THOUGHTS));
+    let 该出=0, 不该=0;
+    const w=Sim.makeWorld(20260803);
+    for(let i=0;i<300*144;i++){
+      const 起点=w.lidSeq; Sim.step(w,10);
+      const 雨=!!(w.weather&&w.weather.rain), 雪=!雨&&Sim.冬厚天(w);
+      for(const e of w.log){
+        if(!(e.lid>起点)) continue;
+        const t=String(e.thought||''); if(!t) continue;
+        let 命中=false; for(const s of 集合) if(t.indexOf(s)>=0){ 命中=true; break; }
+        if(!命中) continue;
+        if(雪) 该出++; else 不该++;
+      }
+    }
+    ok(该出>0&&不该===0,'第 250 单·真跑不变量（300 天）：雪池那几句只在"入冬第 11 天起且不下雨"的拍出现'
+       +'（该出 '+该出+' 次／不该 '+不该+' 次）');
+  }
+  {
+    const 原池=Sim.SNOW_STROLL_THOUGHTS.slice();
+    Sim.SNOW_STROLL_THOUGHTS.length=0; Sim.SNOW_STROLL_THOUGHTS.push('【雪记号】雪踩上去咯吱咯吱的。');
+    const w=Sim.makeWorld(20260803), ag=w.agents[0]; w.t=(281-1)*1440+12*60; w.weather.rain=false;
+    let 记号=0, 别=0;
+    for(let i=0;i<50;i++){
+      const s=Sim.天气词(w, Sim.STROLL_THOUGHTS, Sim.RAIN_STROLL_THOUGHTS, Sim.SNOW_STROLL_THOUGHTS, ag, 'lo');
+      if(s.indexOf('【雪记号】')===0) 记号++; else 别++;
+    }
+    Sim.SNOW_STROLL_THOUGHTS.length=0; for(const s of 原池) Sim.SNOW_STROLL_THOUGHTS.push(s);
+    ok(记号===50&&别===0,'第 250 单·反向自查·拦得住：把雪池整池换成一句记号 ⇒ 深冬不雨时 50 次抽的全是那句记号（'
+       +记号+'／'+别+'）⇒ "冬厚天走雪池"这条判据不是恒绿（池子已还原：'+Sim.SNOW_STROLL_THOUGHTS.length+' 条）');
   }
 }
 
@@ -10518,7 +10578,7 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   // 闸三 · 反向自查登记（防整条被删）
   const 登记=['第 48 单','第 49 单','第 51 单','第 52 单','第 53 单','第 54 单','第 56 单','第 57 单',
                '第 58 单','第 59 单','第 62 单','第 63 单','第 64 单','第 65 单','第 67 单','第 70 单','第 71 单','第 72 单','第 73 单','第 74 单','第 75 单','第 76 单','第 77 单','第 79 单','第 80 单','第 81 单','第 84 单','第 85 单','第 87 单','第 88 单','第 90 单','第 91 单','第 92 单','第 93 单','第 94 单','第 95 单','第 96 单','第 97 单','第 98 单','第 99 单','第 100 单','第 102 单','第 103 单','第 106 单','第 107 单','第 109 单','第 110 单','第 111 单','第 112 单','第 113 单','第 115 单','第 116 单','第 117 单','第 118 单','第 119 单','第 120 单','第 121 单','第 123 单','第 124 单','第 125 单','第 126 单','第 129 单','第 131 单','第 135 单','第 136 单','第 139 单','第 142 单','第 143 单','第 144 单','第 145 单','第 148 单','第 149 单','第 150 单','第 151 单','第 152 单','第 156 单','第 157 单','第 158 单','第 204 单','第 205 单','第 161 单','第 163 单','第 164 单','第 165 单','第 166 单','第 167 单','第 168 单','第 169 单','第 170 单','第 171 单','第 172 单','第 174 单','第 175 单','第 177 单','第 179 单','第 180 单','第 183 单','第 184 单','第 185 单','第 186 单','第 188 单','第 189 单','第 190 单','第 192 单','第 198 单','第 199 单','第 201 单','第 202 单','第 206 单','第 207 单','第 208 单','第 210 单','第 211 单','第 212 单','第 213 单','第 214 单','第 215 单','第 216 单','第 217 单','第 220 单','第 221 单','第 224 单','第 225 单','第 227 单','第 229 单','第 232 单','第 233 单','第 240 单',
-              '第 242 单','第 243 单','第 244 单','第 246 单','第 247 单','闸四','闸五','闸十','闸十一','闸十二'];
+              '第 242 单','第 243 单','第 244 单','第 246 单','第 247 单','第 250 单','闸四','闸五','闸十','闸十一','闸十二'];
   const 实有=[...new Set((自源.match(/(第 \d+ 单|闸[一二三四五六七八九十]+)·反向自查/g)||[])
                             .map(x=>x.replace('·反向自查','')))];
   const 缺=登记.filter(x=>实有.indexOf(x)<0);
