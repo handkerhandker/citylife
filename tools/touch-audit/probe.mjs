@@ -9,6 +9,8 @@
 //   ⑦ 全程零 pageerror。
 //   ⑧ 横屏（另开 900×430 触屏页）：四向拖到极限——左缘停在左轨右缘、上缘停在顶栏下沿、
 //      右／下缘贴可视区边（第 244 单：镜头按"可视区"夹取；旧版左右锁死、上下也推不进被盖的那条）。
+//   ⑨ 竖屏（本页）：上下拖到极限——上缘停顶栏下沿、下缘停底栏上沿（第 244 单对竖屏纵向也生效；
+//      旧版竖屏纵向是"居中锁死"）。
 // 另有 --改前=<git-ref>：对旧版跑同一套——第 145 单之前的版本会在 ①/④ 红（幽灵点击把卡片当场关掉），
 // 这两条红就是"原 bug 可复现"的证据。
 // 用法：node tools/touch-audit/probe.mjs [输出目录] [--改前=<git-ref>]   （要 CITYLIFE_CHROME）
@@ -214,6 +216,38 @@ const 初始 = await 取态();
     Math.abs((下到.oy + 下到.mh) - (下到.cvH - 下到.bottom)) <= 4,
     { 下缘: +(下到.oy + 下到.mh).toFixed(1), 可视底: +(下到.cvH - 下到.bottom).toFixed(1) });
   await ctxL.close();
+}
+
+/* ⑨ 第 245 单·竖屏四向推到头：244 的"按可视区夹取"对竖屏纵向也生效（旧版竖屏纵向居中锁死） */
+{
+  // ⑤ 把页面切到了"设置"——先切回现场页，拖拽才会落在画布上（第一版就栽在这：oy 原封不动）
+  await page.touchscreen.tap(...(await page.evaluate(() => {
+    const r = document.querySelector('button.tab[data-tab="live"]').getBoundingClientRect();
+    return [r.x + r.width / 2, r.y + r.height / 2];
+  })));
+  await page.waitForTimeout(300);
+  await page.evaluate(() => { const st = __pv.state; st.world.speed = 0; st.llm.on = false; st.cam.manual = true; });
+  const 量竖 = () => page.evaluate(() => {
+    const st = __pv.state;
+    const bar = document.querySelector('#tabbar').getBoundingClientRect();
+    const tb = document.querySelector('#topbar').getBoundingClientRect();
+    const hb = document.querySelector('#hintbar').getBoundingClientRect();
+    const bottom = Math.max((bar.top > st.cvH * 0.5) ? (st.cvH - bar.top) : 0,
+                            (hb.top > st.cvH * 0.5) ? (st.cvH - hb.top) : 0);
+    return { layout: document.getElementById('app').dataset.layout, ox: st.view.ox, oy: st.view.oy,
+             cvW: st.cvW, cvH: st.cvH, mw: __pv.Sim.MAPW * st.view.s, mh: __pv.Sim.MAPH * st.view.s,
+             top: tb.top < st.cvH * 0.4 ? tb.bottom : 0, bottom };
+  });
+  await 触摸拖(300, 120, 300, 600); await 触摸拖(300, 120, 300, 600);   // 手指往下拉 ⇒ 看地图上缘
+  const 竖上 = await 量竖();
+  await 触摸拖(300, 600, 300, 120); await 触摸拖(300, 600, 300, 120);   // 手指往上拉 ⇒ 看下缘
+  const 竖下 = await 量竖();
+  判('⑨ 竖屏·上缘能推到顶栏下沿（地图上缘 ≈ 顶栏底）',
+    Math.abs(竖上.oy - 竖上.top) <= 3,
+    { flow: 竖上.layout, oy: +竖上.oy.toFixed(1), 顶栏底: +竖上.top.toFixed(1) });
+  判('⑨ 竖屏·下缘能推到底栏上沿（地图下缘 ≈ 屏底 − 底内衬）',
+    Math.abs((竖下.oy + 竖下.mh) - (竖下.cvH - 竖下.bottom)) <= 4,
+    { 下缘: +(竖下.oy + 竖下.mh).toFixed(1), 可视底: +(竖下.cvH - 竖下.bottom).toFixed(1) });
 }
 
 判('⑦ 全程零 pageerror', 错.length === 0, { 错: 错.length });
