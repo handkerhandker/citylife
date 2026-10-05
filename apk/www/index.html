@@ -332,6 +332,13 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
   background:var(--bg2); border-radius:var(--r); font-size:.82rem; overflow-wrap:anywhere; }
 .board-post{ display:grid; gap:.4rem; margin-top:.6rem; }
 .board-post .btn{ text-align:left; justify-content:flex-start; overflow-wrap:anywhere; white-space:normal; }
+/* 第 229 单·电话（第 1 层）：通话面板——会话流（左他右你）＋选项排 */
+.call-flow{ display:grid; gap:var(--sp2); margin:0 0 var(--sp3); }
+.call-flow>div{ padding:.45em .6em; border-radius:var(--r); border:1px solid var(--line); max-width:88%; overflow-wrap:anywhere; }
+.call-flow>.you{ justify-self:end; background:var(--bg2); }
+.call-flow>.ta{ justify-self:start; background:var(--bg1); }
+.call-flow>.sys{ justify-self:center; border:none; color:var(--ink-faint); font-size:.8rem; padding:.2em; text-align:center; }
+.call-opts{ display:flex; flex-wrap:wrap; gap:var(--sp2); }
 #app.reduce-motion .dlg{ animation:none; }
 
 /* 滚动条低调化 */
@@ -423,7 +430,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
     </section>
 
     <section class="screen" id="scr-phone">
-      <h2 class="sec">给小人发短信 · 今日剩 <span class="num" id="ph-credits">3</span> 条</h2>
+      <h2 class="sec">给小人发短信／打电话 · 今日剩 <span class="num" id="ph-credits">3</span> 条</h2>
       <p class="faint" style="font-size:.74rem;margin:.2rem 0 .6rem">短信是输入不是指令：TA 会照自己的状态消化，回不回、怎么回都看 TA（心里话去城市日志偷看）。每天 0:00 重置额度。</p>
       <h2 class="sec">收件人</h2>
       <div class="wrapline" id="ph-agents"></div>
@@ -433,6 +440,10 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
         <input id="ph-input" class="ph-input grow" type="text" maxlength="60" placeholder="自己写一条（60 字内）…">
         <label class="faint" style="font-size:.74rem;display:flex;align-items:center;gap:.25rem;cursor:pointer"><input type="checkbox" id="ph-urgent" data-fx style="accent-color:var(--gold-deep)">加急</label>
         <button class="btn gold" id="ph-send" data-fx>发送</button>
+      </div>
+      <div class="row" style="margin-top:var(--sp2);flex-wrap:wrap">
+        <button class="btn" id="ph-call" data-fx>📞 打电话</button>
+        <span class="faint" id="ph-call-hint" style="font-size:.74rem"></span>
       </div>
       <h2 class="sec">往来记录 · TA 的回音也在这里 <span class="chip" id="ph-llm">AI 待机</span></h2>
       <ul class="log-ul" id="ph-history"></ul>
@@ -525,7 +536,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v176</span>
+<span class="num dim" id="set-build">v177</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -4272,6 +4283,81 @@ function sendCustomMessage(w, agentId, text, urgent){
   return true;
 }
 
+/* ---------- 第 229 单·电话（第 1 层；方案＝`docs/规划/电话方案_v1.md`，第 173 单出品）----------
+   出处（沿用已登记的摘录，用户提供的《无心云志》卡 03）：
+     「有事找它：发短信、**打电话**——**接通后你一句它一句**；**可以拒接**；
+       **忙着无法中断的事时，暂时打不通**；紧急短信会优先回应。」
+   口径（第 1 层＝零 AI、离线可玩；本段只加函数、不动任何既有路径）：
+     · 三结局由 `电话结局` 一处判：**打不通**（work／sleep／nap——与第 171 单"停不住"同一张表）／
+       **拒接**（状态差：累到快小憩或饿到快开饭——沿用作息现成阈值 `rhyNapAt`／`rhyEatAt`）／**接通**；
+     · 回话＝`电话回复` 按（日号 × 人物 × 选项 × 轮次）纯哈希取句（照 70／71 单"日号哈希"先例，**零 rng**）；
+       池子按关系档分两桶：生疏／点头之交＝客气桶，熟以上＝亲近桶；老友以上多聊一轮（2→3）；
+     · 结算＝`电话结算`：额度**与短信共用**（-1，不新增收费点）＋`relYouBump`（当天第一条接触 +1，
+       与短信同一把去重锁）＋落一条 `sms:'call'` 的 player 日志（进日志墙／剪辑分类）；
+     · **不夺走**：打不通与拒接都**不扣额度**；通话进度只活在 DOM 层闭包里，关掉即整个丢掉（不落字、不扣额度）。
+   本段不动既有路径 ⇒ 世界指纹与既有行为逐字不变（rel-audit 逐拍全同为其取证）。 */
+const CALL={ busy:['work','sleep','nap'] };
+function 电话结局(w, ag){
+  if(!ag) return 'busy';
+  const act=String((ag.activity&&ag.activity.type)||'');
+  if(CALL.busy.indexOf(act)>=0) return 'busy';                  // 忙着无法中断的事：打不通
+  const R=rhyOf(ag);
+  const 累=isFinite(ag.energy)&&ag.energy<rhyNapAt(w,ag,R);     // 累到快眯觉 ⇒ 没力气应付电话
+  const 饿=isFinite(ag.hunger)&&ag.hunger>rhyEatAt(w,ag,R);     // 饿到快开饭 ⇒ 语气不会好
+  return (累||饿)?'decline':'connect';
+}
+function 电话桶(ag){ return relTier(relYouGet(ag)).lo>=20?'warm':'cool'; }   // "熟"（20）以上＝亲近桶
+function 电话取句(池, w, ag, key){
+  const d=Math.max(0,PURE.dayOf(w.t)-1);
+  let h=(Math.imul(d+1,2654435761))>>>0;
+  const s=String((ag&&ag.id)||'')+'|'+String(key||'');
+  for(let i=0;i<s.length;i++) h=(Math.imul(h^s.charCodeAt(i),16777619))>>>0;
+  return 池[h%池.length];
+}
+const CALL_OPTS=[
+  {k:'day',    label:'今天怎么样？'},
+  {k:'dinner', label:'晚饭吃了没？'},
+  {k:'miss',   label:'没什么事，就是有点想你。'},
+];
+const CALL_HELLO={
+  cool:['喂？……有事吗？','喂，哪位？','嗯，是我。'],
+  warm:['喂？怎么想起给我打电话了。','喂——刚好忙完手头这点事。','接起来了，说吧。'],
+};
+const CALL_REPLY={
+  day:{   cool:['还行，就那样。','忙一天了，没什么特别的。','老样子，你呢？'],
+          warm:['今天还行，下午那阵有点忙。','挺好，事情都顺。','刚歇下来，正好听见你打来。'] },
+  dinner:{cool:['吃了。你呢？','还没呢，一会儿再说。','嗯，凑合吃了点。'],
+          warm:['吃了，今天这顿做得比平时好。','还没，等会儿下点面。','刚吃完，锅里还剩半碗。'] },
+  miss:{  cool:['……嗯。你在外面好好的就行。','怎么突然说这个。','你有事说事，别绕。'],
+          warm:['我也是。忙起来还好，一闲下来就想。','嗯，我知道。','别肉麻——我这不接着听呢。'] },
+};
+const CALL_BYE={
+  cool:['那就这样，我先忙了。','嗯，挂了。','没事就这样吧。'],
+  warm:['那就这样，改天过来坐坐。','好，你也早点休息。','挂了啊，回头见。'],
+};
+function 电话开场白(w, ag){ return 电话取句(CALL_HELLO[电话桶(ag)]||CALL_HELLO.cool, w, ag, 'hello'); }
+function 电话回复(w, ag, optK, round){
+  const 池=CALL_REPLY[optK]; if(!池) return '';
+  return 电话取句(池[电话桶(ag)]||池.cool, w, ag, optK+':'+round);
+}
+function 电话告别语(w, ag){ return 电话取句(CALL_BYE[电话桶(ag)]||CALL_BYE.cool, w, ag, 'bye'); }
+function 电话轮数(ag){ return relTier(relYouGet(ag)).lo>=35?3:2; }           // 老友以上多聊一轮
+function 电话结算(w, ag, 来回数){
+  if(!w||!ag||w.credits<=0) return false;
+  w.credits--;                                                                // 与短信共用额度
+  relYouBump(w, ag, false);                                                   // 当天第一条接触 +1（同短信同一把锁）
+  /* 日志挂人（`agent`）且用**居民口吻**：这样它既进城市日志，又留在这人的「往来记录」里
+     ——不挂人的话，drainLog 只把它临时塞进短信页，下一次整页重渲染就整条消失（第 229 单首版实测的坑）。 */
+  pushLog(w,{type:'player',sms:'call',agent:ag.id,name:ag.name,
+    text:'和你通了会儿电话，聊了 '+来回数+' 句来回。',thought:''});
+  return true;
+}
+function 电话被拒(w, ag){
+  if(!w||!ag) return false;
+  pushLog(w,{type:'player',sms:'call',name:ag.name,text:'按掉了你打来的电话。',thought:''});
+  return true;
+}
+
 /*CATCHUP-START*/
 /* ===== 第 26 单·离线追帧一期：城市一直在走 ==================================
    页面关着的那段真实时间，回来时一口气补算上去。补算＝反复调 step()，不多不少。
@@ -4430,6 +4516,7 @@ const Sim={makeWorld, step, sendMessage, sendCustomMessage, decide, MSGS, ANCHOR
   SEASON_RHY_BED, SEASON_RHY_DUR, 季作息,   // 第 126 单·作息随季节（门禁按真值读：两张表＋一处取用）
   REL_YOU, relYouOf, relYouGet, relYouBump, relYouStep,   // 第 115 单·玩家篇①期（门禁按真值读：涨落一处定义）
   REL_WAIT_DAYS, 等你天数, relYouWord,   // 第 117 单·玩家篇②期（门禁按真值读：窗口表＋那句"你在他心里"一处定义）
+  CALL, CALL_OPTS, CALL_HELLO, CALL_REPLY, CALL_BYE, 电话结局, 电话开场白, 电话回复, 电话告别语, 电话轮数, 电话结算, 电话被拒, 电话桶, 电话取句,   // 第 229 单·电话第 1 层（门禁按真值读：三结局一处判定＋两桶池子；零 rng）
   DISH_POOL, 试新菜,   // 第 170 单·自己研究一道菜（门禁按真值读：池子一处定义＋纯哈希取词）
   REPORT_TOPICS, REPORT_SPOTS, 采访日, 采访点, 采访题,   // 第 172 单·出门采访（门禁按真值读：纯哈希、零 rng）
   HEART, heartMate,   // 第 91 单·交心（门禁按真值读：门槛与时长一处定义）
@@ -5266,9 +5353,69 @@ function renderPhone(){
   $('#ph-input').disabled = w.credits<=0;
   $('#ph-send').disabled = w.credits<=0;
   if($('#ph-urgent')) $('#ph-urgent').disabled = w.credits<=0;   // 第 171 单·加急勾选框同额度门
+  /* 第 229 单·电话（第 1 层）：与短信同一道额度门；提示写清"打给谁、占几条" */
+  if($('#ph-call')) $('#ph-call').disabled = w.credits<=0;
+  if($('#ph-call-hint')){ const 收=(w.agents||[]).find(a=>a.id===state.selected); $('#ph-call-hint').textContent=收?('打给 '+收.name+'；接通占 1 条额度（打不通／被拒不算）'):''; }
   $('#ph-history').innerHTML=phoneHistoryHTML(w, state.selected);   // 第 75 单：每帧照"这个人"的往来刷
   syncLLMStat();
 }
+/* ---------- 第 229 单·电话（第 1 层）：入口＋通话面板（状态全在闭包里，关掉即结束）----------
+   方案＝`docs/规划/电话方案_v1.md`（第 173 单出品）：零 AI、离线可玩；三结局由 `Sim.电话结局` 一处判。
+   取消路径不留悬挂状态：通话进度只活在闭包变量里——✕／点背景＝整个丢掉，不结算、不扣额度、不落字。 */
+function 电话面板HTML(ag, 流, 选项, 尾){
+  return '<div class="dlg-head"><span class="grab"></span>'
+    +'<span class="dotc" style="background:'+ag.color+'"></span>'
+    +'<b class="ellip grow">☎ '+esc(ag.name)+'</b>'
+    +'<button class="btn small" data-fx data-close>✕</button></div>'
+    +'<div class="dlg-body"><div class="call-flow">'
+    +流.map(x=>'<div class="'+esc(x.谁)+'">'+esc(x.文)+'</div>').join('')
+    +'</div>'
+    +(选项.length?'<div class="call-opts">'+选项.map(o=>'<button class="btn small" data-fx data-opt="'+o.k+'">'+esc(o.label)+'</button>').join('')+'</div>':'')
+    +(尾?'<div class="row" style="margin-top:var(--sp3);justify-content:flex-end"><button class="btn gold" data-fx data-hang>挂断</button></div>':'')
+    +'</div>';
+}
+function startCall(){
+  const w=state.world;
+  const ag=w.agents.find(a=>a.id===state.selected);
+  if(!ag) return;
+  if(w.credits<=0){ openDialog(电话面板HTML(ag, [{谁:'sys',文:'今天联系额度用完了（短信与电话共用，0:00 重置）。'}], [], false)); return; }
+  const 局=Sim.电话结局(w, ag);
+  if(局==='busy'){
+    const 词=({work:'正在上班',sleep:'已经睡了',nap:'在小憩'})[String((ag.activity&&ag.activity.type)||'')]||'忙着';
+    openDialog(电话面板HTML(ag, [{谁:'sys',文:'对方'+词+'，这会儿打不通。过会儿再拨。'}], [], false));
+    return;
+  }
+  if(局==='decline'){
+    Sim.电话被拒(w, ag); saveNow();
+    openDialog(电话面板HTML(ag, [{谁:'sys',文:'对方按掉了。（此刻也许不是说话的时候——被拒不会扣额度。）'}], [], false));
+    return;
+  }
+  const 流=[{谁:'ta',文:Sim.电话开场白(w, ag)}];
+  const 轮数=Sim.电话轮数(ag), 已用=[];
+  let 轮=0;
+  const 画=()=>{
+    const 选项=(轮<轮数)?Sim.CALL_OPTS.filter(o=>已用.indexOf(o.k)<0):[];
+    openDialog(电话面板HTML(ag, 流, 选项, 轮>=轮数));
+    const root=$('#dialog-root');
+    root.querySelectorAll('[data-opt]').forEach(b=>b.addEventListener('click',()=>{
+      const opt=Sim.CALL_OPTS.find(o=>o.k===b.dataset.opt); if(!opt) return;
+      已用.push(opt.k);
+      流.push({谁:'you',文:opt.label});
+      流.push({谁:'ta',文:Sim.电话回复(w, ag, opt.k, 轮)});
+      轮++;
+      if(轮>=轮数) 流.push({谁:'ta',文:Sim.电话告别语(w, ag)});
+      画();
+    }));
+    const hb=root.querySelector('[data-hang]');
+    if(hb) hb.addEventListener('click',()=>{
+      const 来回=流.filter(x=>x.谁==='you').length;
+      if(Sim.电话结算(w, ag, 来回)){ saveNow(); renderPhone(); }
+      openDialog(电话面板HTML(ag, 流.concat([{谁:'sys',文:'——通话结束，这条记进了日志。'+(w.credits>0?('今日还剩 ✉×'+w.credits+'。'):'今日额度用完了。')}]), [], false));
+    });
+  };
+  画();
+}
+$('#ph-call').addEventListener('click', startCall);
 /* ---------- 第 80 单·未读小圆点（"有新回音/留言"要看得出来）----------
    第 75 单把往来记录接上了，第 76／77 单让居民也会留话——可**新回音不会提示你**（那条已登记为欠账）。
    本单补一个角标：**水位之后**的往来条数 >0 就在"短信"页签上点一个小圆点；进那一页即清零。
