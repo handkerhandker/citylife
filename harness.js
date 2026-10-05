@@ -1852,6 +1852,9 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
     grab(/function dlgHead\(title\)\{[\s\S]*?\n\}/,'dlgHead'),
     grab(/function clipQLine\(q\)\{[\s\S]*?\n\}/,'clipQLine'),
     grab(/function clipCard\(c\)\{[\s\S]*?\n\}/,'clipCard'),
+    /* 第 236 单·剪辑收藏夹：clipCard 头部那枚「★ 留着」按钮要读 `收藏里()`——一并抽进沙盒
+       （沙盒的 state 只有 world，`state.keeps` 缺省 ⇒ 一律当"没收藏"，照生产的坏值兜底口径）。 */
+    grab(/function 收藏里\(d\)\{[^\n]*\n/,'收藏里'),
   ].join('\n');
 
   /* 造场景：把世界推到 D<day> <min>，再按 plan 补算，最后照**开机段的原样**装配 catchup 对象。

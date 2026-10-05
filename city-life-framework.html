@@ -251,6 +251,11 @@ h2.sec:first-child{ margin-top:0; }
 
 /* ---- 每日剪辑（第 21 单）：一天一张卡，倒序，可一路往回翻 ---- */
 #clip-list{ display:flex; flex-direction:column; gap:var(--sp3); }
+/* 第 236 单：`#clip-list` 自带 display，`[hidden]` 压不住它——切收藏视图时要显式藏 */
+#clip-list[hidden]{ display:none; }
+/* 第 236 单·剪辑收藏夹：收藏视图与每日视图同款排版 */
+#clip-keeps{ display:flex; flex-direction:column; gap:var(--sp3); }
+#clip-keeps[hidden]{ display:none; }
 .clip{ background:var(--bg1); border:2px solid var(--line); border-radius:var(--r);
   padding:var(--sp3); min-width:0; overflow:hidden; }
 .clip-hd{ display:flex; align-items:center; gap:var(--sp2); flex-wrap:wrap; min-width:0; }
@@ -433,6 +438,11 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       <h2 class="sec">每日剪辑 · 一天挑一个人</h2>
       <p class="clip-back" id="clip-back" hidden></p>
       <p class="faint" style="font-size:.74rem;margin:.2rem 0 .6rem">每天凌晨 4 点结算前一天，挑出「谁今天最不像平常的自己」——落差最大的那位。落差项按各人自己的往日均值算；全城当天都一样的（发薪、交租）算城市的事，要打折。下面引的日志原文一字未改，都是城市日志里的原句。</p>
+      <div class="row" style="margin:.2rem 0 .6rem;flex-wrap:wrap">
+        <button class="btn small" id="clip-mode" data-fx>看收藏（0）</button>
+        <span class="faint" id="clip-hint" style="font-size:.74rem">喜欢的卡点「★ 留着」——它会一直保存在这里（最多 60 张）。</span>
+      </div>
+      <div id="clip-keeps" hidden></div>
       <div id="clip-list"></div>
     </section>
 
@@ -544,7 +554,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v182</span>
+<span class="num dim" id="set-build">v183</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -4777,6 +4787,15 @@ const bootAiGate=(()=>{
   return { day:(isFinite(a.day)&&a.day>=0)?Math.floor(a.day):-1,
            used:(isFinite(a.used)&&a.used>0)?Math.floor(a.used):0 };
 })();
+/* 第 236 单·剪辑收藏夹：收藏的卡走**存档信封**（与 phSeenBy／miles／ai 同一处），不进世界状态
+   ——世界指纹与 SIM 块 md5 都不受影响；旧档没有这一项 ⇒ 空收藏。读入时逐条验形（非对象／
+   无 d 的丢弃），最多 60 张（与 CLIP_KEEP 同量级），绝不因收藏畸形拒载存档。 */
+const bootKeeps=(()=>{
+  const a=(bootMeta && Array.isArray(bootMeta.keeps)) ? bootMeta.keeps : [];
+  const out=[];
+  for(const k of a){ if(!k||typeof k!=='object'||Array.isArray(k)||!isFinite(k.d)) continue; out.push(k); if(out.length>=60) break; }
+  return out;
+})();
 const state={
   world:bootWorld||Sim.makeWorld(bootSeed),
   selected:(bootMeta && bootWorld && bootWorld.agents.some(a=>a&&a.id===bootMeta.selected))?bootMeta.selected:'a1',
@@ -4786,6 +4805,9 @@ const state={
   phSeenBy:bootPhSeenBy,   // 第 129 单·分人水位（短信页每个人的小角标各读各的）
   miles:bootMiles,         // 第 131 单·云港手账（玩家侧里程碑的小账）
   aiGate:bootAiGate,       // 第 177 单·AI 成本闸的本地小账（今日已用几次；随存档信封走）
+  keeps:bootKeeps,         // 第 236 单·剪辑收藏夹（点「★ 留着」的卡；随存档信封走，不进世界）
+  keepsRev:0,              // 收藏视图的重画版本号（只在收藏变化时重画）
+  clipView:'daily',        // 剪辑页在看"每日"还是"收藏"（只活本次会话）
   screen:'live',
   soundOn:true,            // 第 124 单·提示音（默认开；与"减少动效"同口径：只活在本次会话里）
   ambienceOn:false,        // 第 136 单·环境音（雨声）（默认关——持续音更需用户自己点头；同样只活本次会话）
@@ -5151,6 +5173,56 @@ function clipRows(){
   const w=state.world;
   return Array.isArray(w.clips) ? w.clips.filter(c=>c && typeof c==='object' && isFinite(c.d)) : [];
 }
+/* ---------- 第 236 单·剪辑收藏夹（把喜欢的卡留下来）----------
+   出处（2026-10-05 均 HTTP 200，逐字见 `docs/规划/借鉴调研-2026-10-05-剪辑收藏.md`）：
+     · 动森·Photo：「…given to the player by a villager, indicative of them having become close
+       friends… Every photo … can be interacted with. Once selected, it reveals a quote…」
+       ——把"高光时刻"做成可留存的实物、里头带着原文；
+     · 星露谷·Collections：「The Collections tab acts like a record of which items have been
+       discovered or shipped…」——收藏就是一本台账。
+   口径：收藏＝**卡的一份快照**（进信封、不进世界）——原卡被 60 天窗口裁掉也不丢；同一张卡
+   点一下留、再点一下取消；最多 60 张，满了**不硬塞**（提示先取消一条）；坏数据逐条丢。 */
+const KEEP_MAX=60;
+function 收藏里(d){ return (state.keeps||[]).some(k=>k&&k.d===d); }
+function 留卡(d){
+  const 收=state.keeps||(state.keeps=[]);
+  const i=收.findIndex(k=>k&&k.d===d);
+  if(i>=0){ 收.splice(i,1); state.keepsRev++; return '取消'; }
+  if(收.length>=KEEP_MAX) return '满';
+  const c=clipRows().find(x=>x.d===d);
+  if(!c) return '无卡';
+  let 快照=null;
+  try{ 快照=JSON.parse(JSON.stringify(c)); }catch(_){ return '无卡'; }
+  收.unshift(快照); state.keepsRev++;
+  return '留着';
+}
+function 画收藏(){
+  const box=$('#clip-keeps'); if(!box) return;
+  if(box.dataset.rev===String(state.keepsRev)) return;
+  box.dataset.rev=String(state.keepsRev);
+  box.innerHTML='';
+  if(!(state.keeps||[]).length){ box.innerHTML='<p class="clip-empty">收藏还是空的——在上面（或「看每日」里）的卡上点「★ 留着」，它就会一直留在这里。</p>'; return; }
+  for(const k of state.keeps) box.appendChild(clipCard(k));
+}
+function 画剪辑模式(){
+  const 日=$('#clip-list'), 集=$('#clip-keeps'), btn=$('#clip-mode');
+  const 在看收藏=(state.clipView==='keeps');
+  if(btn) btn.textContent=在看收藏?('看每日（'+clipRows().length+'）'):('看收藏（'+(state.keeps||[]).length+'）');
+  if(日) 日.hidden=在看收藏;
+  if(集){ 集.hidden=!在看收藏; if(在看收藏) 画收藏(); }
+}
+$('#clip-mode').addEventListener('click',()=>{ state.clipView=(state.clipView==='keeps')?'daily':'keeps'; 画剪辑模式(); });
+$('#scr-clip').addEventListener('click',e=>{
+  const b=e.target.closest('[data-keep]'); if(!b) return;
+  const d=+b.dataset.keep;
+  const r=留卡(d);
+  const h=$('#clip-hint');
+  if(r==='满'){ if(h) h.textContent='收藏夹满了（'+KEEP_MAX+' 张）——先取消一条再留。'; return; }
+  if(h) h.textContent='喜欢的卡点「★ 留着」——它会一直保存在这里（最多 '+KEEP_MAX+' 张）。';
+  b.textContent=收藏里(d)?'★ 已留着（点一下取消）':'★ 留着';
+  画剪辑模式();
+  saveNow();
+});
 function clipQLine(q){
   const li=document.createElement('li');
   li.className=String((q&&q.type)||'act');
@@ -5174,6 +5246,7 @@ function clipCard(c){
   }else{
     h+='<span class="clip-who dim">无人入选</span>';
   }
+  h+='<button class="btn small clip-keep" data-fx data-keep="'+esc(String(c.d))+'">'+(收藏里(c.d)?'★ 已留着（点一下取消）':'★ 留着')+'</button>';
   h+='</div>';
   if(tags.length) h+='<div class="clip-hd" style="margin-top:var(--sp1)">'+tags.join('')+'</div>';
   art.innerHTML=h;
@@ -5215,18 +5288,20 @@ function renderClips(){
       box.innerHTML='<p class="clip-empty">还没有剪辑。每天凌晨 4 点结算前一天，第一条最快在开城次日 04:00 出现。</p>';
       box.dataset.empty='1'; box.dataset.top='';
     }
+    画剪辑模式();
     return;
   }
   // 只在头部补新卡（倒序＝最新在上）；已在页上的卡一位不动，故不会吞掉进行中的操作
   const top=box.dataset.top===''||box.dataset.top===undefined ? null : +box.dataset.top;
   if(box.dataset.empty==='1'){ box.innerHTML=''; box.dataset.empty='0'; }
   const fresh=(top===null)?rows.slice():rows.filter(c=>c.d>top);
-  if(top!==null && !fresh.length) return;
+  if(top!==null && !fresh.length){ 画剪辑模式(); return; }
   for(const c of fresh) box.insertBefore(clipCard(c), box.firstChild);
   // 存档只留最近 CLIP_KEEP 天，页面同步裁掉尾部，免得读旧档后页上留着已出队的卡
   while(box.children.length>rows.length) box.removeChild(box.lastChild);
   box.dataset.top=rows[rows.length-1].d;
   Focus.refresh();
+  画剪辑模式();
 }
 function traitChips(ag){ return ag.traits.map(t=>'<span class="chip">'+esc(t)+'</span>').join(''); }
 // 第 52 单·目标外显：角色页那一行与角色卡那一行共用这一处文字（没目标时如实说"还没定"）
@@ -5892,6 +5967,7 @@ let saveHold=false;   // 导入/重开已定稿到 reload 之间，封锁自动�
 function saveMeta(){ return {selected:state.selected, lastReflectDay:state.lastReflectDay,
   phSeen:(state.phSeen|0), phSeenBy:Object.assign({},state.phSeenBy), miles:Object.assign({},state.miles),
   ai:{day:(state.aiGate&&isFinite(state.aiGate.day))?(state.aiGate.day|0):-1, used:(state.aiGate&&isFinite(state.aiGate.used))?(state.aiGate.used|0):0},
+  keeps:(state.keeps||[]).slice(0,60),   // 第 236 单·剪辑收藏夹（随存档信封走）
   at:Date.now()}; }   // 第 80／129／131／177 单：总水位、分人水位、手账小账与 AI 额度小账随存档信封走
 function saveNow(){
   if(saveHold || saveMode!=='normal') return false;

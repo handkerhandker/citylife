@@ -34,6 +34,7 @@ const 清单 = [
   { 路径: 'tools/save-fuzz/dom-probe.mjs',    档: 2, 参数: ['{OUT}/save-fuzz-dom'],     超时: 300000, 备注: '坏档容错·渲染面（角色卡／循环零报错）' },
   { 路径: 'tools/call-audit/probe.mjs',       档: 2, 参数: ['{OUT}/call-audit'],        超时: 180000, 备注: '电话第 1 层（第 229 单：三结局／回话确定性／挂断结算／往来留痕／取消不留悬挂）' },
   { 路径: 'tools/req-audit/probe.mjs',        档: 2, 参数: ['{OUT}/req-audit'],         超时: 180000, 备注: '委托·C 替他拿主意（第 232 单：两枚按钮→回主意→对应结局线；不点＝零后果）' },
+  { 路径: 'tools/clip-keep/probe.mjs',        档: 2, 参数: ['{OUT}/clip-keep'],         超时: 180000, 备注: '剪辑收藏夹（第 236 单：★ 留着→收藏视图→存档重载仍在→取消回空态）' },
   { 路径: 'tools/audio-audit/probe.mjs',      档: 2, 参数: ['{OUT}/audio-audit'],        超时: 180000, 备注: '提示音（关着不响／开着要响；AudioContext 计数）' },
   { 路径: 'tools/nameplate-audit/stability.mjs', 档: 2, 参数: ['{OUT}/nameplate-stability'], 超时: 180000, 备注: '名牌分道稳定性（同层零重叠／每 50ms 位移 ≤0.6 道）' },
   { 路径: 'tools/layout-audit/matrix.mjs',    档: 2, 参数: ['{OUT}/layout-matrix'],      超时: 420000, 备注: '排版×设置矩阵（四档布局＋动效/像素四组合：零溢出、页签全在屏内、零报错）' },
