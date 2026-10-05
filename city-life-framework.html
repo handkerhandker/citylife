@@ -525,7 +525,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v173</span>
+<span class="num dim" id="set-build">v174</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -2623,8 +2623,10 @@ function festivalStep(w){
   /* 第 63 单·前后一天的气氛：**提前一晚挂灯**、**次日收场**——一年一次的事要占住三天才像"过了一回节"。
      两条都是世界级播报，故 `BACK_SUM` 里各有一桶。 */
   const 日=PURE.dayOf(w.t), 节日=PURE.dayOf(本), mod=PURE.minuteOfDay(w.t);
+  /* 第 225 单·守卫：收尾两句以"本届真的开过场"为前提——旧档/跨年加载在节后时，字段全缺，
+     不加这道守卫会无中生有地补一条"收灯了…0 盏"（真机外的假播报；故障复现见第 225 单交付件）。 */
   if(日===节日-1 && mod===18*60 && w.festEve!==本){ w.festEve=本; logSys(w,'江边开始挂灯了，明晚是'+FESTIVAL.name+'。'); }
-  if(日===节日+1 && mod===10*60 && w.festAfter!==本){ w.festAfter=本; logSys(w,FESTIVAL.name+'的摊子收干净了，江边还留着灯影。'); }
+  if(w.festOpen===本 && 日===节日+1 && mod===10*60 && w.festAfter!==本){ w.festAfter=本; logSys(w,FESTIVAL.name+'的摊子收干净了，江边还留着灯影。'); }
   if(!w.festNotice && 本>w.t && 本-w.t<=FESTIVAL.noticeMin){
     w.festNotice=本;
     logSys(w,'今年的'+FESTIVAL.name+'在'+(FESTIVAL.month)+'月'+FESTIVAL.dayOfMonth+'日晚上 '+Math.floor(FESTIVAL.open/60)
@@ -2632,7 +2634,7 @@ function festivalStep(w){
   }
   if(inFestival(w) && w.festOpen!==本){ w.festOpen=本; w.festCount=0; logSys(w,FESTIVAL.name+'开灯了，江边一盏一盏亮起来。'); }
   const 闭=本+FESTIVAL.close-FESTIVAL.open;
-  if(w.t>=闭 && w.festClosed!==本){
+  if(w.festOpen===本 && w.t>=闭 && w.festClosed!==本){
     w.festClosed=本;
     logSys(w,FESTIVAL.name+'收灯了，今晚一共放了 '+(w.festCount|0)+' 盏灯。');
   }
@@ -2676,7 +2678,7 @@ function summerStep(w){
   if(w.summerNext!==本){ w.summerNext=本; w.summerNotice=0; w.summerCount=0; }
   const 日=PURE.dayOf(w.t), 节日=PURE.dayOf(本), mod=PURE.minuteOfDay(w.t);
   if(日===节日-1 && mod===18*60 && w.summerEve!==本){ w.summerEve=本; logSys(w,'江边支起了一排竹椅，明晚是'+SUMMER.name+'。'); }
-  if(日===节日+1 && mod===10*60 && w.summerAfter!==本){ w.summerAfter=本; logSys(w,SUMMER.name+'收场了，江边还剩几把没收的竹椅。'); }
+  if(w.summerOpen===本 && 日===节日+1 && mod===10*60 && w.summerAfter!==本){ w.summerAfter=本; logSys(w,SUMMER.name+'收场了，江边还剩几把没收的竹椅。'); }
   if(!w.summerNotice && 本>w.t && 本-w.t<=SUMMER.noticeMin){
     w.summerNotice=本;
     logSys(w,'今年的'+SUMMER.name+'在'+SUMMER.month+'月'+SUMMER.dayOfMonth+'日晚上 '+Math.floor(SUMMER.open/60)
@@ -2684,7 +2686,7 @@ function summerStep(w){
   }
   if(inSummer(w) && w.summerOpen!==本){ w.summerOpen=本; w.summerCount=0; logSys(w,SUMMER.name+'开场了，江边坐了一片人。'); }
   const 闭=本+SUMMER.close-SUMMER.open;
-  if(w.t>=闭 && w.summerClosed!==本){
+  if(w.summerOpen===本 && w.t>=闭 && w.summerClosed!==本){
     w.summerClosed=本;
     logSys(w,SUMMER.name+'散了，今晚江边坐了 '+(w.summerCount|0)+' 个人。');
   }
