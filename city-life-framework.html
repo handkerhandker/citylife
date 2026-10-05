@@ -554,7 +554,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v188</span>
+<span class="num dim" id="set-build">v189</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -7028,8 +7028,37 @@ function 设备三样(){
 [80,500,1500,3500,7000].forEach(t=>setTimeout(拉壳安全区,t));
 addEventListener('resize',拉壳安全区);
 addEventListener('orientationchange',拉壳安全区);
+/* ---------- 第 244 单·画面内衬（被 UI 栏盖住的那圈不再算"看不见的死区"）----------
+   真机反馈：横屏下地图被顶栏／左侧竖轨盖住，"画面不能移动、被盖住的部分显示不出来"。
+   病根两条：①横屏走"铺宽"取景 ⇒ 地图宽恰好＝整窗宽，而平移开关是"地图比整窗宽" ⇒ **左右锁死**；
+   ②镜头夹取按**整窗**算（ox∈[cvW−mw,0]、oy∈[cvH−mh,0]）⇒ 被栏盖住的一圈（横屏左一列／上一排、
+   竖屏上一条／下一条）永远推不出来。
+   治法：按**可视区**（整窗去掉四条栏的内衬）夹取——上下限各留内衬、地图比可视区小的轴在可视区里
+   居中，平移开关也改按可视区判。内衬从四条栏的**实际几何**现读（栏虽盖在画布上，仍是 grid 实体），
+   不写第二套数字；每秒兜底量一次（栏位只在转屏/换布局时变，1 秒迟滞无感）。 */
+let 内衬={l:0,r:0,t:0,b:0}, 内衬上次=0;
+function 量内衬(){
+  const cvW=state.cvW, cvH=state.cvH, o={l:0,r:0,t:0,b:0};
+  const 取=s=>{ const el=$(s); if(!el) return null; const q=el.getBoundingClientRect(); return (q.width>0&&q.height>0)?q:null; };
+  const tb=取('#topbar'); if(tb&&tb.top<cvH*0.4) o.t=Math.max(o.t,tb.bottom);
+  const bar=取('#tabbar');
+  if(bar){
+    if(bar.left<cvW*0.4 && bar.right<cvW*0.6) o.l=Math.max(o.l,bar.right);    // 左侧竖轨
+    else if(bar.top>cvH*0.5) o.b=Math.max(o.b,cvH-bar.top);                  // 竖屏底栏
+  }
+  const hint=取('#hintbar'); if(hint&&hint.top>cvH*0.5) o.b=Math.max(o.b,cvH-hint.top);
+  const side=取('#side'); if(side&&side.left>cvW*0.5) o.r=Math.max(o.r,cvW-side.left);
+  /* 取整（向上）：① 不遮内容（宁多留半像素）；② **稳定**——顶栏高度在加载后会小数级settle
+     （实测 47.89→48.44px），不取整会把"地图居中位"推 0.2px，亚像素抗锯齿一抖，
+     精确色计数类探针（umbrella）就会假红。 */
+  o.l=Math.min(Math.ceil(o.l),cvW*0.5); o.r=Math.min(Math.ceil(o.r),cvW*0.5);
+  o.t=Math.min(Math.ceil(o.t),cvH*0.5); o.b=Math.min(Math.ceil(o.b),cvH*0.5);
+  内衬=o; 内衬上次=performance.now();
+}
+function 可视区(){ if(performance.now()-内衬上次>1000) 量内衬(); return 内衬; }
 function updateCamera(dt){
   const v=state.view, mw=Sim.MAPW*v.s, mh=Sim.MAPH*v.s;
+  const 衬=可视区(), 可W=Math.max(1,state.cvW-衬.l-衬.r), 可H=Math.max(1,state.cvH-衬.t-衬.b);
   if(!state.cam.manual){
     const tv=state.vis[state.selected];
     if(tv){
@@ -7038,8 +7067,10 @@ function updateCamera(dt){
       state.cam.fy+=(tv.y-state.cam.fy)*k;
     }
   }
-  v.ox = mw<=state.cvW ? (state.cvW-mw)/2 : PURE.clamp(state.cvW/2-state.cam.fx*v.s, state.cvW-mw, 0);
-  v.oy = mh<=state.cvH ? (state.cvH-mh)/2 : PURE.clamp(state.cvH/2-state.cam.fy*v.s, state.cvH-mh, 0);
+  /* 取整到整像素：① 地图整像素对齐更锐；② 抹掉"顶栏高度加载后小数级 settle（47.9→48.4）"
+     带来的亚像素抖动——精确色计数类探针（umbrella）对它敏感。 */
+  v.ox = Math.round(mw<=可W ? (衬.l+(可W-mw)/2) : PURE.clamp(state.cvW/2-state.cam.fx*v.s, state.cvW-mw-衬.r, 衬.l));
+  v.oy = Math.round(mh<=可H ? (衬.t+(可H-mh)/2) : PURE.clamp(state.cvH/2-state.cam.fy*v.s, state.cvH-mh-衬.b, 衬.t));
   const fb=$('#ov-follow');
   if(fb.hidden===state.cam.manual) fb.hidden=!state.cam.manual;
 }
@@ -8803,7 +8834,8 @@ cv.addEventListener('pointermove',e=>{
   if(!drag.moved && Math.hypot(dx,dy)>8) drag.moved=true;
   if(drag.moved){
     const v=state.view;
-    if(Sim.MAPW*v.s>state.cvW || Sim.MAPH*v.s>state.cvH){
+    const 衬=可视区();                                    // 第 244 单：平移开关按**可视区**判（横屏铺宽时地图不比整窗宽、但比可视区宽）
+    if(Sim.MAPW*v.s>state.cvW-衬.l-衬.r || Sim.MAPH*v.s>state.cvH-衬.t-衬.b){
       state.cam.manual=true;
       state.cam.fx=PURE.clamp(state.cam.fx-dx/v.s, 0, Sim.MAPW);
       state.cam.fy=PURE.clamp(state.cam.fy-dy/v.s, 0, Sim.MAPH);

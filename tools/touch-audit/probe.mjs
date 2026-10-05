@@ -7,6 +7,8 @@
 //   ⑤ 按钮触控：点页签切页、点开关翻转（#set-amb 关→开→关，读 state 复核）；
 //   ⑥ 不滚不缩：scroll 恒 0、连点两下（双击）后 visualViewport.scale 仍 1、空地不乱弹卡；
 //   ⑦ 全程零 pageerror。
+//   ⑧ 横屏（另开 900×430 触屏页）：四向拖到极限——左缘停在左轨右缘、上缘停在顶栏下沿、
+//      右／下缘贴可视区边（第 244 单：镜头按"可视区"夹取；旧版左右锁死、上下也推不进被盖的那条）。
 // 另有 --改前=<git-ref>：对旧版跑同一套——第 145 单之前的版本会在 ①/④ 红（幽灵点击把卡片当场关掉），
 // 这两条红就是"原 bug 可复现"的证据。
 // 用法：node tools/touch-audit/probe.mjs [输出目录] [--改前=<git-ref>]   （要 CITYLIFE_CHROME）
@@ -49,16 +51,17 @@ const 判 = (n, ok, 读数_) => { 断言.push({ n, ok, 读数_ }); console.log((
 await page.goto(`http://127.0.0.1:${PORT}/city-life-framework.html`, { waitUntil: 'load' });
 await page.waitForTimeout(2200);
 const cdp = await ctx.newCDPSession(page);
-const 触摸拖 = async (x0, y0, x1, y1, 步 = 8) => {
-  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: x0, y: y0, id: 1 }] });
+const 发拖 = async (会话, 页, x0, y0, x1, y1, 步 = 8) => {
+  await 会话.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: x0, y: y0, id: 1 }] });
   for (let i = 1; i <= 步; i++) {
     const x = x0 + (x1 - x0) * i / 步, y = y0 + (y1 - y0) * i / 步;
-    await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y, id: 1 }] });
-    await page.waitForTimeout(16);
+    await 会话.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y, id: 1 }] });
+    await 页.waitForTimeout(16);
   }
-  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
-  await page.waitForTimeout(120);
+  await 会话.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await 页.waitForTimeout(120);
 };
+const 触摸拖 = (x0, y0, x1, y1, 步 = 8) => 发拖(cdp, page, x0, y0, x1, y1, 步);
 const 取态 = () => page.evaluate(() => ({
   sel: __pv.state.selected, cam: { fx: __pv.state.cam.fx, fy: __pv.state.cam.fy, manual: __pv.state.cam.manual },
   s: __pv.state.view.s, 弹窗: !!document.querySelector('#dialog-root.open'),
@@ -163,6 +166,56 @@ const 初始 = await 取态();
   判('⑥ 不滚不缩：scroll 恒 0、双击空地后 scale 仍 1、不乱弹卡',
     t.滚.x === 0 && t.滚.y === 0 && t.缩 === 1 && t.弹窗 === false, t);
 }
+
+/* ⑧ 第 244 单·横屏四向推到头：被顶栏／左轨盖住的那圈能推出来（另开 900×430 触屏页） */
+{
+  const ctxL = await browser.newContext({ viewport: { width: 900, height: 430 }, hasTouch: true, isMobile: true, deviceScaleFactor: 2 });
+  const pL = await ctxL.newPage();
+  pL.on('pageerror', e => 错.push(String((e && e.message) || e)));
+  await pL.goto(`http://127.0.0.1:${PORT}/city-life-framework.html`, { waitUntil: 'load' });
+  await pL.waitForTimeout(2200);
+  const cdpL = await ctxL.newCDPSession(pL);
+  const 拖 = (x0, y0, x1, y1) => 发拖(cdpL, pL, x0, y0, x1, y1);
+  const 量 = () => pL.evaluate(() => {
+    const st = __pv.state;
+    const bar = document.querySelector('#tabbar').getBoundingClientRect();
+    const tb = document.querySelector('#topbar').getBoundingClientRect();
+    const hb = document.querySelector('#hintbar').getBoundingClientRect();
+    const sd = document.querySelector('#side'), sdq = sd ? sd.getBoundingClientRect() : null;
+    const rail = (bar.left < st.cvW * 0.4 && bar.right < st.cvW * 0.6) ? bar.right : 0;
+    const top = tb.top < st.cvH * 0.4 ? tb.bottom : 0;
+    const bottom = hb.top > st.cvH * 0.5 ? (st.cvH - hb.top) : 0;
+    const right = (sdq && sdq.width > 0 && sdq.left > st.cvW * 0.5) ? (st.cvW - sdq.left) : 0;
+    return { layout: document.getElementById('app').dataset.layout, ox: st.view.ox, oy: st.view.oy,
+             cvW: st.cvW, cvH: st.cvH, mw: __pv.Sim.MAPW * st.view.s, mh: __pv.Sim.MAPH * st.view.s,
+             rail, top, bottom, right };
+  });
+  await pL.evaluate(() => { const st = __pv.state; st.world.speed = 0; st.llm.on = false; st.cam.manual = true; });
+  await 拖(100, 215, 700, 215); await 拖(100, 215, 700, 215); await 拖(100, 215, 700, 215);   // 手指往右拉 ⇒ 看地图左缘
+  const 左到 = await 量();
+  await pL.locator('#cv').screenshot({ path: path.join(OUT, '横屏-左缘可推.png') });
+  await 拖(820, 215, 200, 215); await 拖(820, 215, 200, 215); await 拖(820, 215, 200, 215);   // 手指往左拉 ⇒ 看右缘
+  const 右到 = await 量();
+  await 拖(450, 90, 450, 370); await 拖(450, 90, 450, 370);                                   // 手指往下拉 ⇒ 看地图上缘
+  const 上到 = await 量();
+  await pL.locator('#cv').screenshot({ path: path.join(OUT, '横屏-上缘可推.png') });
+  await 拖(450, 370, 450, 90); await 拖(450, 370, 450, 90);                                   // 手指往上拉 ⇒ 看下缘
+  const 下到 = await 量();
+  判('⑧ 横屏·左缘能推出左轨（地图左缘停在竖轨右缘）',
+    Math.abs(左到.ox - 左到.rail) <= 3 && 左到.ox >= 左到.rail - 3,
+    { flow: 左到.layout, ox: +左到.ox.toFixed(1), rail: +左到.rail.toFixed(1) });
+  判('⑧ 横屏·右缘能推贴可视边（地图右缘 = 屏右 − 右内衬）',
+    Math.abs((右到.ox + 右到.mw) - (右到.cvW - 右到.right)) <= 3,
+    { 右缘: +(右到.ox + 右到.mw).toFixed(1), 可视右: +(右到.cvW - 右到.right).toFixed(1) });
+  判('⑧ 横屏·上缘能推到顶栏下沿（地图上缘 ≈ 顶栏底）',
+    Math.abs(上到.oy - 上到.top) <= 3,
+    { oy: +上到.oy.toFixed(1), 顶栏底: +上到.top.toFixed(1) });
+  判('⑧ 横屏·下缘能推到提示条上沿（地图下缘 ≈ 屏底 − 底内衬）',
+    Math.abs((下到.oy + 下到.mh) - (下到.cvH - 下到.bottom)) <= 4,
+    { 下缘: +(下到.oy + 下到.mh).toFixed(1), 可视底: +(下到.cvH - 下到.bottom).toFixed(1) });
+  await ctxL.close();
+}
+
 判('⑦ 全程零 pageerror', 错.length === 0, { 错: 错.length });
 
 await ctx.close(); await browser.close(); srv.close();
