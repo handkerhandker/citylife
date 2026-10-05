@@ -71,6 +71,11 @@ const 内部 = [
      这两种是"对象里字段坏"——照 relYou/waiting 先例点名） */
   { ai: 0, k: 'lastCat', v: { t: 'x', 名: 5, tx: [] } }, { ai: 0, k: 'lastCat', v: { t: 1, 名: 'x', tx: 'y' } },
   { ai: 0, k: 'req', v: { day: 'x', ok: 'y', done: null } }, { ai: 0, k: 'req', v: { day: 3, ok: true, done: false } },
+  /* 第 235 单·委托三型（232／233）：两选一与捎话的畸形形状（索引越界／收件人不存在／字段坏） */
+  { ai: 0, k: 'req', v: { day: 3, ok: true, done: false, kind: 'pick', qi: 99, pick: 99 } },
+  { ai: 0, k: 'req', v: { day: 3, ok: true, done: false, kind: 'pick', qi: 'x', pick: -1 } },
+  { ai: 0, k: 'req', v: { day: 3, ok: true, done: false, kind: 'deliver', to: 'zzz', line: {}, sent: 'y' } },
+  { ai: 0, k: 'req', v: { day: 3, ok: true, done: false, kind: 'ghost', to: [] } },
 ];
 for (const m of 内部) 坐标.push(m);
 
@@ -111,6 +116,8 @@ const 深例 = [];
   if (A.rel && A.rel.a2) for (const k of Object.keys(A.rel.a2)) for (const v of 坏值) 加(`rel.a2.${k}=${JSON.stringify(v)}`, d => { d.world.agents[0].rel.a2[k] = v; });
   if (A.relYou) for (const k of Object.keys(A.relYou)) for (const v of 坏值) 加(`relYou.${k}=${JSON.stringify(v)}`, d => { d.world.agents[0].relYou[k] = v; });
   if (A.waiting) for (const k of Object.keys(A.waiting)) for (const v of 坏值) 加(`waiting.${k}=${JSON.stringify(v)}`, d => { d.world.agents[0].waiting[k] = v; });
+  /* 第 235 单·委托三型：`req` 的内层字段也逐个改坏（kind／qi／pick／to／line／sent——照 waiting 先例） */
+  if (A.req) for (const k of Object.keys(A.req)) for (const v of 坏值) 加(`req.${k}=${JSON.stringify(v)}`, d => { d.world.agents[0].req[k] = v; });
   if (Array.isArray(A.traits) && A.traits[0]) for (const v of 坏值) 加(`traits[0]=${JSON.stringify(v)}`, d => { d.world.agents[0].traits[0] = v; });
   if (A.personalLog && A.personalLog[0]) for (const k of Object.keys(A.personalLog[0])) for (const v of 坏值) 加(`personalLog[0].${k}=${JSON.stringify(v)}`, d => { d.world.agents[0].personalLog[0][k] = v; });
   if (A.inbox && A.inbox[0]) for (const k of Object.keys(A.inbox[0])) for (const v of 坏值) 加(`inbox[0].${k}=${JSON.stringify(v)}`, d => { d.world.agents[0].inbox[0][k] = v; });

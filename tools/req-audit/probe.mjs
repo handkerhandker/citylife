@@ -177,6 +177,25 @@ const 缺额 = await page.evaluate(() => ({
 记(缺额.拣.length === 2 && 缺额.拣.every(Boolean), '额度 0：两枚主意按钮禁用（实测 ' + JSON.stringify(缺额.拣) + '）');
 await page.evaluate(() => { __pv.state.world.credits = 3; });
 
+// ⑨ 坏档：`pick`／`line` 是坏值时，卡片说人话（不出现 "undefined"）——第 235 单补
+await page.evaluate(() => {
+  const w = __pv.state.world, P = __pv.PURE;
+  w.speed = 0; w.credits = 3;
+  const 天 = P.dayOf(w.t);
+  w.agents.find(a => a.id === 'a1').req = { day: 天, ok: true, done: false, kind: 'pick', qi: 0, pick: 99 };
+  w.agents.find(a => a.id === 'a2').req = { day: 天, ok: false, done: false, kind: 'deliver', to: 'a1', line: 5 };
+});
+await page.click('#ph-agents [data-to="a1"]'); await page.waitForTimeout(200);
+const 坏档卡 = await page.evaluate(() => document.querySelector('#ph-ask').textContent.replace(/\s+/g, ' '));
+记(坏档卡.indexOf('undefined') < 0 && 坏档卡.indexOf('（这条读不出来了）') >= 0,
+   '坏档（pick=99／line=5）：卡片说人话，不出现 "undefined"');
+await page.evaluate(() => {
+  const w = __pv.state.world, P = __pv.PURE;
+  const 天 = P.dayOf(w.t);
+  w.agents.find(a => a.id === 'a1').req = null;
+  w.agents.find(a => a.id === 'a2').req = null;
+});
+
 记(错.length === 0, '全程零 pageerror（实测 ' + 错.length + '）');
 for (const x of 判) console.log((x.过 ? ' ok ' : ' FAIL') + ' ' + x.名);
 const 过 = 判.every(x => x.过);

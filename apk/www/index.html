@@ -544,7 +544,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v181</span>
+<span class="num dim" id="set-build">v182</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -5523,7 +5523,7 @@ function renderPhone(){
       if(开&&题){
         块.push('<div class="t"><b>他问你：</b>'+esc(题.q)+'</div>'
           +((q.pick!=null)
-            ? '<div class="tip">已回主意：「'+esc(题.a[q.pick])+'」——晚上见结果。</div>'
+            ? '<div class="tip">已回主意：「'+esc(题.a[q.pick]||'（这条读不出来了）')+'」——晚上见结果。</div>'   // 第 235 单：坏档不显示“undefined”
             : '<div class="row">'+题.a.map((a,i)=>'<button class="btn small gold" data-fx data-pick="'+i+'"'+(没额?' disabled':'')+'>'+esc(a)+'</button>').join('')+'</div>'
               +'<div class="tip">'+(没额?'今日额度用完了（0:00 重置）——先记着，晚上他照自己的心思定。':'点一枚＝把你的主意发给他（占 1 条额度）；不点也行——晚上他照自己的心思定。')+'</div>'));
       }
@@ -5532,7 +5532,8 @@ function renderPhone(){
     { const 捎=(w.agents||[]).find(a=>{ const q=a&&a.req; return q&&typeof q==='object'&&!Array.isArray(q)
         &&q.kind==='deliver'&&q.day===天&&!q.done&&!q.sent&&q.to===state.selected; });
       if(捎&&收){
-        块.push('<div class="t"><b>捎句话：</b>'+esc(捎.name)+' 托你把这句带给'+esc(收.name)+'——「'+esc(捎.req.line)+'」</div>'
+        const 话=(typeof 捎.req.line==='string'&&捎.req.line)?捎.req.line:'（这条读不出来了）';   // 第 235 单：坏档不显示“undefined”
+        块.push('<div class="t"><b>捎句话：</b>'+esc(捎.name)+' 托你把这句带给'+esc(收.name)+'——「'+esc(话)+'」</div>'
           +'<div class="row"><button class="btn small gold" data-fx data-deliver="1"'+(没额?' disabled':'')+'>把话带到</button></div>'
           +'<div class="tip">'+(没额?'今日额度用完了（0:00 重置）——这趟就当作罢了（不罚）。':'点一下＝送到（占 1 条额度）；今天不带到，就当作罢（不罚）。')+'</div>');
       }
@@ -5541,9 +5542,10 @@ function renderPhone(){
     { const q=收&&收.req;
       if(!块.length&&q&&typeof q==='object'&&!Array.isArray(q)&&q.kind==='deliver'&&q.day===天&&!q.done){
         const B=(w.agents||[]).find(a=>a.id===q.to);
+        const 话=(typeof q.line==='string'&&q.line)?q.line:'（这条读不出来了）';
         块.push('<div class="tip">'+(q.sent
           ? ('你已经把话带给'+esc(B?B.name:'对方')+'了——晚上见回话。')
-          : ('你要把这句带给'+esc(B?B.name:'对方')+'：「'+esc(q.line)+'」——还没带到。'))+'</div>');
+          : ('你要把这句带给'+esc(B?B.name:'对方')+'：「'+esc(话)+'」——还没带到。'))+'</div>');
       }
     }
     if(块.length){ 问卡.hidden=false; 问卡.innerHTML=块.join(''); }
