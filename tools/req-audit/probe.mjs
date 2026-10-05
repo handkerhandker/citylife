@@ -160,6 +160,23 @@ if (!捎卡 || 捎卡.hidden || 捎卡.捎钮 !== 1) {
      '20:00 结算：委托人落"话带到了"＋谢礼 +2（两头都记）');
 }
 
+// ⑧ 额度为 0：卡片上的按钮要像"发送/打电话"一样禁用（不然点了毫无反应）——第 234 单审计补
+await page.evaluate(() => {
+  const w = __pv.state.world, P = __pv.PURE;
+  w.speed = 0; w.credits = 0;
+  const 天 = P.dayOf(w.t);
+  w.agents.find(a => a.id === 'a1').req = { day: 天, ok: false, done: false, kind: 'pick', qi: 0 };
+  w.agents.find(a => a.id === 'a2').req = { day: 天, ok: false, done: false, kind: 'deliver', to: 'a1', line: '测试' };
+});
+await page.click('#ph-agents [data-to="a1"]'); await page.waitForTimeout(200);
+const 缺额 = await page.evaluate(() => ({
+  捎: Array.from(document.querySelectorAll('#ph-ask [data-deliver]')).map(b => b.disabled),
+  拣: Array.from(document.querySelectorAll('#ph-ask [data-pick]')).map(b => b.disabled),
+}));
+记(缺额.捎.length === 1 && 缺额.捎[0] === true, '额度 0：「把话带到」按钮禁用（实测 ' + JSON.stringify(缺额.捎) + '）');
+记(缺额.拣.length === 2 && 缺额.拣.every(Boolean), '额度 0：两枚主意按钮禁用（实测 ' + JSON.stringify(缺额.拣) + '）');
+await page.evaluate(() => { __pv.state.world.credits = 3; });
+
 记(错.length === 0, '全程零 pageerror（实测 ' + 错.length + '）');
 for (const x of 判) console.log((x.过 ? ' ok ' : ' FAIL') + ' ' + x.名);
 const 过 = 判.every(x => x.过);

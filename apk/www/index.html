@@ -544,7 +544,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v180</span>
+<span class="num dim" id="set-build">v181</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -5512,6 +5512,9 @@ function renderPhone(){
     const 收=(w.agents||[]).find(a=>a.id===state.selected);
     const 天=PURE.dayOf(w.t);
     const 块=[];
+    /* 第 234 单·批后审计（231–233）：额度为 0 时，卡片上的按钮要跟"发送／打电话"一样禁用＋说人话
+       ——改前它们照旧可点、点了毫无反应（`回主意`／`带话` 在 SIM 里有额度闸，会静静拒绝）。 */
+    const 没额=w.credits<=0;
     /* ① C：他问你两选一 */
     { const q=收&&收.req;
       const 开=q&&typeof q==='object'&&!Array.isArray(q)&&q.kind==='pick'&&q.day===天&&!q.done;
@@ -5521,8 +5524,8 @@ function renderPhone(){
         块.push('<div class="t"><b>他问你：</b>'+esc(题.q)+'</div>'
           +((q.pick!=null)
             ? '<div class="tip">已回主意：「'+esc(题.a[q.pick])+'」——晚上见结果。</div>'
-            : '<div class="row">'+题.a.map((a,i)=>'<button class="btn small gold" data-fx data-pick="'+i+'">'+esc(a)+'</button>').join('')+'</div>'
-              +'<div class="tip">点一枚＝把你的主意发给他（占 1 条额度）；不点也行——晚上他照自己的心思定。</div>'));
+            : '<div class="row">'+题.a.map((a,i)=>'<button class="btn small gold" data-fx data-pick="'+i+'"'+(没额?' disabled':'')+'>'+esc(a)+'</button>').join('')+'</div>'
+              +'<div class="tip">'+(没额?'今日额度用完了（0:00 重置）——先记着，晚上他照自己的心思定。':'点一枚＝把你的主意发给他（占 1 条额度）；不点也行——晚上他照自己的心思定。')+'</div>'));
       }
     }
     /* ② B：有人托你把话捎给"选中的这个人" */
@@ -5530,8 +5533,8 @@ function renderPhone(){
         &&q.kind==='deliver'&&q.day===天&&!q.done&&!q.sent&&q.to===state.selected; });
       if(捎&&收){
         块.push('<div class="t"><b>捎句话：</b>'+esc(捎.name)+' 托你把这句带给'+esc(收.name)+'——「'+esc(捎.req.line)+'」</div>'
-          +'<div class="row"><button class="btn small gold" data-fx data-deliver="1">把话带到</button></div>'
-          +'<div class="tip">点一下＝送到（占 1 条额度）；今天不带到，就当作罢（不罚）。</div>');
+          +'<div class="row"><button class="btn small gold" data-fx data-deliver="1"'+(没额?' disabled':'')+'>把话带到</button></div>'
+          +'<div class="tip">'+(没额?'今日额度用完了（0:00 重置）——这趟就当作罢了（不罚）。':'点一下＝送到（占 1 条额度）；今天不带到，就当作罢（不罚）。')+'</div>');
       }
     }
     /* ③ B：显示在委托人那一页——那句话还没带到 / 已经带到 */
