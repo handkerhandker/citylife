@@ -554,7 +554,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v185</span>
+<span class="num dim" id="set-build">v186</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -2599,6 +2599,7 @@ function 公告内容(w){
   if(PURE.weekday(w.t)===6) out.push('今晚夜谈角见。');
   if(inFestival(w)) out.push('今天是江灯节——晚上江边放灯。');
   if(inSummer(w)) out.push('今晚是夏夜纳凉会——江边乘凉。');
+  if(入冬首日(w)) out.push('今天入冬——今年的第一场雪。');   // 第 240 单
   // ④ 兜底
   if(!out.length) out.push('今天没什么大事，日子照常。');
   return out;
@@ -2872,6 +2873,28 @@ function summerStep(w){
   }
 }
 /*SUMMER-END*/
+/*SNOWENTRY-START*/
+/* ---------- 第 240 单·入冬·第一场雪（冬的节拍；**不是新节日**）----------
+   出处（2026-10-05 均 HTTP 200，逐字见 `docs/规划/借鉴调研-2026-10-05-入冬初雪.md`）：
+     · 动森·Weather：「Weather … changing daily and **reflecting the seasons**. Notable weather changes
+       include **winter snowstorms**…」「**Snow falls only in the winter months**…」——雪就是冬的记号；
+     · 星露谷·Seasons：「**Each season comes with a distinctive visual style.**」「A villager's daily
+       routines may change with a new season…」——换季要有看得见的记号。
+   口径：**入冬首日 19:00 一条城市播报**（"今年的第一场雪"）——**零 rng、零新增状态**：
+   "是不是入冬首日"由日号直接算（一年四段、冬从 3/4 处开始），19:00 那一拍一年只会命中一次；
+   跨年自动再来（是日历事实，不用去重键）。画面上的飘雪/积雪早就有了（163／164 单）。
+   ⚠ 与 62／224 那两场**节日**不同——本段不加节日、不加活动、不进剪辑（照 223 单"节日两个已够"）。 */
+const SNOW={ at:19*60 };   // 可调：入冬首日的播报时刻（一处可调）
+function 入冬首日(w){
+  const Y=FESTIVAL.yearDays, d=((PURE.dayOf(w.t)-1)%Y+Y)%Y;
+  return d===Y*3/4;
+}
+function snowStep(w){
+  if(PURE.minuteOfDay(w.t)!==SNOW.at) return;
+  if(!入冬首日(w)) return;
+  logSys(w,'❄ 入冬了——今年的第一场雪，落在屋檐上。');
+}
+/*SNOWENTRY-END*/
 /*BIRTHDAY-START*/
 /* ---------- 第 64 单·住户生日（把"年"这把尺从城市推到人）----------
    第 62／63 单把日历尺推到"年"，但那是**城市**的节日（全城同一晚去江边）。
@@ -4352,6 +4375,7 @@ function advance10(w){
   morningStep(w);   // 第 58 单·云港晨报（每天 08:10 一条，只用已存在的事实拼）
   festivalStep(w);  // 第 62 单·江灯节（一年一次：提前一周预告／开灯／收灯）
   summerStep(w);    // 第 224 单·夏夜纳凉会（第二个年度节日；一年一次、零经济、零 rng）
+  snowStep(w);      // 第 240 单·入冬·第一场雪（冬的节拍；一年一条、零 rng）
   talkStep(w);      // 第 70 单·周日夜谈（周日 20:00–22:00，22:00 散场播报）
   catStep(w);       // 第 210 单·云港的猫（每天 15:00–17:00；零 rng）
   boardStep(w);     // 第 217 单·玩家留言进板（有人路过广场就读到；一贴一读）
@@ -4655,6 +4679,7 @@ const Sim={makeWorld, step, sendMessage, sendCustomMessage, decide, MSGS, ANCHOR
   MORNING, morningFacts, morningStep,   // 第 58 单·云港晨报（门禁按真值读同一份日历）
   FESTIVAL, festAt, thisYearFestAt, inFestival, festivalStep,   // 第 62 单·江灯节（门禁按真值读同一份日历）
   SUMMER, summerAt, thisYearSummerAt, inSummer, summerStep,   // 第 224 单·夏夜纳凉会（门禁按真值读同一份日历）
+  SNOW, 入冬首日, snowStep,   // 第 240 单·入冬·第一场雪（门禁按真值读：一处定义、零 rng）
   TALK, nightTalkStartAt, inTalk, thisWeekTalkAt, talkStep,   // 第 70 单·周日夜谈（门禁按真值读）
   TALK_TOPICS, TALK_TOPICS_RAIN, talkTopicOf,   // 第 71 单·夜谈话题（第 199 单补雨池；门禁按真值读：不摇 rng）
   TALK_OPEN, talkOpenLine, talkTopicOnDay,   // 第 72 单·题面带着台词走（门禁按真值读：占位符一处替换）
@@ -5883,6 +5908,7 @@ function milesList(){
   加('和一个人处到「熟」', 最深>=20, Math.min(最深,20)+'/20');
   加('和一个人处到「老友」', 最深>=35, Math.min(最深,35)+'/35');
   加('赶上第一场江灯节', d>=45, 'D'+Math.min(d,45)+'/45');
+  加('看过第一场雪', d>=271, 'D'+Math.min(d,271)+'/271');
   加('发满 100 条短信', M.sms>=100, Math.min(M.sms,100)+'/100');
   加('看过一整年', d>=360, 'D'+Math.min(d,360)+'/360');
   return 条;
