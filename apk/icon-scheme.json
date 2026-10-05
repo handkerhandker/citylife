@@ -1,0 +1,29 @@
+{
+  "方案": "D",
+  "名称": "简约昼夜",
+  "资产": {
+    "apk/android/app/src/main/res/mipmap-mdpi/ic_launcher.png": "cafe4e31424c9fe0e8f41f8b9a4538ddec7fe71197077ef73fc5f86c3f8ad88e",
+    "apk/android/app/src/main/res/mipmap-mdpi/ic_launcher_round.png": "f536136e6527cfbd1065d102f66d5e74fc7f91baf2f3cc51c4dfd758d331b38e",
+    "apk/android/app/src/main/res/mipmap-mdpi/ic_launcher_background.png": "72bb97e2a3fe2f5f708fc463c6e8372e9861d1a03ceaba2dd22717c2ea25dbb0",
+    "apk/android/app/src/main/res/mipmap-mdpi/ic_launcher_foreground.png": "1e5508fd41081d27365486209b1491d105c1930a854e26127033e0e98bb23d48",
+    "apk/android/app/src/main/res/mipmap-hdpi/ic_launcher.png": "6882b878ac321d40dfed26f79140a4a64d7d6b5740008872b2fced6c5443b629",
+    "apk/android/app/src/main/res/mipmap-hdpi/ic_launcher_round.png": "393a59f3dfe177f2af17126ef81676f9d5e9926fbb90cbe89c0ad17d04e102a7",
+    "apk/android/app/src/main/res/mipmap-hdpi/ic_launcher_background.png": "dca5126b80ee8a5bbd67dc427e15f69bed71537474ee83f9da608ad14da5cdb0",
+    "apk/android/app/src/main/res/mipmap-hdpi/ic_launcher_foreground.png": "2447d11c5891b7763a54768b574104a2512f226888b574120b8755a5f4abf993",
+    "apk/android/app/src/main/res/mipmap-xhdpi/ic_launcher.png": "728f7769cc3fbadb29aa99aa4a7d0c1e8f35f3e3242331ce7bc8ecf3e75d35c5",
+    "apk/android/app/src/main/res/mipmap-xhdpi/ic_launcher_round.png": "9458baf3dfa38348bbb58f2af394587f5b1138bc2bd4aa593639d9084b54ce61",
+    "apk/android/app/src/main/res/mipmap-xhdpi/ic_launcher_background.png": "954e66180e9ed0f49633c47a31cc21f04024a43a623bf14c4da02fb4e53057de",
+    "apk/android/app/src/main/res/mipmap-xhdpi/ic_launcher_foreground.png": "bc53f70ff5ce5083f7442ce6d8d97f7db0fc6db961f7c9f28299a8ed7ec84f29",
+    "apk/android/app/src/main/res/mipmap-xxhdpi/ic_launcher.png": "3d4a015f958bb678a7351e082b21c0200a110a016595a29c5be26b91e3ab7df6",
+    "apk/android/app/src/main/res/mipmap-xxhdpi/ic_launcher_round.png": "2b79ad2ddeebb0f068004ba3b5d02e057def6fc3d0a964a777ca73458661acb6",
+    "apk/android/app/src/main/res/mipmap-xxhdpi/ic_launcher_background.png": "6a5a550f3d83893f12ffd9c28434ba823b1340fdd7f3a45795a41698c4d5d5f1",
+    "apk/android/app/src/main/res/mipmap-xxhdpi/ic_launcher_foreground.png": "93a086bf3452e71d9971db4550f71e44eed3eb57237d049d714958dafba2516f",
+    "apk/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png": "0359bceff77135dc75fe431765bc140891a10b80bf7d1854d57fda83c287239d",
+    "apk/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_round.png": "9b5e40ae40ab53d3b6093efe3d84de4e9a9a6c378b9b608909a3d145286b8e53",
+    "apk/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_background.png": "a04a42243e0f05a62e94fc8b76d760667fe56afecd6053970864b2444879ce6c",
+    "apk/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_foreground.png": "2b782bff98413f77ba9233f6234cc2fe0263e6a28618701deb722f1641739a88",
+    "apk/android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml": "2064a796955073165e9d9781e81ca7795800b613506b0ed275b68d8af9a11787",
+    "apk/android/app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml": "2064a796955073165e9d9781e81ca7795800b613506b0ed275b68d8af9a11787",
+    "apk/android/app/src/main/res/values/ic_launcher_background.xml": "5c28829fab0340241507c275acaf2fe08fcf6e48eb16449c9b4cae24eeb2d871"
+  }
+}
