@@ -1239,6 +1239,14 @@
       "sha256": "cb68d6e38ac8bc26daa5dee18242be87de4f7ec47b64a773509ba7dbd17312d5",
       "SIM块md5": "f18eb4c64d78ed03f7c33826a3d78a8a",
       "备注": ""
+    },
+    {
+      "版本": "v190",
+      "单": "（待填：第 NN 单）",
+      "状态": "已发",
+      "sha256": "e81bc3d8cfdb6c4bbefc68b69aa8f11fac452073f4158b24eddee56b304718c3",
+      "SIM块md5": "eab3c28b49e53bcb0906fedf8fe34ec3",
+      "备注": ""
     }
   ],
   "历史": [

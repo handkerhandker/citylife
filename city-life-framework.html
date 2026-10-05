@@ -554,7 +554,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v189</span>
+<span class="num dim" id="set-build">v190</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -2600,6 +2600,7 @@ function 公告内容(w){
   if(inFestival(w)) out.push('今天是江灯节——晚上江边放灯。');
   if(inSummer(w)) out.push('今晚是夏夜纳凉会——江边乘凉。');
   if(入冬首日(w)) out.push('今天入冬——今年的第一场雪。');   // 第 240 单
+  if(入秋首日(w)) out.push('今天入秋——风里凉下来了。');     // 第 246 单
   // ④ 兜底
   if(!out.length) out.push('今天没什么大事，日子照常。');
   return out;
@@ -2895,6 +2896,27 @@ function snowStep(w){
   logSys(w,'❄ 入冬了——今年的第一场雪，落在屋檐上。');
 }
 /*SNOWENTRY-END*/
+/*AUTUMN-START*/
+/* ---------- 第 246 单·入秋·第一阵凉风（秋的节拍；**不是新节日**）----------
+   出处（2026-10-06 均 HTTP 200，逐字见 `docs/规划/借鉴调研-2026-10-06-入秋凉风.md`）：
+     · Nookipedia·Fall：「Fall (or autumn) … is a season that **starts on September 1 and ends on
+       November 25**」＋「from a short period in late fall, **maple leaves will clutter the sky**」
+       ——秋是有始有终的明确时段、"风与叶"是它的记号；
+     · 星露谷·Seasons：「**Each season comes with a distinctive visual style.**」——换季要有记号。
+   口径与 240 单同款（四季四拍、**不是新节日**）：**入秋首日（第 181 天）19:00 一条城市播报**
+   "🍂 入秋了——今天起，风里有了凉意。"；零 rng、零新增状态（由日号直接算、一年只命中一次、
+   跨年自动再来）。 ⚠ 本段不加节日、不加活动、不进剪辑（照 223 单"节日两个已够"）。 */
+const AUTUMN={ at:19*60 };
+function 入秋首日(w){
+  const Y=FESTIVAL.yearDays, d=((PURE.dayOf(w.t)-1)%Y+Y)%Y;
+  return d===Y/2;
+}
+function autumnStep(w){
+  if(PURE.minuteOfDay(w.t)!==AUTUMN.at) return;
+  if(!入秋首日(w)) return;
+  logSys(w,'🍂 入秋了——今天起，风里有了凉意。');
+}
+/*AUTUMN-END*/
 /*BIRTHDAY-START*/
 /* ---------- 第 64 单·住户生日（把"年"这把尺从城市推到人）----------
    第 62／63 单把日历尺推到"年"，但那是**城市**的节日（全城同一晚去江边）。
@@ -4376,6 +4398,7 @@ function advance10(w){
   festivalStep(w);  // 第 62 单·江灯节（一年一次：提前一周预告／开灯／收灯）
   summerStep(w);    // 第 224 单·夏夜纳凉会（第二个年度节日；一年一次、零经济、零 rng）
   snowStep(w);      // 第 240 单·入冬·第一场雪（冬的节拍；一年一条、零 rng）
+  autumnStep(w);    // 第 246 单·入秋·第一阵凉风（秋的节拍；一年一条、零 rng）
   talkStep(w);      // 第 70 单·周日夜谈（周日 20:00–22:00，22:00 散场播报）
   catStep(w);       // 第 210 单·云港的猫（每天 15:00–17:00；零 rng）
   boardStep(w);     // 第 217 单·玩家留言进板（有人路过广场就读到；一贴一读）
@@ -4680,6 +4703,7 @@ const Sim={makeWorld, step, sendMessage, sendCustomMessage, decide, MSGS, ANCHOR
   FESTIVAL, festAt, thisYearFestAt, inFestival, festivalStep,   // 第 62 单·江灯节（门禁按真值读同一份日历）
   SUMMER, summerAt, thisYearSummerAt, inSummer, summerStep,   // 第 224 单·夏夜纳凉会（门禁按真值读同一份日历）
   SNOW, 入冬首日, snowStep,   // 第 240 单·入冬·第一场雪（门禁按真值读：一处定义、零 rng）
+  AUTUMN, 入秋首日, autumnStep,   // 第 246 单·入秋·第一阵凉风（与 SNOW 同款：一处定义、零 rng）
   TALK, nightTalkStartAt, inTalk, thisWeekTalkAt, talkStep,   // 第 70 单·周日夜谈（门禁按真值读）
   TALK_TOPICS, TALK_TOPICS_RAIN, talkTopicOf,   // 第 71 单·夜谈话题（第 199 单补雨池；门禁按真值读：不摇 rng）
   TALK_OPEN, talkOpenLine, talkTopicOnDay,   // 第 72 单·题面带着台词走（门禁按真值读：占位符一处替换）
@@ -5908,6 +5932,7 @@ function milesList(){
   加('和一个人处到「熟」', 最深>=20, Math.min(最深,20)+'/20');
   加('和一个人处到「老友」', 最深>=35, Math.min(最深,35)+'/35');
   加('赶上第一场江灯节', d>=45, 'D'+Math.min(d,45)+'/45');
+  加('赶上第一阵凉风', d>=181, 'D'+Math.min(d,181)+'/181');
   加('看过第一场雪', d>=271, 'D'+Math.min(d,271)+'/271');
   加('发满 100 条短信', M.sms>=100, Math.min(M.sms,100)+'/100');
   加('看过一整年', d>=360, 'D'+Math.min(d,360)+'/360');
