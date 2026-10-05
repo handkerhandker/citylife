@@ -9091,6 +9091,25 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
     const 灯场=试(46,['festNext','festNotice','festEve','festOpen','festClosed','festAfter','festCount'],'江灯节的摊子收干净了');
     ok(夏收===0&&夏场===0&&灯收===0&&灯场===0,
        '第 225 单·行为：旧档删字段、节后加载 ⇒ 两节的收尾假播报归零（实测 '+[夏收,夏场,灯收,灯场].join('／')+'）');
+    /* 第 226 单·批后审计补闸：上面四场都是"中午 12:00 加载"（次日 10:00 那一拍已经过去，
+       算侥幸）。这里把**正好落在次日 09:50 → 10:00 那一拍**的加载也钉住——旧档字段全缺时，
+       "收场"那半句同样不许冒。 */
+    const 试10=(次日,字段,关键字)=>{
+      const w=Sim.makeWorld(20260803);
+      w.t=(次日-1)*1440+9*60+50;
+      for(const k of 字段) delete w[k];
+      let 已=w.lidSeq|0, n=0;
+      for(let i=0;i<2;i++){
+        Sim.step(w,10);
+        for(const e of w.log){ const lid=e.lid|0; if(lid<=已) continue; if(String(e.text||'').indexOf(关键字)>=0) n++; }
+        for(const e of w.log){ const lid=e.lid|0; if(lid>已) 已=lid; }
+      }
+      return n;
+    };
+    const 夏10=试10(151,['summerNext','summerNotice','summerEve','summerOpen','summerClosed','summerAfter','summerCount'],'夏夜纳凉会收场了');
+    const 灯10=试10(46,['festNext','festNotice','festEve','festOpen','festClosed','festAfter','festCount'],'江灯节的摊子收干净了');
+    ok(夏10===0&&灯10===0,
+       '第 225 单·行为（第 226 单补闸）：正好落在次日 09:50→10:00 的旧档加载，也不许冒"收场"（实测 '+夏10+'／'+灯10+'）');
   }
   {
     const 病225=src225.replace(/w\.festOpen===本 && /g,'').replace(/w\.summerOpen===本 && /g,'');
