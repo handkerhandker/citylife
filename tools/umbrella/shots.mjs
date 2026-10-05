@@ -28,7 +28,8 @@ const rawHtml = BEFORE
   ? execFileSync('git', ['show', `${BEFORE}:city-life-framework.html`], { cwd: REPO, maxBuffer: 1 << 28, encoding: 'utf8' })
   : fs.readFileSync(path.join(REPO, 'city-life-framework.html'), 'utf8');
 const html = rawHtml.replace(/\}\)\(\);\s*<\/script>/,
-  'window.__pv={get state(){return state},get Sim(){return Sim},get pix(){return pix}};\n})();\n</script>');
+  'window.__pv={get state(){return state},get Sim(){return Sim},get pix(){return pix},'
+  +'get 雷雨场(){try{return (typeof 雷雨场===\'function\')?雷雨场:null}catch(e){return null}}};\n})();\n</script>');
 if (html === rawHtml) { console.error('注入点没找到'); process.exit(2); }
 const srv = http.createServer((q, r) => {
   const u = decodeURIComponent(q.url.split('?')[0]);
@@ -55,7 +56,14 @@ const 摆 = (page, 雨, 位, 像素开, 减动效 = true) => page.evaluate(([rai
   w.speed = 0; st.llm.on = false; st.reduceMotion = rm;
   w.t = 720;                                   // D1 正午：天光罩层"白天完全不盖"（第 33 单口径），颜色判据才干净
   __pv.pix.on = pixOn;
-  w.weather.rain = rain; if (rain) w.weather.until = w.t + 99999;
+  w.weather.rain = rain;
+  if (rain) {
+    w.weather.until = w.t + 99999;
+    /* 第 251 单起：本探针验的是**普通雨**下的伞——若这一场被判成雷雨，就往上抬到第一场普通雨为止
+       （伞面颜色计数不该被雷雨的压暗层搅进来）。旧版没有 雷雨场 ⇒ 跳过。 */
+    let f = null; try { f = __pv.雷雨场; } catch (e) {}
+    if (f) { let k = 0; while (f({ weather: { rain: true, until: w.weather.until } }) && k < 200) { w.weather.until++; k++; } }
+  }
   const a2 = w.agents.find(a => a.id === 'a2'), v2 = st.vis.a2;
   v2.x = v2.dspX = pos[0]; v2.y = v2.dspY = pos[1]; v2.path = []; v2.moving = false; v2.dir = 3;
   a2.activity = { type: 'idle', label: '在家待着', think: '' };

@@ -58,6 +58,7 @@ const 清单 = [
   { 路径: 'tools/multitab-audit/probe.mjs',   档: 2, 参数: ['{OUT}/multitab-audit'],    超时: 300000, 备注: '双开（两标签页互相覆盖存档的现场＋丢动作实证；提示：单开不误报/双开两页都报/关了自动收）' },
   { 路径: 'tools/backpop-audit/probe.mjs',    档: 2, 参数: ['{OUT}/backpop-audit'],     超时: 180000, 备注: '回城弹窗「看全部剪辑」＋三处一致性（弹窗/横幅/日志的 N 与封顶文案；乙形态）' },
   { 路径: 'tools/umbrella/shots.mjs',         档: 2, 参数: ['{OUT}/umbrella'],          超时: 180000, 备注: '雨天撑伞（伞面像素计数：雨户外>10/室内0/晴0/兜底25vs0/稳定；--改前 对照全0）' },
+  { 路径: 'tools/storm-audit/probe.mjs',      档: 2, 参数: ['{OUT}/storm-audit'],       超时: 240000, 备注: '雷雨（第 251 单：雷雨比普通雨暗且雨丝更密／闪光只在闪刻／普通雨与晴不闪／减动效≈晴；--改前 两景同貌判红）' },
   { 路径: 'tools/scene-sweep/shots.mjs',      档: 2, 参数: ['{OUT}/scene-sweep'],       超时: 300000, 备注: '目验巡查（九景各出全景＋特写：聚厅/入睡/雨夜街道/公园/便利店/集市/深夜街灯/公司/手机）' },
   { 路径: 'tools/touch-audit/probe.mjs',      档: 2, 参数: ['{OUT}/touch-audit'],       超时: 240000, 备注: '触屏探针（点选/拖拽平移/小拖=点按/按钮触控/不滚不缩/横屏四向/竖屏四向推到头；--改前 复现幽灵点击与非可视区推不出）' },
   { 路径: 'tools/keyboard-audit/probe.mjs',   档: 2, 参数: ['{OUT}/keyboard-audit'],    超时: 180000, 备注: '键盘导航（首键出环/移焦点/Enter 激活页签/QE 切页/Esc 两级返回/输入框不劫持方向键）' },

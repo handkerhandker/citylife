@@ -554,7 +554,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v193</span>
+<span class="num dim" id="set-build">v194</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -7411,6 +7411,40 @@ function 雨伞画(ag,dx0,dy0,dw,dh){
   ctx.drawImage(伞帧(ag.color||'#7fa8d9'),0,0,48,96,dx0,dy0,dw,dh);
 }
 /*UMBRELLA-END*/
+/*STORM-START*/
+/* ---------- 第 251 单·雷雨（雨天偶尔来一场会打闪的雨）------------------------------------
+   调研出处（2026-10-06 复核 HTTP 200）：Nookipedia·Rain——
+     「Occasionally, thunderstorms can occur during rainy days.」
+     「On rare occasions, lightning can be seen.」
+     「Thunderstorms are **purely cosmetic** and otherwise act identical to normal rain.」
+     （同站·Weather 另有两条对照：「Heavy rain, which **darkens the sky considerably more than
+       regular rain**」「A thunderstorm, which can only occur during hours when heavy rain occurs」）
+   ⇒ 照原文抄四条：① 雷雨是**偶尔**的（按"场"定，约三场一次）；② 闪电**难得一见**（一场 0～2 记）；
+      ③ 雷雨比普通雨**更暗**、雨丝更密；④ 最要紧的一句——**纯粹是外观**：行为、时长、日志、存档
+      一个字不改（零 rng、零新字段）；一场雨是不是雷雨由 `weather.until` 的哈希定，确定性可复现。
+   本段只读 `state.world.weather.rain／until`、`state.world.t`、`state.reduceMotion`（雨幕同口径）。 */
+const STORM_PCT=35;                                     // 可调：约每三场雨一场雷雨（照 "Occasionally"）
+const 闪电率=8;                                         // 可调：约 8% 的十分钟桶闪一记（照 "On rare occasions"）
+function 雷雨场(w){
+  if(state.reduceMotion) return false;                  // 减动效时雨幕本来就不画，雷雨一并不画
+  if(!w || !w.weather || !w.weather.rain) return false;
+  const u=Math.round(+w.weather.until || 0);
+  return ((((u*2654435761)>>>0)%100) < STORM_PCT);
+}
+/* 闪电：把游戏时间切成 10 分钟的桶，约 8% 的桶里闪一记、一记亮 1.2 分钟（1× 速度≈1.2 秒、单调衰减）。
+   全部由 w.t 现算 ⇒ 同一条时间线上"哪一拍闪"是确定的（探针钉得住），且不摇任何随机源。 */
+function 雷雨闪光(){
+  const w=state.world;
+  if(!雷雨场(w)) return 0;
+  const 桶=Math.floor(w.t/10), 相=w.t-桶*10;
+  if(((((桶*2654435761)>>>0)%100) >= 闪电率)) return 0;
+  if(!(相<1.2)) return 0;
+  const a=0.22*(1-相/1.2);
+  ctx.fillStyle='rgba(226,236,255,'+a.toFixed(3)+')';
+  ctx.fillRect(0,0,state.cvW,state.cvH);
+  return a;
+}
+/*STORM-END*/
 /*BUBBLE-START*/
 /* ---------- 第 51 单·气泡一期：把「这个人此刻在做什么」写成一句话挂在他头顶 ----------
    定义（本仓第一次把「气泡」写成**可验收的定义**，办待办里第 31 单那条「下一次真要做气泡，先定义再开工」）：
@@ -8832,14 +8866,24 @@ function draw(now){
   }
   // 雨幕
   if(state.world.weather.rain && !state.reduceMotion){
-    rainSeed=(rainSeed+dtFrame*140)%40;
-    ctx.strokeStyle='rgba(150,180,220,.28)'; ctx.lineWidth=1;
+    const 雷=雷雨场(state.world);                                 // 第 251 单：这场雨是不是雷雨（一处定义）
+    if(雷){ ctx.fillStyle='rgba(24,32,48,.16)'; ctx.fillRect(0,0,state.cvW,state.cvH); }   // 雷雨压暗一档
+    rainSeed=(rainSeed+dtFrame*(雷?190:140))%40;
+    ctx.strokeStyle='rgba(150,180,220,'+(雷?0.38:0.28)+')'; ctx.lineWidth=1;
     ctx.beginPath();
     for(let i=-2;i<26;i++){
       const x=ox+((i*37+rainSeed)% (Sim.MAPW*s+80))-40;
       ctx.moveTo(x, oy); ctx.lineTo(x-14, oy+Sim.MAPH*s);
     }
     ctx.stroke();
+    if(雷){                                                       // 雷雨加密一档（同一套坐标上的第二组雨丝）
+      ctx.beginPath();
+      for(let i=-2;i<20;i++){
+        const x=ox+((i*53+rainSeed*1.6+21)% (Sim.MAPW*s+80))-40;
+        ctx.moveTo(x, oy); ctx.lineTo(x-14, oy+Sim.MAPH*s);
+      }
+      ctx.stroke();
+    }
   }
   // 第 42 单：房间名（推到**人物与雨幕之后**画；凡与遮挡盒相交者一律不画——人是主角，房间名让位）
   for(const L of roomLabelQueue){
@@ -8859,6 +8903,7 @@ function draw(now){
   seasonLeaves(now);                              // 第 161 单：深秋枫叶——与落花同层（深秋飘过天空）
   seasonSnow(now);                                // 第 163 单：冬日间歇飘雪——与落花/枫叶同层
   meteorPaint(now);                               // 第 164 单：晴夜流星——收尾链最末（自发光；星空本体走 starField，在背景层）
+  雷雨闪光();                                     // 第 251 单：雷雨闪光——画在最上层（自发光；只在"闪"的那一分钟里出）
 }
 // 画布：拖动=平移镜头，点按=选中小人
 let drag=null;
