@@ -68,7 +68,25 @@ const 读弹窗 = () => page.evaluate(() => {
   const root = document.querySelector('#dialog-root');
   return { open: root.classList.contains('open'), 文: root.textContent.replace(/\s+/g, ' ').trim() };
 });
+// 红图钉像素计数（判据用"贴前 vs 贴后"的差；与 `画布告板()` 的钉位同点）
+const 数红钉 = () => page.evaluate(() => {
+  const st = __pv.state, S = __pv.Sim;
+  const A = S.ANCHORS.board || { x: 23.4, y: 16.8 };
+  const s = st.view.s, cv = document.querySelector('#cv'), g = cv.getContext('2d');
+  const dpr = cv.width / cv.clientWidth;
+  const bx = st.view.ox + A.x * s, by = st.view.oy + A.y * s;
+  const px = bx - s * 0.01, py = by - s * 0.88;
+  const x0 = Math.max(0, Math.round((px - s * 0.4) * dpr)), y0 = Math.max(0, Math.round((py - s * 0.4) * dpr));
+  const wp = Math.round(s * 0.8 * dpr), hp = Math.round(s * 0.8 * dpr);
+  const dd = g.getImageData(x0, y0, wp, hp).data;
+  let n = 0;
+  for (let i = 0; i < dd.length; i += 4) {
+    if (Math.abs(dd[i] - 192) <= 45 && Math.abs(dd[i + 1] - 57) <= 45 && Math.abs(dd[i + 2] - 43) <= 45) n++;
+  }
+  return { n, box: [x0, y0, wp, hp] };
+});
 
+const 钉前 = await 数红钉();
 await 点板子();
 const 弹1 = await 读弹窗();
 await page.screenshot({ path: path.join(OUT, '弹窗-可贴.png') });
@@ -84,6 +102,10 @@ if (await page.$('#dialog-root [data-post]')) {
   });
 }
 await page.screenshot({ path: path.join(OUT, '弹窗-已贴.png') });
+await page.click('#dialog-root [data-close]').catch(() => {});
+await page.waitForTimeout(300);
+const 钉后 = await 数红钉();
+await page.screenshot({ path: path.join(OUT, '关窗-有贴.png') });
 
 // 一贴一读：把一位住户摆到广场，调 boardStep 两次
 const 读反应 = await page.evaluate(() => {
@@ -105,6 +127,7 @@ const 判 = [
   ['贴一句入口列出你今天发的那条（' + JSON.stringify(按钮) + '）', 按钮.length === 1 && 按钮[0].indexOf(标签) >= 0],
   ['点它 ⇒ 弹窗刷新为"板上贴着你写的「' + 标签 + '」"', 弹2.open && 弹2.文.indexOf('板上贴着你写的') >= 0 && 弹2.文.indexOf('「' + 标签 + '」') >= 0],
   ['world.boardNote 记下原句', !!状态 && 状态.txt === 标签],
+  ['贴上之后板上看得见记号（红图钉 ' + 钉后.n + ' vs 贴前 ' + 钉前.n + '；判据 ≥15）', 钉后.n >= 15 && 钉前.n <= 5],
   ['一贴一读：恰一条"路过广场…「原句」"（' + JSON.stringify(读反应.行) + '）', 读反应.一 === 1 && 读反应.二 === 0 && 读反应.行.every(t => t.indexOf('「' + 标签 + '」') >= 0)],
   ['零 pageerror', 错.length === 0],
 ];

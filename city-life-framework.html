@@ -525,7 +525,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v171</span>
+<span class="num dim" id="set-build">v172</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -7835,11 +7835,14 @@ function 门洞记号(r){
   ctx.fillRect(x0, y0, 边, 垫H);
   ctx.fillRect(x0+垫W-边, y0, 边, 垫H);
 }
-/* 第 216 单·云港公告栏（手绘图元；读 `公告有活` 决定小角标，零世界改动） */
+/* 第 216 单·云港公告栏（手绘图元；读 `公告有活` 决定小角标，零世界改动）
+   第 221 单：板上有留言时（`boardNote`）多画一张淡蓝小纸＋红图钉——你贴的东西，在画布上看得见 */
 function 画布告板(){
   const s=state.view.s, A=Sim.ANCHORS.board; if(!A) return null;
   const bx=sx(A.x), by=sy(A.y), u=s;
   const 有活=Sim.公告有活(state.world);
+  const 贴=(()=>{ const n=state.world.boardNote;
+    return (n&&typeof n==='object'&&!Array.isArray(n)&&String(n.txt||'').trim())?n:null; })();
   ctx.save();
   // 影子
   ctx.fillStyle='rgba(0,0,0,.25)';
@@ -7858,6 +7861,14 @@ function 画布告板(){
   ctx.strokeStyle='#9a8f7a'; ctx.lineWidth=Math.max(0.8, u*0.03);
   for(let i=0;i<3;i++){ ctx.beginPath(); ctx.moveTo(bx-u*0.36, by-u*0.82+i*u*0.075); ctx.lineTo(bx-u*0.12, by-u*0.82+i*u*0.075); ctx.stroke(); }
   for(let i=0;i<3;i++){ ctx.beginPath(); ctx.moveTo(bx+u*0.08, by-u*0.84+i*u*0.08); ctx.lineTo(bx+u*0.32, by-u*0.84+i*u*0.08); ctx.stroke(); }
+  // 第 221 单·你贴的那张纸（淡蓝小纸＋红图钉；画在两张纸之上、金角标之下）
+  if(贴){
+    ctx.fillStyle='#e7edf5'; ctx.fillRect(bx-u*0.17, by-u*0.9, u*0.32, u*0.24);
+    ctx.strokeStyle='#b9c2cf'; ctx.lineWidth=Math.max(0.6, u*0.02);
+    ctx.strokeRect(bx-u*0.17, by-u*0.9, u*0.32, u*0.24);
+    ctx.fillStyle='#c0392b'; ctx.beginPath(); ctx.arc(bx-u*0.01, by-u*0.88, u*0.11, 0, 7); ctx.fill();
+    ctx.fillStyle='#7f2318'; ctx.beginPath(); ctx.arc(bx-u*0.01, by-u*0.88, u*0.05, 0, 7); ctx.fill();
+  }
   // "今天有活"的小角标（金感叹号；照星露谷那条）
   if(有活){
     const gx=bx+u*0.5, gy=by-u*1.0;
