@@ -73,7 +73,7 @@ const 清单 = [
   { 路径: 'tools/firefly-audit/probe.mjs',    档: 2, 参数: ['{OUT}/firefly-audit'],    超时: 180000, 备注: '夏夜萤火虫（江面带黄绿亮点：夏夜 ≥40／夏昼·冬夜 ≤10；--改前 判红）' },
   { 路径: 'tools/leaf-audit/probe.mjs',       档: 2, 参数: ['{OUT}/leaf-audit'],       超时: 180000, 备注: '深秋枫叶（天空带橙红像素：深秋 ≥60／初秋·夏·春 ≤10；--改前 判红）' },
   { 路径: 'tools/snow-audit/probe.mjs',       档: 2, 参数: ['{OUT}/snow-audit'],       超时: 300000, 备注: '冬日间歇飘雪（帧间白像素对称差：冬窗内均值 ≥120 且 ≥3×窗外；--改前 判红）' },
-  { 路径: 'tools/snowground-audit/probe.mjs', 档: 2, 参数: ['{OUT}/snowground-audit'], 超时: 300000, 备注: '冬日积雪＋树冠雪帽（地面白度：深冬 ≥ 初冬+40／岸线+30、室内与江面 |Δ|≤20；树冠顶 ≥+40；--改前 判红）' },
+  { 路径: 'tools/snowground-audit/probe.mjs', 档: 2, 参数: ['{OUT}/snowground-audit'], 超时: 300000, 备注: '冬日积雪＋树冠雪帽＋雪地脚印（白度门槛同上；脚印：深冬真走有货且画布数得到、春 0、拨钟清空；--改前 判红）' },
   { 路径: 'tools/stars-audit/probe.mjs',      档: 2, 参数: ['{OUT}/stars-audit'],      超时: 300000, 备注: '晴夜星空与流星（地图外沿背景带星色像素：动效开−关 ≥8（静态活动牌自动抵消）／白天 ≤3；--改前 判红）' },
   { 路径: 'tools/fresh-gate/probe.mjs',       档: 2, 参数: ['{OUT}/fresh'],        超时: 120000, 备注: '「有新版」四场景' },
   { 路径: 'tools/page-sweep/sweep.mjs',       档: 2, 参数: ['{OUT}/sweep'],        超时: 180000, 备注: '六页两档 ＋ 全按钮扫描' },

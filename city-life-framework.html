@@ -554,7 +554,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v186</span>
+<span class="num dim" id="set-build">v187</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -8299,6 +8299,7 @@ function snowGround(t){                       // 街道／岸线／广场——�
   for(const m of SNOW_MOUNDS){
     ctx.beginPath(); ctx.ellipse(sx(m[0]), sy(m[1]), s*0.28, s*0.17, 0, 0, Math.PI*2); ctx.fill();
   }
+  脚印绘(null);                                // 第 242 单·雪地脚印（室外：摊位与人物之前）
 }
 function snowRoom(r){                          // 公园／江边步道——房间循环里、家具与树之前调用
   if(r.id!=='park' && r.id!=='river') return;
@@ -8306,6 +8307,7 @@ function snowRoom(r){                          // 公园／江边步道——房
   const s=state.view.s;
   ctx.fillStyle=(r.id==='park')?SNOW_GROUND.park:SNOW_GROUND.walk;
   ctx.fillRect(sx(r.x)+2, sy(r.y)+2, r.w*s-4, r.h*s-4);                    // 内缩 2px 留住房间边界
+  脚印绘(r);                                     // 第 242 单·雪地脚印（房内：家具与树之前）
 }
 /* 第 169 单·树冠雪帽（"snow will … settle on the ground, **trees**, and buildings"）：
    雪帽＝裁在树冠圆里的**上缘白弧**（不是另画一个白圆，故不会越出树冠轮廓）；
@@ -8330,6 +8332,62 @@ function snowCaps(){                           // 广场大树＋公园树/灌�
   雪帽(sx(PLAZA_TREE.x+PLAZA_TREE.w/2), sy(PLAZA_TREE.y+PLAZA_TREE.h*0.45), PLAZA_TREE.w*s*0.42);
 }
 /*SNOWGROUND-END*/
+/*FOOTPRINT-START*/
+/* ---------- 第 242 单·雪地脚印（"走过的地方留一点痕"）-----------------------------------------
+   调研出处（2026-10-05 当日复核，逐条 HTTP 200，逐字见 `docs/规划/借鉴调研-2026-10-05-雪地脚印.md`）：
+     · Nookipedia·Animal tracks：「Animal tracks are an environmental feature occurring in both
+       Animal Crossing: City Folk and Animal Crossing: New Leaf where the grass in the player's town
+       slowly wears over time due to **walking or running over an area repeatedly**.」
+       ——"反复走过的地方会留下看得见的痕"是动森从 City Folk 起就在做的环境细节；
+     · Nookipedia·Flooring（New Horizons）：「In Animal Crossing: New Horizons, some flooring
+       show **footprints when walked on**, and some are even animated.」
+       ——"走过留痕"在这部作品里是反复出现的表达（地板会记脚印）。
+   本段把它落到本作的雪面上：**有积雪的日子**（复用 冬积雪() 一处 gate），人走在雪面按"步距"
+   踩出一枚淡脚印（左右脚交替换边），**先浓后淡、淡尽即清**；上限从配置表读。
+   纯渲染层：零 rng、零存档、不改 SIM（脚印表只活本次会话、换季即清）。
+   画序与积雪同管道：室外在 snowGround 里（摊位与人物之前）、房内在 snowRoom 里（家具与树之前）。 */
+const 脚印表=[];
+const 脚印={ 步距:0.7, 保真:30, 寿命:150, 上限:280, 长:0.14, 宽:0.085, 色:'96,112,142', 最浓:0.34 };
+function 印面雪(x,y){                                  // 雪面判定：房内只有公园/江边步道可踩，室外一律可踩
+  if(!isFinite(x)||!isFinite(y)) return false;
+  const r=Sim.ROOMS.find(r=>x>=r.x&&x<r.x+r.w&&y>=r.y&&y<r.y+r.h);
+  return r ? (r.id==='park'||r.id==='river') : true;
+}
+function 脚印步(w){                                    // 每帧：按"走了够远没有"落一枚；换季即清
+  if(!冬积雪(w.t)){ 脚印表.length=0; return; }
+  while(脚印表.length && w.t-脚印表[0].t>脚印.寿命) 脚印表.shift();
+  for(const ag of w.agents){
+    const v=state.vis[ag.id]; if(!v||!v.moving) continue;
+    if(!isFinite(v.dspX)||!isFinite(v.dspY)||!印面雪(v.dspX,v.dspY)) continue;
+    if(isFinite(v.印X)&&isFinite(v.印Y)&&Math.hypot(v.dspX-v.印X,v.dspY-v.印Y)<脚印.步距) continue;
+    v.印X=v.dspX; v.印Y=v.dspY; v.印P=v.印P?0:1;
+    脚印表.push({x:v.dspX,y:v.dspY,d:v.dir,p:v.印P,t:w.t});
+    if(脚印表.length>脚印.上限) 脚印表.shift();
+  }
+}
+function 脚印绘(房){                                   // 房=null ⇒ 只画室外；否则只画落进这一间的
+  if(!冬积雪(state.world.t)||!脚印表.length) return;
+  const s=state.view.s;
+  for(const q of 脚印表){
+    if(房){ if(!(q.x>=房.x&&q.x<房.x+房.w&&q.y>=房.y&&q.y<房.y+房.h)) continue; }
+    else{
+      const r=Sim.ROOMS.find(r=>q.x>=r.x&&q.x<r.x+r.w&&q.y>=r.y&&q.y<r.y+r.h);
+      if(r) continue;
+    }
+    const 龄=state.world.t-q.t;
+    if(龄<0||龄>脚印.寿命) continue;
+    const a=龄<=脚印.保真?1:Math.max(0,1-(龄-脚印.保真)/(脚印.寿命-脚印.保真));
+    if(a<=0.03) continue;
+    const 横=(q.d===0||q.d===2);                        // 左右行走 ⇒ 脚印横放；上下行走 ⇒ 纵放
+    const 偏=0.07*(q.p?1:-1);                            // 左右脚交替换边
+    const X=sx(q.x)+(横?0:偏*s), Y=sy(q.y)+(横?偏*s:0);
+    ctx.fillStyle='rgba('+脚印.色+','+(脚印.最浓*a).toFixed(3)+')';
+    ctx.beginPath();
+    ctx.ellipse(X,Y,(横?脚印.长:脚印.宽)*s,(横?脚印.宽:脚印.长)*s,0,0,Math.PI*2);
+    ctx.fill();
+  }
+}
+/*FOOTPRINT-END*/
 /*STARS-START*/
 /* ---------- 第 164 单·晴夜的星空与流星（"making a wish on a shooting star"）------------------
    调研出处（Nookipedia·Meteor shower，2026-10-04 HTTP 200 复核）：
@@ -8843,6 +8901,7 @@ function loop(now){
   }
   updateWalkers(dtFrame);
   stepAllDisplays(dtFrame);        // 第 25 单：显示位每帧必推，与当前在哪一页无关（下面 draw() 是有条件的，这里不许有条件）
+  脚印步(w);                        // 第 242 单·雪地脚印：按步距在雪面落痕（纯渲染、零 rng）
   updateCamera(dtFrame);
   drainLog();
   penSweep(now);   // 第 29 单：占位符收尾死线按真实时钟在这里判（不用 setTimeout：后台标签页会把它节流到分钟级）
