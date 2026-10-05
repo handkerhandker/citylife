@@ -525,7 +525,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v170</span>
+<span class="num dim" id="set-build">v171</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -2460,6 +2460,81 @@ function boardStep(w){
   logAct(w,人,句[0].replace('{句}', n.txt), 句[1]);
 }
 /*POST-END*/
+/*GOSSIP-START*/
+/* ---------- 第 220 单·邻里闲话（四个住户之间，终于会提起彼此）----------
+   出处（2026-10-05 实抓，原文与地址见 `docs/规划/借鉴调研-2026-10-05-邻里闲话.md`）：
+     · 动森（Nookipedia·Villager）：村民之间会互相议论（"…talking to some villagers in the
+       town gossiping…"），这类对话还会牵动情绪（"Conversations with other villagers…
+       can trigger mood changes"）；
+     · 星露谷（Stardew Valley Wiki·Villagers）：每个村民有可观察的日常——闲话要有根。
+   口径：① 约 1/3 天（日号哈希）、全城每天至多一条；② 话题只从对方的**真值**里取
+   （本周目标／最近琢磨的菜／这一周与玩家的来往），取不到就不说；③ 说话者与被提到的人
+   当天各落一条**个人日志**（act、前缀固定：说话方"念叨起"、当事人"总觉得"，只为覆盖
+   归类表）；④ 零 rng、零经济、不改任何行为；v1 不进剪辑候选。 */
+const GOSSIP={ say:10*60+40, back:19*60+40 };
+const GOSSIP_SAY={
+  goal:{
+    work: ['念叨起{名}这周想干的事——「{事}」。我瞧着悬，但他自己挺当真。','谁也劝不动，他心里有数。'],
+    clerk:['念叨起{名}这周的念想——「{事}」。昨晚他还在那儿盘算呢。','有念想，日子就有盼头。'],
+    trade:['念叨起{名}盯上的事——「{事}」。有目标是好事，别钻牛角尖就行。','他自己拿捏得住。'],
+    write:['念叨起{名}这周要办的事——「{事}」。他说的时候，眼睛是亮的。','这句我先记下。'],
+  },
+  dish:{
+    work: ['念叨起{名}最近折腾的新菜——「{事}」。尝了一口，还真行。','手比脑子快的人。'],
+    clerk:['念叨起{名}新研究的菜——「{事}」。哪天得让他再做一回。','厨房最近是他的地盘。'],
+    trade:['念叨起{名}学的那道「{事}」。香味瞒不住人。','做饭这事，讲究个心气。'],
+    write:['念叨起{名}琢磨出来的「{事}」。光听名字，就觉得暖。','一碗热的东西，能顶很多话。'],
+  },
+  week:{
+    work: ['念叨起{名}这周收到你的短信，那两天他干活都哼着歌。','有人惦记，是好事。'],
+    clerk:['念叨起{名}这周收着你短信的样子——嘴上不说，眼睛在笑。','我什么都没看见。'],
+    trade:['念叨起{名}把你那句话看了好几遍。','这事我就当不知道。'],
+    write:['念叨起{名}这周收到你消息的样子——字里行间都是高兴。','有些话，不用回。'],
+  },
+};
+const GOSSIP_BACK={
+  work: ['总觉得今天有人背后念叨我。……也行，算是被记着。','念叨就念叨吧。'],
+  clerk:['总觉得耳朵有点热，像被谁念叨了一整天。','大概是好事。'],
+  trade:['总觉得有人在替我操心。谁呢？不猜了。','操心也是心意。'],
+  write:['总觉得像是被谁写进了哪一句里。','这种感觉，挺好。'],
+};
+/* 今天这一场闲话（没有就 null）：日号哈希选说话者与对象、话题取真值——零 rng */
+function 闲话今(w){
+  if(!w || !Array.isArray(w.agents) || w.agents.length<2) return null;
+  const day=PURE.dayOf(w.t), h=(day*2654435761)>>>0;
+  if(h%3) return null;                                  // 约 1/3 天
+  const n=w.agents.length;
+  const ia=h%n, ib=(ia+1+((h>>>3)%(n-1)))%n;            // 保证 A≠B
+  const A=w.agents[ia], B=w.agents[ib];
+  const 候=[];
+  const g=(typeof goalOf==='function')?goalOf(B):null;
+  if(g && GOAL_MAP[g.k] && GOAL_MAP[g.k].label) 候.push({k:'goal', 事:GOAL_MAP[g.k].label});
+  if(Array.isArray(B.dishes) && B.dishes.length) 候.push({k:'dish', 事:String(B.dishes[B.dishes.length-1])});
+  if(B.week && typeof B.week==='object' && (B.week.信|0)>0) 候.push({k:'week', 事:''});
+  if(!候.length) return null;                           // 没有"根"，就不说
+  const t=候[h%候.length];
+  return {day, ia, ib, k:t.k, 事:t.事};
+}
+/* 每拍：10:40 说话者念一句、19:40 当事人回一句（当天这一场，读过不重复） */
+function 闲话步(w){
+  const mod=PURE.minuteOfDay(w.t), day=PURE.dayOf(w.t);
+  if(mod===GOSSIP.say){
+    const G=闲话今(w); if(!G) return;
+    if(w.gossipToday && w.gossipToday.day===day) return;   // 今天已经有过
+    w.gossipToday={day:G.day, ia:G.ia, ib:G.ib, k:G.k, 事:G.事, back:false};
+    const A=w.agents[G.ia], B=w.agents[G.ib];
+    const 口=GOSSIP_SAY[G.k][A.workKind]||GOSSIP_SAY[G.k].work;
+    logAct(w,A,口[0].replace('{名}',B.name).replace('{事}',G.事),口[1]);
+  } else if(mod===GOSSIP.back){
+    const t=w.gossipToday;
+    if(!t || typeof t!=='object' || Array.isArray(t) || t.day!==day || t.back) return;
+    const B=w.agents[t.ib]; if(!B) return;
+    t.back=true;
+    const 口=GOSSIP_BACK[B.workKind]||GOSSIP_BACK.work;
+    logAct(w,B,口[0],口[1]);
+  }
+}
+/*GOSSIP-END*/
 /*MORNING-START*/
 /* ---------- 第 58 单·云港晨报（把"今天是什么日子"每天说一次）----------
    调研出处（2026-10-03 实测可访问）：
@@ -3490,8 +3565,9 @@ const CLIP_LOGCAT=[
   ['heart', ['交心：']],             // 第 91 单·交心那两条日志（前缀固定"交心："，两人各一条都归这类）
   ['cat',   ['蹲下来看', '🐈']],     // 第 210 单·云港的猫（住户照面那句与城市那条都归"猫事"；v1 只保覆盖率，不出卡）
   ['req',   ['忙完了：']],           // 第 212 单·居民委托（答应后那条日志；前缀固定，覆盖率闸照管）
+  ['gossip',['念叨起', '总觉得']],   // 第 220 单·邻里闲话（说话方"念叨起"、当事人"总觉得"；两个前缀都固定，v1 只保覆盖率）
 ];
-const CLIP_CATNAME={eat:'吃饭', work:'上班', nap:'小憩', stroll:'散步', sleep:'睡觉', chat:'闲聊', goal:'目标', fest:'放灯', bday:'生日', talk:'夜谈', miss:'惦记', rel:'关系', heart:'交心', visit:'串门', cat:'猫事', req:'委托'};
+const CLIP_CATNAME={eat:'吃饭', work:'上班', nap:'小憩', stroll:'散步', sleep:'睡觉', chat:'闲聊', goal:'目标', fest:'放灯', bday:'生日', talk:'夜谈', miss:'惦记', rel:'关系', heart:'交心', visit:'串门', cat:'猫事', req:'委托', gossip:'闲话'};
 // 丙级只数这几类。刻意不含 chat：闲聊次数已由甲级 social_burst 按同一个数出活，
 // 两级同时命中会在同一张卡上把同一句话印两遍（实测 D10 「闲聊 4 次，平常 2 次」印了两行）。
 // 也不含 idle：在家待着 logText 恒为 null、不上墙，本层「只数上了墙的事」故无从计数。
@@ -4009,6 +4085,7 @@ function advance10(w){
   talkStep(w);      // 第 70 单·周日夜谈（周日 20:00–22:00，22:00 散场播报）
   catStep(w);       // 第 210 单·云港的猫（每天 15:00–17:00；零 rng）
   boardStep(w);     // 第 217 单·玩家留言进板（有人路过广场就读到；一贴一读）
+  闲话步(w);        // 第 220 单·邻里闲话（10:40 念一句、19:40 当事人回一句；约 1/3 天）
   missStep(w);      // 第 74 单·住户主动惦记你（周日 18:00；这周没收到短信的人各留一条）
   noteStep(w);      // 第 77 单·别的时候也开口（每天 21:00；生日／放灯／目标达成各留一句）
   reqStep(w);       // 第 212 单·居民委托（每天 09:00 发请求、20:00 结算；零 rng）
@@ -4239,6 +4316,7 @@ const Sim={makeWorld, step, sendMessage, sendCustomMessage, decide, MSGS, ANCHOR
   REQ, REQ_LINES, REQ_DONE, reqOfDay, reqStep,   // 第 212 单·居民委托（门禁按真值读：一天至多一件、零 rng）
   公告内容, 公告有活,   // 第 216 单·云港公告栏（门禁按真值读：纯读既有系统、零 rng）
   贴留言, boardStep, BOARD_READ, BOARD_SPOTS,   // 第 217 单·玩家留言进板（门禁按真值读：一贴一读、零 rng）
+  闲话今, 闲话步, GOSSIP, GOSSIP_SAY, GOSSIP_BACK,   // 第 220 单·邻里闲话（门禁按真值读：约 1/3 天、零 rng）
   BIRTHDAYS, BDAY, bdayInDays, thisYearBdayAt, bdayAt, inBirthday,   // 第 64 单·住户生日（门禁按真值读同一份日历）
   GIFT,   // 第 81 单·生日礼物（门禁按真值读：窗口与价钱一处定义）
   REL, REL_TIERS, relV, relTier, relTierName, relGet,   // 第 88 单·关系状态机 A 档（门禁按真值读：档位表一处定义）
