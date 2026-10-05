@@ -525,7 +525,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v174</span>
+<span class="num dim" id="set-build">v175</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -1791,6 +1791,14 @@ const GOALS=[
     met:(w,ag,g)=>(g.n||0)>=1,
     prog:(w,ag,g)=>((g.n||0)?'去过了':'还没去'),
     done:'江面上漂着好些灯，风一过全在晃。', miss:'那晚有别的事，没去成。' },
+  /* —— 第 227 单·夏夜纳凉会的专属目标（照 63 单"江灯节专属目标"同款；`summerOnly` 同族）—— */
+  { k:'cool', label:'这周去江边乘凉', useful:0, knob:null, summerOnly:1,
+    traits:[], work:[], why:'一年就这一晚，江风不等人。',
+    tick:(w,ag,g)=>{ const ls=ag.lastSummer;
+      if(ls&&isFinite(ls.t)&&ls.t>=g.born&&ls.t<g.until) g.n=1; },
+    met:(w,ag,g)=>(g.n||0)>=1,
+    prog:(w,ag,g)=>((g.n||0)?'去过了':'还没去'),
+    done:'在江边坐到天黑，江风把白天吹散了。', miss:'想着想着就晚了，江边到底没去。' },
   { k:'count',   label:'这周数一回天上的云',        useful:0, knob:null,
     traits:[],              work:[],        why:'抬头这事，一想起来就很久没做了。',
     tick:(w,ag,g)=>{ const a=String(ag.anchor||'');
@@ -1815,7 +1823,10 @@ function goalAssign(w,ag,上周信){
      判据：下一个周一批（＝本轮 `until`）之前会不会过节；`festAt(w)` 与 `nextGoalAt(w)` 比一下就够。 */
   const 本届=thisYearFestAt(w), 下周一批=nextGoalAt(w);
   const 本周有节=本届>w.t && 本届<下周一批;
-  const 候选=GOALS.filter(G=>(!G.festOnly||本周有节)&&goalTagHit(G,ag));
+  /* 第 227 单：夏夜纳凉会同理——只在"有纳凉会的那一周"进候选（两节相隔 105 天，不会撞同一周）。 */
+  const 本届凉=thisYearSummerAt(w);
+  const 本周有凉=本届凉>w.t && 本届凉<下周一批;
+  const 候选=GOALS.filter(G=>(!G.festOnly||本周有节)&&(!G.summerOnly||本周有凉)&&goalTagHit(G,ag));
   const 池=候选.length?候选:GOALS;
   /* 选哪一条：**不摇世界 rng**，用「种子 ⊕ 人名 ⊕ 第几轮」算一个确定性下标。
      为什么不用 `w.rng()`（第一版就是那么写的，当场撞了墙）：四个人的派活时刻是同相的
@@ -1840,7 +1851,9 @@ function goalAssign(w,ag,上周信){
      取舍照实登记：四人这一周会拿同一个目标——但它一年只有一周，而且"一年就这一晚，大家都惦记"
      本来就是这件事该有的样子；其余 51 周随机不变。 */
   const 节优先=本周有节?(池.find(G=>G.k==='lantern')||null):null;
-  const G=优先||节优先||池[h%池.length];
+  /* 第 227 单：纳凉会那一周同理（`cool` 提优先位；与江灯节不会同周，故两条优先互不干扰）。 */
+  const 凉优先=本周有凉?(池.find(G=>G.k==='cool')||null):null;
+  const G=优先||节优先||凉优先||池[h%池.length];
   const 到期=nextGoalAt(w);                                  // 第 53 单：一轮的目标活到**下一个周一 08:00**
   ag.goal={ k:G.k, born:w.t, until:到期, n:0, bad:0, wasStroll:false,
             base:{ money:Math.round(ag.money), relNotes:(ag.relNotes|0) } };
@@ -3385,9 +3398,13 @@ function decide(w, ag){
     /* 每人那一路要**散开**：只用 `+ (i+1)*97` 时四个人的哈希只差 97/100，落在同一段里
        （实测第 150 天四人全去）；改成各乘一个黄金比常数再异或（照 rng 内部同族手法）。 */
     const h=(Math.imul(PURE.dayOf(w.t),2654435761) ^ Math.imul(年,40503) ^ Math.imul(i+1,0x9E3779B1))>>>0;
-    if((h%100)<SUMMER.p){
+    /* 第 227 单：拿了「这周去江边乘凉」的人**必去**（照 63 单"拿目标的人头一个小时必去"同一口径；
+       把旋钮从概率换成确定，且仍不摇骰子）。 */
+    const 有愿=(typeof goalOf==='function'&&goalOf(ag)&&goalOf(ag).k==='cool');
+    if(有愿 || (h%100)<SUMMER.p){
       ag.coolDay=PURE.dayOf(w.t);
       w.summerCount=(w.summerCount|0)+1;
+      if(ag.summerYear!==年){ ag.summerYear=年; ag.lastSummer={ t:w.t, tx:'在江边纳凉，江风把白天吹散了。' }; }
       setActivity(w,ag,'river_walk','stroll','纳凉',tempoDur(w,ag,40),天气词(w,STROLL_THOUGHTS,RAIN_STROLL_THOUGHTS,ag,'lo'),
         '在江边纳凉，江风把白天吹散了。');
       return;
@@ -3595,6 +3612,7 @@ const CLIP_W={
   goal_done:2.6, goal_miss:2.8, goal_broke:2.4,   // 第 54 单·目标（一周一件的惦记事出了结果，甲级区间内）
   mkt_go:1.0,                                     // 第 57 单·去了一趟夜市（乙级弱信号：好玩，但不是"不像平常的自己"）
   fest_lamp:2.6,                                  // 第 62 单·江灯节放灯（甲级：一年一次，值得当天的卡）
+  summer_go:2.6,                                  // 第 227 单·夏夜纳凉会（甲级：一年一次，与江灯节同档）
   bday_cake:2.6,                                  // 第 64 单·生日蛋糕（甲级：一年一次的个人日，与江灯节同档——"值得当天的卡"）
   talk_go:1.0,                                    // 第 73 单·去了一趟夜谈角（乙级弱信号，与夜市 `mkt_go` 同档）
   cat_go:1.0,                                     // 第 211 单·蹲下来看了一会儿猫（乙级弱信号，与 `talk_go` 同档）
@@ -3651,6 +3669,7 @@ const CLIP_FREQ_CATS=['eat','work','nap','stroll'];
 const CLIP_QCAT={sit:'work', money:'money', social:'chat', sleep:'sleep', wake:'sleep', hunger:'eat', worn:'nap', freq:'', goal:'goal',
                  mkt:'eat',    // 第 57 单：夜市那条日志（「在夜市买了份小吃」）归在 eat 类 ⇒ 摘原文就引它
                  fest:'fest',  // 第 62 单：放灯那条日志归在 fest 类
+                 summer:'fest',  // 第 227 单：纳凉那条日志同归 fest 类（正路仍是 tx 落笔抄录）
                  bday:'bday',  // 第 64 单：生日蛋糕那条日志归在 bday 类
                  bday_co:'bday',  // 第 110 单：陪坐那句也归 bday ⇒ 摘原文就引"陪着…"那条
                  talk_go:'talk',  // 第 73 单：夜谈那条日志单开一类 ⇒ 摘原文就引它
@@ -3777,6 +3796,11 @@ function clipSample(w,sh){
       r.festT=lf.t; r.festSpent=lf.spent|0;
       r.festTx0=(typeof lf.tx==='string')?lf.tx:'';
     }
+    // 第 227 单·夏夜纳凉会：与上面同一套事件通道（`summerYear` 已保证每人每年至多一条）
+    const ls=ag.lastSummer;
+    if(ls && typeof ls==='object' && isFinite(ls.t) && ls.t>=t0 && ls.t<t1 && r.summerT!==ls.t){
+      r.summerT=ls.t; r.summerTx0=(typeof ls.tx==='string')?ls.tx:'';
+    }
     // 第 64 单·生日：同上（`bdayYear` 已保证每人每年至多一条）
     const lb=ag.lastBday;
     if(lb && typeof lb==='object' && isFinite(lb.t) && lb.t>=t0 && lb.t<t1 && r.bdayT!==lb.t){
@@ -3863,6 +3887,7 @@ function clipMake(w,sh,ent,ag,sum,base){
   if(r.goalK) push('goal_'+r.goalK,{label:r.goalTx, tx:r.goalTx0},r.goalT);
   if(r.mktT) push('mkt_go',{spent:r.mktSpent, tx:r.mktTx0},r.mktT);     // 第 57 单·去夜市（每人每周至多一条）
   if(r.festT) push('fest_lamp',{spent:r.festSpent, tx:r.festTx0},r.festT);   // 第 62 单·放灯（每人每年至多一条；落笔抄录）
+  if(r.summerT) push('summer_go',{tx:r.summerTx0},r.summerT);                // 第 227 单·去纳凉（每人每年至多一条；落笔抄录）
   if(r.bdayT) push('bday_cake',{spent:r.bdaySpent, tx:r.bdayTx0},r.bdayT);   // 第 64 单·生日蛋糕（每人每年至多一条；落笔抄录）
   if(r.talkT) push('talk_go',{topic:r.talkTopic, tx:r.talkTx0},r.talkT);     // 第 73 单·夜谈（每人每周至多一条；落笔抄录）
   if(r.catT) push('cat_go',{cat:r.catName, tx:r.catTx0},r.catT);             // 第 211 单·云港的猫（全城每天至多一条；落笔抄录）
@@ -3942,6 +3967,7 @@ function clipItemText(it){
     case 'goal_broke': return '目标 · 中途换了：「'+v.label+'」眼下做不成';
     case 'mkt_go':     return '夜市 · 去了一趟：买了份小吃，花了 ¥'+(v.spent||0);
     case 'fest_lamp':  return '江灯节 · 放了一盏灯：花了 ¥'+(v.spent||0)+'（一年一次）';
+    case 'summer_go':  return '纳凉会 · 在江边坐了一晚（一年一次）';
     case 'bday_cake':  return '生日 · 给自己买了块蛋糕：花了 ¥'+(v.spent||0)+'（一年一次）';
     case 'talk_go':    return '夜谈 · 去坐了一晚：聊「'+(v.topic||'')+'」';
   case 'cat_go':     return '猫事 · 蹲下来看了一会儿「'+(v.cat||'猫')+'」';

@@ -65,6 +65,8 @@ const 内部 = [
   { k: 'gossipToday', v: { day: 'x', ia: 99, ib: -1, k: 'ghost', back: 'y' } }, { k: 'gossipToday', v: [] },
   /* 第 224 单·夏夜纳凉会：两个新状态的畸形形状（世界级计数坏、住户级记账坏） */
   { k: 'summerCount', v: 'x' }, { ai: 0, k: 'coolDay', v: 'x' },
+  /* 第 227 单·纳凉会二期：剪辑锚与年号去重的畸形形状 */
+  { ai: 0, k: 'lastSummer', v: { t: 'x', tx: [] } }, { ai: 0, k: 'summerYear', v: 'x' },
   /* 第 214 单（批后审计 210–213）：新状态的两个畸形形状（自动普查只到"物件级"，
      这两种是"对象里字段坏"——照 relYou/waiting 先例点名） */
   { ai: 0, k: 'lastCat', v: { t: 'x', 名: 5, tx: [] } }, { ai: 0, k: 'lastCat', v: { t: 1, 名: 'x', tx: 'y' } },
