@@ -554,7 +554,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v190</span>
+<span class="num dim" id="set-build">v191</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -5917,6 +5917,11 @@ function milesStep(){
 function milesList(){
   const w=state.world, M=state.miles, d=PURE.dayOf(w.t);
   const 最深=w.agents.reduce((s,a)=>Math.max(s, Sim.relYouGet(a)), 0);
+  /* 第 247 单·三期：档位线一律从 `REL_TIERS` 现读（一处定义；缺表回落到原数——照第 119 单
+     `熟线()` 的写法），"收口"三档：广度（四个人都到点头之交）／顶格（家人一样）／收藏 30 张。 */
+  const 线=i=>{ const t=(Sim.REL_TIERS||[])[i]; return (t&&isFinite(t.lo))?t.lo:0; };
+  const 点头线=线(1)||10, 熟线=线(2)||20, 老友线=线(3)||35, 家人线=线(4)||50;
+  const 四人点头=w.agents.filter(a=>Sim.relYouGet(a)>=点头线).length;
   const 条=[];
   const 加=(名,成,进度)=>条.push({名,成,进度});
   加('看过一星期', d>=7, 'D'+Math.min(d,7)+'/7');
@@ -5929,8 +5934,11 @@ function milesList(){
   加('帮人捎过一句话', M.delivers>=1, M.delivers>=1?'✓':'0/1');
   加('收藏第一张剪辑卡', (state.keeps||[]).length>=1, Math.min((state.keeps||[]).length,1)+'/1');
   加('收藏满十张', (state.keeps||[]).length>=10, Math.min((state.keeps||[]).length,10)+'/10');
-  加('和一个人处到「熟」', 最深>=20, Math.min(最深,20)+'/20');
-  加('和一个人处到「老友」', 最深>=35, Math.min(最深,35)+'/35');
+  加('收藏满三十张', (state.keeps||[]).length>=30, Math.min((state.keeps||[]).length,30)+'/30');
+  加('和一个人处到「熟」', 最深>=熟线, Math.min(最深,熟线)+'/'+熟线);
+  加('和一个人处到「老友」', 最深>=老友线, Math.min(最深,老友线)+'/'+老友线);
+  加('和一个人处到「家人一样」', 最深>=家人线, Math.min(最深,家人线)+'/'+家人线);
+  加('四个人都到「点头之交」', 四人点头>=4, 四人点头+'/4');
   加('赶上第一场江灯节', d>=45, 'D'+Math.min(d,45)+'/45');
   加('赶上第一阵凉风', d>=181, 'D'+Math.min(d,181)+'/181');
   加('看过第一场雪', d>=271, 'D'+Math.min(d,271)+'/271');
