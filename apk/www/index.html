@@ -554,7 +554,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v183</span>
+<span class="num dim" id="set-build">v184</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -4777,6 +4777,7 @@ const bootMiles=(()=>{
   const m=(bootMeta && bootMeta.miles && typeof bootMeta.miles==='object') ? bootMeta.miles : {};
   const n=x=>(isFinite(x)&&x>=0)?Math.floor(x):0;
   return { sms:n(m.sms), replies:n(m.replies), notes:n(m.notes), bdays:n(m.bdays),
+           calls:n(m.calls), delivers:n(m.delivers), picks:n(m.picks),   // 第 237 单·手账二期
            countedLid:(isFinite(m.countedLid)&&m.countedLid>=0)?Math.floor(m.countedLid):(bootWorld?bootWorld.lidSeq:0) };
 })();
 /* 第 177 单·AI 成本闸的本地小账（《AI 通道与成本闸方案 v1》阶段一）：{day, used}。
@@ -5839,6 +5840,11 @@ function milesStep(){
        不把它算进来，玩家永远解锁不了这条（本探针第一版就栽在这）。 */
     else if(e.sms==='reply'||e.sms==='noreply') M.replies++;
     else if(e.sms==='note') M.notes++;
+    /* 第 237 单·手账二期：新玩法各记一笔——电话只数"接通"那条（被拒同 sms:'call'，
+       以文案前缀区分，照"生日快乐"那条按前缀数的既有先例）、捎话送到、回主意。 */
+    else if(e.sms==='call' && String(e.text||'').indexOf('和你通了会儿电话')===0) M.calls++;
+    else if(e.sms==='deliver') M.delivers++;
+    else if(e.sms==='pick') M.picks++;
   }
   M.countedLid=w.lidSeq;
 }
@@ -5852,6 +5858,11 @@ function milesList(){
   加('收到第一封回音', M.replies>=1, M.replies>=1?'✓':'0/1');
   加('收到第一句留言', M.notes>=1, M.notes>=1?'✓':'0/1');
   加('在他生日那天说声快乐', M.bdays>=1, M.bdays>=1?'✓':M.bdays+'/1');
+  加('打过第一通电话', M.calls>=1, M.calls>=1?'✓':'0/1');
+  加('替人拿过一次主意', M.picks>=1, M.picks>=1?'✓':'0/1');
+  加('帮人捎过一句话', M.delivers>=1, M.delivers>=1?'✓':'0/1');
+  加('收藏第一张剪辑卡', (state.keeps||[]).length>=1, Math.min((state.keeps||[]).length,1)+'/1');
+  加('收藏满十张', (state.keeps||[]).length>=10, Math.min((state.keeps||[]).length,10)+'/10');
   加('和一个人处到「熟」', 最深>=20, Math.min(最深,20)+'/20');
   加('和一个人处到「老友」', 最深>=35, Math.min(最深,35)+'/35');
   加('赶上第一场江灯节', d>=45, 'D'+Math.min(d,45)+'/45');

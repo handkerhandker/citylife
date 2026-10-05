@@ -9515,8 +9515,8 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
     const w=造世界(); w.t=0; w.agents[0].relYouV=20;   // D1：只有"处到熟"这一条该亮
     const {M}=台(w,{sms:0,replies:0,notes:0,bdays:0,countedLid:0});
     const 条=M.milesList();
-    ok(条.length===10&&条.filter(x=>x.成).length===1&&条.find(x=>x.名.indexOf('「熟」')>=0).成,
-       '第 131 单·行为：清单十条、D1＋关系「熟(20)」时只解锁那条（实测 '+条.filter(x=>x.成).map(x=>x.名).join('／')+'）');
+    ok(条.length===15&&条.filter(x=>x.成).length===1&&条.find(x=>x.名.indexOf('「熟」')>=0).成,
+       '第 131／237 单·行为：清单十五条（二期 +5）、D1＋关系「熟(20)」时只解锁那条（实测 '+条.filter(x=>x.成).map(x=>x.名).join('／')+'）');
   }
   {
     const 病源=src131.replace('  if(M.countedLid>=w.lidSeq) return;','')

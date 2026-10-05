@@ -79,9 +79,17 @@ const 行 = await page.$$eval('.rr-rel', els => els.map(e => e.textContent));
 const 你行 = await page.$$eval('.rr-you', els => els.map(e => e.textContent));   // 第 115 单·「和你」
 if (行.length) {
   const 卡 = await page.$('.rr-rel');
+  /* 第 237 单：手账二期把角色页拉长了——固定尺寸的截图框会越出视口
+     （Playwright 直接抛 `Clipped area is either empty or outside the resulting image`）。
+     修法：先把那张卡滚进视口，再把框按视口**夹取**，尺寸不变、判据不变。 */
+  if (卡) await 卡.scrollIntoViewIfNeeded();
   const 框 = 卡 ? await 卡.boundingBox() : null;
-  if (框) await page.screenshot({ path: path.join(OUT, '关系A档-角色卡-桌面.png'),
-    clip: { x: Math.max(0, 框.x - 90), y: Math.max(0, 框.y - 60), width: 460, height: 180 } });
+  if (框) {
+    const vp = page.viewportSize() || { width: 1400, height: 900 }, W = 460, H = 180;
+    const x = Math.max(0, Math.min(框.x - 90, vp.width - W));
+    const y = Math.max(0, Math.min(框.y - 60, vp.height - H));
+    await page.screenshot({ path: path.join(OUT, '关系A档-角色卡-桌面.png'), clip: { x, y, width: W, height: H } });
+  }
 }
 // 打开第一张角色详情（那一行在详情里还带"（累计 N 次来往）"）
 const 详情 = await page.$$('text=详情');
