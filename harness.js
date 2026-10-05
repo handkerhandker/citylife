@@ -6537,10 +6537,10 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   const fs=require('fs'), path=require('path');
   const src=fs.readFileSync(path.resolve(__dirname,'city-life-framework.html'),'utf8');
   ok(/const REL_YOU=\{ bump:1, bdayBump:3, coldAfter:3, coldLose:1, coldLine:5 \};/.test(src)
-     &&(src.match(/relYouBump\(/g)||[]).length===4
+     &&(src.match(/relYouBump\(/g)||[]).length===5
      &&(src.match(/relYouStep\(w\)/g)||[]).length===2
      &&(src.match(/relYouText\(/g)||[]).length===4,
-     '第 115 单·结构：`REL_YOU` 一处定义；`relYouBump(` 4 次（定义＋三处接触口：短信表／自写短信／通话〔第 229 单〕）；`relYouStep(w)` 2 次；'
+     '第 115 单·结构：`REL_YOU` 一处定义；`relYouBump(` 5 次（定义＋四处接触口：短信表／自写短信／通话〔第 229 单〕／回主意〔第 232 单〕）；`relYouStep(w)` 2 次；'
      +'`relYouText` 4 次（定义＋角色卡＋角色详情＋往来记录）');
   ok(Sim.clipCat({type:'act',text:'关系：和你处成了「熟」'})==='rel'
      &&Sim.clipCat({type:'act',text:'关系：好几天没收到你的消息了'})==='rel',
@@ -8573,8 +8573,10 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
     const m=src212.match(/\/\*REQ-START\*\/([\s\S]*?)\/\*REQ-END\*\//);
     ok(!!m&&m[1].indexOf('w.rng')<0&&m[1].indexOf('Math.random')<0,
        '第 212 单·结构：委托段零骰子（`w.rng`／`Math.random` 一处都没有）');
-    ok((src212.match(/ag\.req\.ok=true/g)||[]).length===2,
-       '第 212 单·结构：两条发送路径（预设句／自写）各一处"发送即答应"（实测 '+(src212.match(/ag\.req\.ok=true/g)||[]).length+' 处）');
+    ok((src212.match(/ag\.req\.ok=true/g)||[]).length===2
+       &&(src212.match(/q\.ok=true; q\.pick=i;/g)||[]).length===1,
+       '第 212／232 单·结构：三条"答应／回主意"路径各一处（预设句 2 处＋自写；回主意第 232 单补——实测 '
+       +(src212.match(/ag\.req\.ok=true/g)||[]).length+'＋'+(src212.match(/q\.ok=true; q\.pick=i;/g)||[]).length+'）');
     ok(/sms:'ask'/.test(src212)&&/e\.sms==='ask'/.test(src212),
        '第 212 单·结构：请求走 `ask` 子类（与"留言"分开账），未读角标已认它');
   }
@@ -8621,6 +8623,75 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
     const w=Sim.makeWorld(424242); Sim.sendMessage(w,'a1','cheer'); let 有=0;
     for(let d=1;d<=140;d++){ w.t=(d-1)*1440+9*60; if(Sim.reqOfDay(w)) 有++; }
     ok(有>=40&&有<=50,'第 212 单·行为：140 天里 '+有+' 天有委托（≈1/3；日期驱动、零 rng）');
+  }
+}
+
+// ═══ 第 232 单·委托·C「替他拿主意」（两选一；照 212 单委托链＋193／195 调研方案）═════════════
+/* 被验的是生产源码与真值：
+     ① 结构：`REQ_PICK` 四类各 2 题（每题 2 选项＋2 套结局线，日志前缀固定"忙完了："）；
+        `reqOfDay` 一处定"型与题号"；`回主意` 一处判定（窗口／资格／额度三闸，不过即拒）；
+     ② 行为：约 2/3 的委托是两选一型；回主意＝额度 -1＋当天第一条 +1＋`pick` 记上＋一条
+        `sms:'pick'` 日志；20:00 结算走**对应选项**的结局线；只回话不点按钮 ⇒ 兜底句（不埋怨）；
+        不点不回 ⇒ 什么都不发生；默认档（没人回信）30 天一条委托都不发；
+     ③ 反向自查·拦得住：把 `pick` 抹掉 ⇒ 结局线从"对应选项"塌成兜底句（不是恒绿）。 */
+{
+  const fs232=require('fs'), path232=require('path');
+  const src232=fs232.readFileSync(path232.resolve(__dirname,'city-life-framework.html'),'utf8');
+  ok(['work','clerk','trade','write'].every(k=>{
+       const t=(Sim.REQ_PICK||{})[k];
+       return Array.isArray(t)&&t.length===2&&t.every(x=>x&&typeof x.q==='string'&&x.q.length>4
+         &&Array.isArray(x.a)&&x.a.length===2&&x.a.every(s=>typeof s==='string'&&s.length>0)
+         &&Array.isArray(x.out)&&x.out.length===2&&x.out.every(o=>Array.isArray(o)&&o.length===2
+           &&String(o[0]).indexOf('忙完了：')===0&&String(o[1]).length>2));
+     })&&typeof Sim.REQ_PICK_SELF==='string'&&Sim.REQ_PICK_SELF.indexOf('忙完了：')===0,
+     '第 232 单·结构：`REQ_PICK` 四类各 2 题（2 选项＋2 套结局线）＋兜底句一处定义');
+  ok(/const 型=\(\(h>>>7\)%3===0\)\?'ask':'pick';/.test(src232)&&/qi:\(h>>>11\)%表\.length/.test(src232)
+     &&(src232.match(/function 回主意\(/g)||[]).length===1,
+     '第 232 单·结构：型与题号一处定（`reqOfDay`）＋`回主意` 一处判定');
+  ok(/if\(q\.day!==day\|\|q\.done\|\|q\.kind!=='pick'\|\|q\.pick!=null\) return false;/.test(src232)
+     &&/if\(w\.credits<=0\) return false;/.test(src232),
+     '第 232 单·结构：回主意的三道闸（窗口／资格／额度）写在入口，不过即拒');
+  {
+    const w=Sim.makeWorld(20260803), ag=w.agents[0];
+    w.t=10*1440+10*60; ag.relYou={v:4,day:0};
+    ag.req={day:PURE.dayOf(w.t), ok:false, done:false, kind:'pick', qi:1};
+    const 题=(Sim.REQ_PICK[ag.workKind]||Sim.REQ_PICK.work)[1];
+    const c0=w.credits, v0=Sim.relYouGet(ag), n0=w.log.length;
+    const 好=Sim.回主意(w,'a1',1);
+    ok(好&&w.credits===c0-1&&Sim.relYouGet(ag)===v0+1&&ag.req.pick===1&&ag.req.ok===true
+       &&w.log.length===n0+1&&w.log[w.log.length-1].sms==='pick',
+       '第 232 单·行为：回主意＝额度 -1（'+c0+'→'+w.credits+'）＋当天第一条 +1（'+v0+'→'+Sim.relYouGet(ag)+'）＋`pick` 记上＋一条 sms:pick 日志');
+    ok(Sim.回主意(w,'a1',0)===false,'第 232 单·行为：同一天再点一枚被拒（`pick` 已记上——一天只拿一次主意）');
+    w.t=(PURE.dayOf(w.t)-1)*1440+20*60; Sim.reqStep(w);
+    const 线=w.log.filter(e=>e.agent==='a1'&&String(e.text).indexOf('忙完了：')===0).slice(-1)[0];
+    ok(!!线&&线.text===题.out[1][0]&&Sim.relYouGet(ag)===v0+2,
+       '第 232 单·行为：20:00 结算走**对应选项**的结局线（「'+((线&&线.text)||'—').slice(0,20)+'…」）＋谢礼 +1');
+  }
+  {
+    const w=Sim.makeWorld(20260803), ag=w.agents[0];
+    w.t=10*1440+10*60; ag.relYou={v:4,day:0};
+    ag.req={day:PURE.dayOf(w.t), ok:true, done:false, kind:'pick', qi:0, pick:null};
+    w.t=(PURE.dayOf(w.t)-1)*1440+20*60; Sim.reqStep(w);
+    const 线=w.log.filter(e=>e.agent==='a1'&&String(e.text).indexOf('忙完了：')===0).slice(-1)[0];
+    ok(!!线&&线.text===Sim.REQ_PICK_SELF,'第 232 单·行为（只回话没点按钮的对照）：走兜底句，不埋怨');
+  }
+  {
+    const 跑=(留住)=>{ const w=Sim.makeWorld(20260803), ag=w.agents[0];
+      w.t=10*1440+10*60; ag.relYou={v:4,day:0};
+      ag.req={day:PURE.dayOf(w.t), ok:true, done:false, kind:'pick', qi:1, pick:留住?1:null};
+      w.t=(PURE.dayOf(w.t)-1)*1440+20*60; Sim.reqStep(w);
+      const e=w.log.filter(x=>x.agent==='a1'&&String(x.text).indexOf('忙完了：')===0).slice(-1)[0];
+      return e?e.text:''; };
+    const 有=跑(true), 无=跑(false);
+    const 期望=(Sim.REQ_PICK[Sim.makeWorld(20260803).agents[0].workKind]||Sim.REQ_PICK.work)[1].out[1][0];
+    ok(有===期望&&无===Sim.REQ_PICK_SELF,
+       '第 232 单·反向自查·拦得住：抹掉 `pick` ⇒ 结局线从「对应选项」塌成兜底句（不是恒绿）');
+  }
+  {
+    const w=Sim.makeWorld(20260803); let n=0;
+    for(let i=0;i<30*144;i++) Sim.step(w,10);
+    for(const e of w.log) if(e.type==='player'&&e.sms==='ask') n++;
+    ok(n===0,'第 232 单·行为（默认档）：没人回信的世界 30 天一条委托都不发（世界轨迹零扰动）');
   }
 }
 
@@ -10120,7 +10191,7 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   ok(恒绿===0,'第 66 单·闸二：`ok` 第一参数写死 true 的**读数型假断言**为 0 条（实测 '+恒绿+'；读数一律走 `读数()`）');
   // 闸三 · 反向自查登记（防整条被删）
   const 登记=['第 48 单','第 49 单','第 51 单','第 52 单','第 53 单','第 54 单','第 56 单','第 57 单',
-               '第 58 单','第 59 单','第 62 单','第 63 单','第 64 单','第 65 单','第 67 单','第 70 单','第 71 单','第 72 单','第 73 单','第 74 单','第 75 单','第 76 单','第 77 单','第 79 单','第 80 单','第 81 单','第 84 单','第 85 单','第 87 单','第 88 单','第 90 单','第 91 单','第 92 单','第 93 单','第 94 单','第 95 单','第 96 单','第 97 单','第 98 单','第 99 单','第 100 单','第 102 单','第 103 单','第 106 单','第 107 单','第 109 单','第 110 单','第 111 单','第 112 单','第 113 单','第 115 单','第 116 单','第 117 单','第 118 单','第 119 单','第 120 单','第 121 单','第 123 单','第 124 单','第 125 单','第 126 单','第 129 单','第 131 单','第 135 单','第 136 单','第 139 单','第 142 单','第 143 单','第 144 单','第 145 单','第 148 单','第 149 单','第 150 单','第 151 单','第 152 单','第 156 单','第 157 单','第 158 单','第 204 单','第 205 单','第 161 单','第 163 单','第 164 单','第 165 单','第 166 单','第 167 单','第 168 单','第 169 单','第 170 单','第 171 单','第 172 单','第 174 单','第 175 单','第 177 单','第 179 单','第 180 单','第 183 单','第 184 单','第 185 单','第 186 单','第 188 单','第 189 单','第 190 单','第 192 单','第 198 单','第 199 单','第 201 单','第 202 单','第 206 单','第 207 单','第 208 单','第 210 单','第 211 单','第 212 单','第 213 单','第 214 单','第 215 单','第 216 单','第 217 单','第 220 单','第 221 单','第 224 单','第 225 单','第 227 单','第 229 单',
+               '第 58 单','第 59 单','第 62 单','第 63 单','第 64 单','第 65 单','第 67 单','第 70 单','第 71 单','第 72 单','第 73 单','第 74 单','第 75 单','第 76 单','第 77 单','第 79 单','第 80 单','第 81 单','第 84 单','第 85 单','第 87 单','第 88 单','第 90 单','第 91 单','第 92 单','第 93 单','第 94 单','第 95 单','第 96 单','第 97 单','第 98 单','第 99 单','第 100 单','第 102 单','第 103 单','第 106 单','第 107 单','第 109 单','第 110 单','第 111 单','第 112 单','第 113 单','第 115 单','第 116 单','第 117 单','第 118 单','第 119 单','第 120 单','第 121 单','第 123 单','第 124 单','第 125 单','第 126 单','第 129 单','第 131 单','第 135 单','第 136 单','第 139 单','第 142 单','第 143 单','第 144 单','第 145 单','第 148 单','第 149 单','第 150 单','第 151 单','第 152 单','第 156 单','第 157 单','第 158 单','第 204 单','第 205 单','第 161 单','第 163 单','第 164 单','第 165 单','第 166 单','第 167 单','第 168 单','第 169 单','第 170 单','第 171 单','第 172 单','第 174 单','第 175 单','第 177 单','第 179 单','第 180 单','第 183 单','第 184 单','第 185 单','第 186 单','第 188 单','第 189 单','第 190 单','第 192 单','第 198 单','第 199 单','第 201 单','第 202 单','第 206 单','第 207 单','第 208 单','第 210 单','第 211 单','第 212 单','第 213 单','第 214 单','第 215 单','第 216 单','第 217 单','第 220 单','第 221 单','第 224 单','第 225 单','第 227 单','第 229 单','第 232 单',
               '闸四','闸五','闸十','闸十一','闸十二'];
   const 实有=[...new Set((自源.match(/(第 \d+ 单|闸[一二三四五六七八九十]+)·反向自查/g)||[])
                             .map(x=>x.replace('·反向自查','')))];

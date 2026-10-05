@@ -339,6 +339,13 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
 .call-flow>.ta{ justify-self:start; background:var(--bg1); }
 .call-flow>.sys{ justify-self:center; border:none; color:var(--ink-faint); font-size:.8rem; padding:.2em; text-align:center; }
 .call-opts{ display:flex; flex-wrap:wrap; gap:var(--sp2); }
+/* 第 232 单·委托·C（替他拿主意）：短信页那块"他问你"的卡片 */
+.ph-ask{ display:grid; gap:var(--sp2); margin-top:var(--sp2); padding:.55em .65em; border:1px solid var(--line);
+  border-left:3px solid var(--gold-deep); border-radius:var(--r); background:var(--bg2); }
+.ph-ask[hidden]{ display:none; }
+.ph-ask .t{ font-size:.86rem; overflow-wrap:anywhere; }
+.ph-ask .row{ flex-wrap:wrap; }
+.ph-ask .tip{ font-size:.72rem; color:var(--ink-faint); }
 #app.reduce-motion .dlg{ animation:none; }
 
 /* 滚动条低调化 */
@@ -434,6 +441,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       <p class="faint" style="font-size:.74rem;margin:.2rem 0 .6rem">短信是输入不是指令：TA 会照自己的状态消化，回不回、怎么回都看 TA（心里话去城市日志偷看）。每天 0:00 重置额度。</p>
       <h2 class="sec">收件人</h2>
       <div class="wrapline" id="ph-agents"></div>
+      <div id="ph-ask" class="ph-ask" hidden></div>
       <h2 class="sec">快捷内容</h2>
       <div id="ph-msgs"></div>
       <div class="row" style="margin-top:var(--sp2)">
@@ -536,7 +544,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v178</span>
+<span class="num dim" id="set-build">v179</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -2358,6 +2366,49 @@ const REQ_DONE={    // 答应之后：他做的那件小事（前缀固定"忙�
   trade:['忙完了：去夜市门口看了一眼——开着，人还不少。','问了半天，最后还是自己走一趟最稳。'],
   write:['忙完了：晚上没开电脑，随手翻了一晚上旧笔记。','想说的东西，翻着翻着就自己出来了。'],
 };
+/* ---------- 第 232 单·委托·C「替他拿主意」（细案见 `docs/规划/居民委托方案_v2.md`）----------
+   出处（2026-10-05 均 HTTP 200，逐字见 `docs/规划/借鉴调研-2026-10-05-居民委托二期.md`）：
+     · 星露谷中文 wiki·任务：最轻的帮忙形态＋「接受后即使没有完成也不会有惩罚」；
+     · 动森·Friendship：「+1–3 points — completing a favor」——完成一次帮忙 +1~3。
+   口径：委托里**约 2/3** 变成"两选一"型——他问一句、短信页出现两枚按钮；点一枚＝把你的主意
+   发给他（照"发信"的既有口径：占 1 条额度、当天第一条接触 +1、日志照记）；今晚他照你的选择
+   做事（每题两套结局线）；**没点也没回＝什么都不发生**（不夺走）；回了话但没点按钮 ⇒ 走兜底
+   那句（"按自己心思定了"，不埋怨）。零 rng、零新抽签；旧档 `req` 缺 `kind` 一律当 A 型。 */
+const REQ_PICK={
+  work:[
+    {q:'这个周末——补觉，还是去江边走走？', a:['补个够','去江边'],
+     out:[['忙完了：一觉睡到中午，起来把屋子收拾了一遍。','睡够了，人也缓过来了。'],
+          ['忙完了：去江边走了半下午，回来路上买了杯热的。','风一吹，脑子里那点乱账散了。']]},
+    {q:'手里这段代码——今晚硬着头皮改完，还是先放放？', a:['今晚改完','先放一放'],
+     out:[['忙完了：咬着牙把那段改完，居然通了。','有些坎，就是得当场过。'],
+          ['忙完了：把电脑一合，去阳台站了会儿。','放一放，明天看它就没那么难。']]},
+  ],
+  clerk:[
+    {q:'店里新到的关东煮——先尝一口，还是留到周末？', a:['先尝','留到周末'],
+     out:[['忙完了：趁热尝了一碗，眉毛都热开了。','好东西不等人。'],
+          ['忙完了：忍住没动，把那一格留了出来。','有点盼头，一周都好过。']]},
+    {q:'隔壁铺子喊我搭把手——过去帮，还是守着自己的摊？', a:['去搭把手','守着自己的摊'],
+     out:[['忙完了：过去搭了把手，人家塞了两个橘子。','帮人一把，都是顺手的事。'],
+          ['忙完了：守着自己那摊，把货架重新摆了一遍。','各守各的，心里踏实。']]},
+  ],
+  trade:[
+    {q:'这周的账——先紧一紧，还是照旧过？', a:['紧一紧','照旧过'],
+     out:[['忙完了：把能不花的都掐了，账本好看了一截。','心里那本账，先理顺再说。'],
+          ['忙完了：该吃的该用的照旧，没委屈自己。','日子是过出来的，不是攒出来的。']]},
+    {q:'有人来搭伙做笔小买卖——应，还是先看看？', a:['应下来','先看看'],
+     out:[['忙完了：把搭伙的事应下了，谈得还行。','该出手时不含糊。'],
+          ['忙完了：没急着应，先托人打听了一圈。','稳一点，总没错。']]},
+  ],
+  write:[
+    {q:'今晚——先给稿子收尾，还是写心里最想写的那段？', a:['先收尾','写心里那段'],
+     out:[['忙完了：把稿子收了尾，交出去一身轻。','正事干完，才敢想别的。'],
+          ['忙完了：先写了心里那段，越写越顺。','心里那段，早晚是要写的。']]},
+    {q:'编辑催得紧——回一句"明天给"，还是今晚就熬一稿？', a:['明天给','今晚熬一稿'],
+     out:[['忙完了：回了句明天给，今晚按时睡了。','实话说明天给，比虚的加班强。'],
+          ['忙完了：熬了一稿出来，比预想的顺。','夜里写东西，笔头是热的。']]},
+  ],
+};
+const REQ_PICK_SELF='忙完了：把你说的话在心里过了一遍，最后按自己的心思定了。';   // 回了话但没点按钮：不埋怨
 // 今天的委托（没有就 null）：日号散列＋两道"别添乱"——零 rng
 function reqOfDay(w){
   const day=PURE.dayOf(w.t), h=(day*2654435761)>>>0;
@@ -2369,15 +2420,25 @@ function reqOfDay(w){
   if(!合格.length) return null;
   const ag=合格[(h>>>5)%合格.length]; if(!ag) return null;
   if(inBirthday(w,ag)) return null;          // 他生日当天不开口求人
-  return {day, ag};
+  const 型=((h>>>7)%3===0)?'ask':'pick';     // 第 232 单：约 2/3 是"两选一"型；一处可调（先量后定标）
+  const 表=REQ_PICK[ag.workKind]||REQ_PICK.work;
+  return {day, ag, 型, qi:(h>>>11)%表.length};
 }
 function reqStep(w){
   const mod=PURE.minuteOfDay(w.t), day=PURE.dayOf(w.t);
   if(mod===REQ.at){
     const r=reqOfDay(w);
     if(r && !(r.ag.req && r.ag.req.day===day)){
-      const 句=REQ_LINES[r.ag.workKind]||REQ_LINES.work;
-      r.ag.req={day, ok:false, done:false};
+      let 句, req;
+      if(r.型==='pick'){
+        const 表=REQ_PICK[r.ag.workKind]||REQ_PICK.work, 题=表[r.qi]||表[0];
+        句=题.q;
+        req={day, ok:false, done:false, kind:'pick', qi:r.qi};
+      } else {
+        句=REQ_LINES[r.ag.workKind]||REQ_LINES.work;
+        req={day, ok:false, done:false, kind:'ask'};
+      }
+      r.ag.req=req;
       /* 子类单开 `ask`（不是 `note`）：跟"他给你留了什么话"分开账——留言那本账（第 76／77／98 单）
          的门禁按"条数"判，混进来会串。短信页/未读角标两处已认 `ask`（渲染按 type 走，无需改）。 */
       pushLog(w,{type:'player',sms:'ask',agent:r.ag.id,name:r.ag.name,text:'有事想问你：'+句,thought:''});
@@ -2392,13 +2453,40 @@ function reqStep(w){
       if(!q || typeof q!=='object' || Array.isArray(q) || q.day!==day || q.done) continue;
       q.done=true;
       if(!q.ok) continue;                       // 没回 ⇒ 什么都不发生（不夺走）
-      const 句=REQ_DONE[ag.workKind]||REQ_DONE.work;
+      let 句=null;
+      if(q.kind==='pick'){                      // 第 232 单：点了按钮走对应结局线；只回了话走兜底那句
+        if(q.pick!=null){
+          const 表=REQ_PICK[ag.workKind]||REQ_PICK.work, 题=表[q.qi];
+          if(题&&题.out&&题.out[q.pick]) 句=题.out[q.pick];
+        }
+        if(!句) 句=[REQ_PICK_SELF,'有人商量，定起来就快。'];
+      }
+      if(!句) 句=REQ_DONE[ag.workKind]||REQ_DONE.work;
       logAct(w,ag,句[0],句[1]);
       /* 第 215 单·委托办完也进剪辑：落下事件锚（照第 73／211 单先例），摘原文引的就是那条 */
       ag.lastReq={t:w.t, tx:句[0]};
       谢礼(ag, w);                              // 你在他心里 +1（只加不减；每天至多一件由触发保证）
     }
   }
+}
+/* 第 232 单·委托·C：点一枚按钮＝把你的主意发给他（照"发信"的既有口径——额度、当天第一条 +1、
+   日志、`ok` 一处不落；额外只记一个 `pick` 序号）。窗口/资格/额度任一不满足即拒绝，绝不半途改账。 */
+function 回主意(w, agId, idx){
+  const day=PURE.dayOf(w.t);
+  const ag=(w.agents||[]).find(a=>a.id===agId);
+  const q=ag&&ag.req;
+  if(!ag||!q||typeof q!=='object'||Array.isArray(q)) return false;
+  if(q.day!==day||q.done||q.kind!=='pick'||q.pick!=null) return false;
+  const 表=REQ_PICK[ag.workKind]||REQ_PICK.work, 题=表[q.qi];
+  const i=(idx|0);
+  if(!题||i<0||!题.a[i]) return false;
+  if(w.credits<=0) return false;              // 与短信同一道额度门
+  w.credits--;
+  q.ok=true; q.pick=i;
+  relYouBump(w, ag, false);                   // 当天第一条接触 +1（与短信同一把去重锁）
+  pushLog(w,{type:'player',sms:'pick',name:'你',
+    text:'给'+ag.name+'拿了主意：「'+题.a[i]+'」',thought:'剩余 ✉×'+w.credits});
+  return true;
 }
 /* 第 212 单·委托的"+1"：与 `relYouBump` 同一笔账、同一次升档外显，但不吃"一天一次"的闸——
    那闸管的是"你发一条消息 +1"；委托是"你回了他才成"的另一件事，各记各的。 */
@@ -4506,7 +4594,7 @@ const Sim={makeWorld, step, sendMessage, sendCustomMessage, decide, MSGS, ANCHOR
   MISS, missStep,   // 第 74 单·惦记（门禁按真值读：周日 18:00、一周零来信才留一条）
   MISS_NOTE, missNoteOf,   // 第 76 单·居民的留言池（门禁按真值读：按周号取句、不摇 rng）
   NOTE, NOTE_LINES, NOTE_LINES_NEAR, 贴己池, noteStep,   // 第 77／121 单·别的时候也开口（门禁按真值读：每天 21:00、一天一句；③期按档位换池）
-  REQ, REQ_LINES, REQ_DONE, reqOfDay, reqStep,   // 第 212 单·居民委托（门禁按真值读：一天至多一件、零 rng）
+  REQ, REQ_LINES, REQ_DONE, REQ_PICK, REQ_PICK_SELF, reqOfDay, reqStep, 回主意,   // 第 212／232 单·居民委托 A／C（门禁按真值读：一天至多一件、零 rng；两选一型与"回主意"一处判定）
   公告内容, 公告有活,   // 第 216 单·云港公告栏（门禁按真值读：纯读既有系统、零 rng）
   贴留言, boardStep, BOARD_READ, BOARD_SPOTS,   // 第 217 单·玩家留言进板（门禁按真值读：一贴一读、零 rng）
   闲话今, 闲话步, GOSSIP, GOSSIP_SAY, GOSSIP_BACK,   // 第 220 单·邻里闲话（门禁按真值读：约 1/3 天、零 rng）
@@ -5359,6 +5447,23 @@ function renderPhone(){
   /* 第 229 单·电话（第 1 层）：与短信同一道额度门；提示写清"打给谁、占几条" */
   if($('#ph-call')) $('#ph-call').disabled = w.credits<=0;
   if($('#ph-call-hint')){ const 收=(w.agents||[]).find(a=>a.id===state.selected); $('#ph-call-hint').textContent=收?('打给 '+收.name+'；接通占 1 条额度（打不通／被拒不算）'):''; }
+  /* 第 232 单·委托·C：他问你两选一——选中他时把题面与两枚按钮摆出来（已回则显示回执） */
+  const 问卡=$('#ph-ask');
+  if(问卡){
+    const 收=(w.agents||[]).find(a=>a.id===state.selected);
+    const q=收&&收.req, 天=PURE.dayOf(w.t);
+    const 开=q&&typeof q==='object'&&!Array.isArray(q)&&q.kind==='pick'&&q.day===天&&!q.done;
+    const 表=收?(Sim.REQ_PICK[收.workKind]||Sim.REQ_PICK.work):null;
+    const 题=(开&&表)?表[q.qi]:null;
+    if(开&&题){
+      问卡.hidden=false;
+      问卡.innerHTML='<div class="t"><b>他问你：</b>'+esc(题.q)+'</div>'
+        +((q.pick!=null)
+          ? '<div class="tip">已回主意：「'+esc(题.a[q.pick])+'」——晚上见结果。</div>'
+          : '<div class="row">'+题.a.map((a,i)=>'<button class="btn small gold" data-fx data-pick="'+i+'">'+esc(a)+'</button>').join('')+'</div>'
+            +'<div class="tip">点一枚＝把你的主意发给他（占 1 条额度）；不点也行——晚上他照自己的心思定。</div>');
+    } else { 问卡.hidden=true; 问卡.innerHTML=''; }
+  }
   $('#ph-history').innerHTML=phoneHistoryHTML(w, state.selected);   // 第 75 单：每帧照"这个人"的往来刷
   syncLLMStat();
 }
@@ -5419,6 +5524,11 @@ function startCall(){
   画();
 }
 $('#ph-call').addEventListener('click', startCall);
+/* 第 232 单·委托·C：点一枚按钮＝回主意（走 SIM 一处判定；成功即重渲染＋存档） */
+$('#ph-ask').addEventListener('click',e=>{
+  const b=e.target.closest('button[data-pick]'); if(!b) return;
+  if(Sim.回主意(state.world, state.selected, +b.dataset.pick)){ renderPhone(); saveNow(); }
+});
 /* ---------- 第 80 单·未读小圆点（"有新回音/留言"要看得出来）----------
    第 75 单把往来记录接上了，第 76／77 单让居民也会留话——可**新回音不会提示你**（那条已登记为欠账）。
    本单补一个角标：**水位之后**的往来条数 >0 就在"短信"页签上点一个小圆点；进那一页即清零。
