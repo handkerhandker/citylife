@@ -1,10 +1,13 @@
-// 第 232 单·委托·C「替他拿主意」探针（真浏览器；只读诊断，进冒烟档 2）
+// 第 232／233 单·委托·C「替他拿主意」＋B「捎句话」探针（真浏览器；只读诊断，进冒烟档 2）
 //
 // 口径：① 摆一个"两选一"委托（kind:'pick'）⇒ 短信页出现题面与两枚按钮；
 //      ② 点第二枚 ⇒ 额度 -1、当天第一条 +1、`req.pick=1`、多一条 `sms:'pick'` 日志、
 //         卡片变成"已回主意「…」"；③ 推到 20:00 步进一次 ⇒ 结算走**对应选项**的结局线
 //         （逐字等于 REQ_PICK[工种][qi].out[1][0]）＋谢礼 +1；
-//      ④ 对照（不点）⇒ 20:00 后 `req.done` 但 0 条"忙完了："、关系不动；⑤ 全程零 pageerror。
+//      ④ 对照（不点）⇒ 20:00 后 `req.done` 但 0 条"忙完了："、关系不动；
+//      ⑤ B（第 233 单）：委托人页显示"还没带到"；在收件人页点「把话带到」＝额度 -1＋收件人 +1＋
+//         `sent`＋一条 sms:deliver 日志；20:00 结算 ⇒ 委托人落"话带到了"＋谢礼 +2（两头都记）；
+//      ⑥ 全程零 pageerror。
 // --改前=<git-ref>：对第 232 单之前的版本跑同一套（短信页没有这块卡片）⇒ 点不出、判红。
 // 用法：node tools/req-audit/probe.mjs [输出目录] [--改前=<git-ref>]  （要 CITYLIFE_CHROME）
 import http from 'http';
@@ -67,14 +70,17 @@ await page.waitForTimeout(300);
 
 const 卡文 = () => page.evaluate(() => {
   const el = document.querySelector('#ph-ask');
-  return el ? { hidden: el.hidden, 文: el.textContent.replace(/\s+/g, ' ').trim(), 钮: el.querySelectorAll('[data-pick]').length } : null;
+  return el ? { hidden: el.hidden, 文: el.textContent.replace(/\s+/g, ' ').trim(),
+                钮: el.querySelectorAll('[data-pick]').length, 捎钮: el.querySelectorAll('[data-deliver]').length } : null;
 });
 const 读数 = () => page.evaluate(() => {
   const w = __pv.state.world, S = __pv.Sim;
   const ag = w.agents.find(a => a.id === 'a1'), a2 = w.agents.find(a => a.id === 'a2');
   return { credits: w.credits, 关1: S.relYouGet(ag), 关2: S.relYouGet(a2),
            拍1: ag.req && ag.req.pick, 完1: ag.req && ag.req.done, 完2: a2.req && a2.req.done,
+           捎sent: !!(ag.req && ag.req.sent),
            pick日志: w.log.filter(e => e.sms === 'pick').length,
+           deliver日志: w.log.filter(e => e.sms === 'deliver').length,
            甲忙: w.log.filter(e => e.agent === 'a1' && String(e.text).indexOf('忙完了：') === 0).map(e => e.text),
            乙忙: w.log.filter(e => e.agent === 'a2' && String(e.text).indexOf('忙完了：') === 0).length };
 });
@@ -112,6 +118,47 @@ const 结 = await 读数();
 记(结.完2 === true && 结.乙忙 === 0 && 结.关2 === 前.关2,
    '不点的对照：`req` 静静收口、0 条"忙完了："、关系不动 ⇒ 错过零后果');
 await page.screenshot({ path: path.join(OUT, '委托-已回执.png') });
+
+// ⑦ 委托·B（捎句话）：a1 托你把一句话带给 a2
+await page.evaluate(() => {
+  const w = __pv.state.world, P = __pv.PURE;
+  w.speed = 0; w.credits = 3;
+  const 天 = P.dayOf(w.t);
+  const a1 = w.agents.find(a => a.id === 'a1');
+  a1.req = { day: 天, ok: false, done: false, kind: 'deliver', to: 'a2', line: '周末我多半要加班，别等我一起吃饭。' };
+  w.agents.find(a => a.id === 'a2').relYou = { v: 4, day: 0 };
+});
+await page.click('#ph-agents [data-to="a1"]'); await page.waitForTimeout(200);
+const 甲页 = await 卡文();
+记(甲页 && !甲页.hidden && 甲页.文.indexOf('还没带到') >= 0, '委托人那一页显示"还没带到"');
+await page.click('#ph-agents [data-to="a2"]'); await page.waitForTimeout(200);
+const 捎卡 = await 卡文();
+const 高亮 = await page.evaluate(() => ({
+  a1: document.querySelector('#ph-agents [data-to="a1"]').classList.contains('gold'),
+  a2: document.querySelector('#ph-agents [data-to="a2"]').classList.contains('gold'),
+}));
+记(高亮.a2 && !高亮.a1, '选中收件人时高亮跟着走（a2 亮、a1 不亮）');
+if (!捎卡 || 捎卡.hidden || 捎卡.捎钮 !== 1) {
+  记(false, '在收件人页出现"捎句话"卡片与「把话带到」按钮（本版没有——第 233 单之前的版本即此形态）');
+} else {
+  记(true, '在收件人页出现"捎句话"卡片与「把话带到」按钮');
+  await page.screenshot({ path: path.join(OUT, '委托-捎句话.png') });
+  const 前B = await 读数();
+  await page.click('#ph-ask [data-deliver="1"]'); await page.waitForTimeout(250);
+  const 后B = await 读数();
+  记(后B.credits === 前B.credits - 1 && 后B.关2 === 前B.关2 + 1 && 后B.捎sent === true && 后B.deliver日志 === 前B.deliver日志 + 1,
+     '点「把话带到」：额度 ' + 前B.credits + '→' + 后B.credits + '、收件人关系 ' + 前B.关2 + '→' + 后B.关2 + '、`sent`、多一条 sms:deliver');
+  const B期望 = await page.evaluate(() => {
+    const w = __pv.state.world, S = __pv.Sim, P = __pv.PURE;
+    w.t = (P.dayOf(w.t) - 1) * 1440 + 20 * 60 - 10;
+    S.step(w, 10);
+    return S.REQ_DELIVER_DONE[0];
+  });
+  await page.waitForTimeout(200);
+  const 结B = await 读数();
+  记(结B.甲忙.length >= 1 && 结B.甲忙[结B.甲忙.length - 1] === B期望 && 结B.关1 === 前B.关1 + 2,
+     '20:00 结算：委托人落"话带到了"＋谢礼 +2（两头都记）');
+}
 
 记(错.length === 0, '全程零 pageerror（实测 ' + 错.length + '）');
 for (const x of 判) console.log((x.过 ? ' ok ' : ' FAIL') + ' ' + x.名);

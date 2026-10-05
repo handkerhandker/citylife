@@ -6537,10 +6537,10 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   const fs=require('fs'), path=require('path');
   const src=fs.readFileSync(path.resolve(__dirname,'city-life-framework.html'),'utf8');
   ok(/const REL_YOU=\{ bump:1, bdayBump:3, coldAfter:3, coldLose:1, coldLine:5 \};/.test(src)
-     &&(src.match(/relYouBump\(/g)||[]).length===5
+     &&(src.match(/relYouBump\(/g)||[]).length===6
      &&(src.match(/relYouStep\(w\)/g)||[]).length===2
      &&(src.match(/relYouText\(/g)||[]).length===4,
-     '第 115 单·结构：`REL_YOU` 一处定义；`relYouBump(` 5 次（定义＋四处接触口：短信表／自写短信／通话〔第 229 单〕／回主意〔第 232 单〕）；`relYouStep(w)` 2 次；'
+     '第 115 单·结构：`REL_YOU` 一处定义；`relYouBump(` 6 次（定义＋五处接触口：短信表／自写短信／通话〔第 229 单〕／回主意〔第 232 单〕／带话〔第 233 单〕）；`relYouStep(w)` 2 次；'
      +'`relYouText` 4 次（定义＋角色卡＋角色详情＋往来记录）');
   ok(Sim.clipCat({type:'act',text:'关系：和你处成了「熟」'})==='rel'
      &&Sim.clipCat({type:'act',text:'关系：好几天没收到你的消息了'})==='rel',
@@ -8587,7 +8587,9 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
       const w=Sim.makeWorld(20260803);
       Sim.sendMessage(w,'a1','cheer');       // 建立"有来往"（委托只在有账的人里挑——第 118 单先例）
       let 日=0, r=null;
-      for(let d=1;d<=30;d++){ w.t=(d-1)*1440+9*60; const x=Sim.reqOfDay(w); if(x){ 日=d; r=x; break; } }
+      /* 第 233 单：三型里"捎话"型不吃"回一句即办成"那套（要真的带到）——本块专门验 A／C 两型，
+         故跳过 deliver 型日；捎话型由第 233 单块专测。 */
+      for(let d=1;d<=30;d++){ w.t=(d-1)*1440+9*60; const x=Sim.reqOfDay(w); if(x&&x.型!=='deliver'){ 日=d; r=x; break; } }
       if(!r) return {日:0, id:'', 请求:null, 回:null, 旧:0, 新:0, 忙:null, req:null, noteDay:null};
       w.t=(日-1)*1440+8*60+50;
       let 已=w.lidSeq, 请求=null;
@@ -8645,9 +8647,9 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
            &&String(o[0]).indexOf('忙完了：')===0&&String(o[1]).length>2));
      })&&typeof Sim.REQ_PICK_SELF==='string'&&Sim.REQ_PICK_SELF.indexOf('忙完了：')===0,
      '第 232 单·结构：`REQ_PICK` 四类各 2 题（2 选项＋2 套结局线）＋兜底句一处定义');
-  ok(/const 型=\(\(h>>>7\)%3===0\)\?'ask':'pick';/.test(src232)&&/qi:\(h>>>11\)%表\.length/.test(src232)
+  ok(/const 型=\['ask','pick','deliver'\]\[\(h>>>7\)%3\];/.test(src232)&&/qi:\(h>>>11\)%表\.length/.test(src232)
      &&(src232.match(/function 回主意\(/g)||[]).length===1,
-     '第 232 单·结构：型与题号一处定（`reqOfDay`）＋`回主意` 一处判定');
+     '第 232／233 单·结构：型与题号一处定（`reqOfDay`；三型含两选一）＋`回主意` 一处判定');
   ok(/if\(q\.day!==day\|\|q\.done\|\|q\.kind!=='pick'\|\|q\.pick!=null\) return false;/.test(src232)
      &&/if\(w\.credits<=0\) return false;/.test(src232),
      '第 232 单·结构：回主意的三道闸（窗口／资格／额度）写在入口，不过即拒');
@@ -8692,6 +8694,81 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
     for(let i=0;i<30*144;i++) Sim.step(w,10);
     for(const e of w.log) if(e.type==='player'&&e.sms==='ask') n++;
     ok(n===0,'第 232 单·行为（默认档）：没人回信的世界 30 天一条委托都不发（世界轨迹零扰动）');
+  }
+}
+
+// ═══ 第 233 单·委托·B「捎句话」（两头都记；照 232 委托链＋动森 delivery 先例）═══════════════
+/* 被验的是生产源码与真值：
+     ① 结构：`REQ_DELIVER` 四类各 2 句＋`REQ_DELIVER_DONE` 一处定义；`reqOfDay` 三型各约 1/3；
+        `带话` 一处判定（窗口／额度，不过即拒）；结算的 deliver 分支只认 `sent`、谢礼 +2；
+     ② 行为：带到＝额度 -1＋**收件人**当天第一条 +1＋`sent` 记上＋一条挂收件人的 `sms:'deliver'`
+        日志；20:00 结算 ⇒ 委托人落"忙完了：话带到了"＋谢礼 +2（两头都记）；没带到（对照）⇒
+        0 条"忙完了"、关系不动、静静收口；只有一人有来往时捎话日退化成 A 型（不硬凑）；
+     ③ 反向自查·拦得住：把 `sent` 抹掉 ⇒ 结算不落字（上面那条不是恒绿）。 */
+{
+  const fs233=require('fs'), path233=require('path');
+  const src233=fs233.readFileSync(path233.resolve(__dirname,'city-life-framework.html'),'utf8');
+  ok(['work','clerk','trade','write'].every(k=>Array.isArray((Sim.REQ_DELIVER||{})[k])&&Sim.REQ_DELIVER[k].length===2
+       &&Sim.REQ_DELIVER[k].every(s=>typeof s==='string'&&s.length>6))
+     &&Array.isArray(Sim.REQ_DELIVER_DONE)&&Sim.REQ_DELIVER_DONE.length===2
+     &&String(Sim.REQ_DELIVER_DONE[0]).indexOf('忙完了：')===0,
+     '第 233 单·结构：`REQ_DELIVER` 四类各 2 句＋结算句一处定义（"忙完了："前缀照旧）');
+  ok(/const 型=\['ask','pick','deliver'\]\[\(h>>>7\)%3\];/.test(src233)
+     &&(src233.match(/function 带话\(/g)||[]).length===1
+     &&/if\(q\.kind==='deliver'\)\{[\s\S]{0,200}?if\(!q\.sent\) continue;/.test(src233)
+     &&/谢礼\(ag, w, 2\)/.test(src233),
+     '第 233 单·结构：三型一处定＋`带话` 一处判定＋结算只认 `sent`、谢礼 +2');
+  {
+    const w=Sim.makeWorld(20260803), A=w.agents[0], B=w.agents[1];
+    const 天=PURE.dayOf(w.t);
+    A.relYou={v:4,day:0}; B.relYou={v:4,day:0};
+    A.req={day:天, ok:false, done:false, kind:'deliver', to:'a2', line:Sim.REQ_DELIVER.work[0]};
+    const c0=w.credits, b0=Sim.relYouGet(B), a0=Sim.relYouGet(A), n0=w.log.length;
+    const 好=Sim.带话(w,'a2');
+    const 条=w.log[w.log.length-1];
+    ok(好&&w.credits===c0-1&&Sim.relYouGet(B)===b0+1&&A.req.sent===true&&A.req.ok===true
+       &&w.log.length===n0+1&&条.sms==='deliver'&&条.agent==='a2',
+       '第 233 单·行为：带到＝额度 -1（'+c0+'→'+w.credits+'）＋收件人 +1（'+b0+'→'+Sim.relYouGet(B)+'）＋`sent`＋一条挂收件人的 sms:deliver 日志');
+    ok(Sim.带话(w,'a2')===false,'第 233 单·行为：同一天同一句话再带一次被拒（`sent` 已记上）');
+    w.t=(天-1)*1440+20*60-10; Sim.step(w,10);
+    const 忙=w.log.filter(e=>e.agent==='a1'&&String(e.text).indexOf('忙完了：')===0).slice(-1)[0];
+    ok(!!忙&&忙.text===Sim.REQ_DELIVER_DONE[0]&&Sim.relYouGet(A)===a0+2,
+       '第 233 单·行为：20:00 结算 ⇒ 委托人落"话带到了"＋谢礼 +2（'+a0+'→'+Sim.relYouGet(A)+'）⇒ 两头都记');
+  }
+  {
+    const w=Sim.makeWorld(20260803), A=w.agents[0];
+    const 天=PURE.dayOf(w.t);
+    A.relYou={v:4,day:0}; w.agents[1].relYou={v:4,day:0};
+    A.req={day:天, ok:false, done:false, kind:'deliver', to:'a2', line:Sim.REQ_DELIVER.work[1]};
+    const a0=Sim.relYouGet(A);
+    w.t=(天-1)*1440+20*60-10; Sim.step(w,10);
+    ok(w.log.filter(e=>e.agent==='a1'&&String(e.text).indexOf('忙完了：')===0).length===0
+       &&Sim.relYouGet(A)===a0&&A.req.done===true,
+       '第 233 单·行为（没带到的对照）：0 条"忙完了"、关系不动、`req` 静静收口 ⇒ 错过零后果');
+  }
+  {
+    const 跑=(留住)=>{ const w=Sim.makeWorld(20260803), A=w.agents[0]; const 天=PURE.dayOf(w.t);
+      A.relYou={v:4,day:0}; w.agents[1].relYou={v:4,day:0};
+      A.req={day:天, ok:true, done:false, kind:'deliver', to:'a2', line:Sim.REQ_DELIVER.work[0], sent:!!留住};
+      w.t=(天-1)*1440+20*60-10; Sim.step(w,10);
+      return w.log.filter(e=>e.agent==='a1'&&String(e.text).indexOf('忙完了：')===0).length; };
+    const 有=跑(true), 无=跑(false);
+    ok(有===1&&无===0,'第 233 单·反向自查·拦得住：抹掉 `sent` ⇒ 结算不落字（'+有+'／'+无+'）⇒ 上面那条不是恒绿');
+  }
+  {
+    const w=Sim.makeWorld(20260803); Sim.sendMessage(w,'a1','cheer');
+    let 日=0;
+    for(let d=1;d<=90;d++){ w.t=(d-1)*1440+9*60; const x=Sim.reqOfDay(w); if(x&&x.型==='deliver'){ 日=d; break; } }
+    let 型='';
+    if(日){ w.t=(日-1)*1440+8*60+50; Sim.step(w,10); 型=w.agents[0].req?w.agents[0].req.kind:'（没发）'; }
+    ok(日>0&&型==='ask','第 233 单·行为（退化）：只有一个人有来往时，捎话日退化成 A 型（实测 kind='+型+'）');
+  }
+  {
+    const w=Sim.makeWorld(424242); Sim.sendMessage(w,'a1','cheer'); Sim.sendMessage(w,'a2','cheer');
+    let 型={ask:0,pick:0,deliver:0};
+    for(let d=1;d<=140;d++){ w.t=(d-1)*1440+9*60; const r=Sim.reqOfDay(w); if(r) 型[r.型]++; }
+    ok(型.ask>0&&型.pick>0&&型.deliver>0&&(型.ask+型.pick+型.deliver)>=40,
+       '第 233 单·行为：140 天三型都出现（A '+型.ask+'／两选一 '+型.pick+'／捎话 '+型.deliver+'；≈各 1/3）');
   }
 }
 
@@ -10191,7 +10268,7 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   ok(恒绿===0,'第 66 单·闸二：`ok` 第一参数写死 true 的**读数型假断言**为 0 条（实测 '+恒绿+'；读数一律走 `读数()`）');
   // 闸三 · 反向自查登记（防整条被删）
   const 登记=['第 48 单','第 49 单','第 51 单','第 52 单','第 53 单','第 54 单','第 56 单','第 57 单',
-               '第 58 单','第 59 单','第 62 单','第 63 单','第 64 单','第 65 单','第 67 单','第 70 单','第 71 单','第 72 单','第 73 单','第 74 单','第 75 单','第 76 单','第 77 单','第 79 单','第 80 单','第 81 单','第 84 单','第 85 单','第 87 单','第 88 单','第 90 单','第 91 单','第 92 单','第 93 单','第 94 单','第 95 单','第 96 单','第 97 单','第 98 单','第 99 单','第 100 单','第 102 单','第 103 单','第 106 单','第 107 单','第 109 单','第 110 单','第 111 单','第 112 单','第 113 单','第 115 单','第 116 单','第 117 单','第 118 单','第 119 单','第 120 单','第 121 单','第 123 单','第 124 单','第 125 单','第 126 单','第 129 单','第 131 单','第 135 单','第 136 单','第 139 单','第 142 单','第 143 单','第 144 单','第 145 单','第 148 单','第 149 单','第 150 单','第 151 单','第 152 单','第 156 单','第 157 单','第 158 单','第 204 单','第 205 单','第 161 单','第 163 单','第 164 单','第 165 单','第 166 单','第 167 单','第 168 单','第 169 单','第 170 单','第 171 单','第 172 单','第 174 单','第 175 单','第 177 单','第 179 单','第 180 单','第 183 单','第 184 单','第 185 单','第 186 单','第 188 单','第 189 单','第 190 单','第 192 单','第 198 单','第 199 单','第 201 单','第 202 单','第 206 单','第 207 单','第 208 单','第 210 单','第 211 单','第 212 单','第 213 单','第 214 单','第 215 单','第 216 单','第 217 单','第 220 单','第 221 单','第 224 单','第 225 单','第 227 单','第 229 单','第 232 单',
+               '第 58 单','第 59 单','第 62 单','第 63 单','第 64 单','第 65 单','第 67 单','第 70 单','第 71 单','第 72 单','第 73 单','第 74 单','第 75 单','第 76 单','第 77 单','第 79 单','第 80 单','第 81 单','第 84 单','第 85 单','第 87 单','第 88 单','第 90 单','第 91 单','第 92 单','第 93 单','第 94 单','第 95 单','第 96 单','第 97 单','第 98 单','第 99 单','第 100 单','第 102 单','第 103 单','第 106 单','第 107 单','第 109 单','第 110 单','第 111 单','第 112 单','第 113 单','第 115 单','第 116 单','第 117 单','第 118 单','第 119 单','第 120 单','第 121 单','第 123 单','第 124 单','第 125 单','第 126 单','第 129 单','第 131 单','第 135 单','第 136 单','第 139 单','第 142 单','第 143 单','第 144 单','第 145 单','第 148 单','第 149 单','第 150 单','第 151 单','第 152 单','第 156 单','第 157 单','第 158 单','第 204 单','第 205 单','第 161 单','第 163 单','第 164 单','第 165 单','第 166 单','第 167 单','第 168 单','第 169 单','第 170 单','第 171 单','第 172 单','第 174 单','第 175 单','第 177 单','第 179 单','第 180 单','第 183 单','第 184 单','第 185 单','第 186 单','第 188 单','第 189 单','第 190 单','第 192 单','第 198 单','第 199 单','第 201 单','第 202 单','第 206 单','第 207 单','第 208 单','第 210 单','第 211 单','第 212 单','第 213 单','第 214 单','第 215 单','第 216 单','第 217 单','第 220 单','第 221 单','第 224 单','第 225 单','第 227 单','第 229 单','第 232 单','第 233 单',
               '闸四','闸五','闸十','闸十一','闸十二'];
   const 实有=[...new Set((自源.match(/(第 \d+ 单|闸[一二三四五六七八九十]+)·反向自查/g)||[])
                             .map(x=>x.replace('·反向自查','')))];
