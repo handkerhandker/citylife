@@ -29,7 +29,7 @@ const raw = BEFORE
   ? execFileSync('git', ['-C', REPO, 'show', `${BEFORE}:city-life-framework.html`], { maxBuffer: 1 << 28, encoding: 'utf8' })
   : fs.readFileSync(path.join(REPO, 'city-life-framework.html'), 'utf8');
 const html = raw.replace(/\}\)\(\);\s*<\/script>/,
-  'window.__pv={get state(){return state},get Sim(){return Sim},get PLAZA(){return PLAZA},get STREET_Y(){return STREET_Y},get SHORE_Y(){return SHORE_Y},get RIVER_Y(){return RIVER_Y},get ROOM_FURN(){return ROOM_FURN},get PLAZA_TREE(){return PLAZA_TREE},get 脚印表(){return (typeof 脚印表!==\'undefined\')?脚印表:null},get 脚印(){return (typeof 脚印!==\'undefined\')?脚印:null}};\n})();\n</script>');
+  'window.__pv={get state(){return state},get Sim(){return Sim},get PLAZA(){return PLAZA},get STREET_Y(){return STREET_Y},get SHORE_Y(){return SHORE_Y},get RIVER_Y(){return RIVER_Y},get ROOM_FURN(){return ROOM_FURN},get PLAZA_TREE(){return PLAZA_TREE},get 脚印表(){return (typeof 脚印表!==\'undefined\')?脚印表:null},get 脚印(){return (typeof 脚印!==\'undefined\')?脚印:null},get buildingAt(){return (typeof buildingAt!==\'undefined\')?buildingAt:null}};\n})();\n</script>');
 if (html === raw) { console.error('注入点没找到'); process.exit(2); }
 
 const PORT = 18970;
@@ -135,7 +135,15 @@ const 脚印深冬 = await page.evaluate(() => {
     const d2=c2.getImageData(X2,Y2,1,1).data, c=(d2[0]+d2[1]+d2[2])/3;
     用++; 差和+=c-m; if(c-m>=8) 比出++;
   }
-  return { 枚:表.length, 抽:抽.length, 比出:比出, 平均差:用?Math.round(差和/用*10)/10:0, 上限:(__pv.脚印?__pv.脚印.上限:0) };
+  /* 第 243 单·补丁的判据：**室内（楼身纵廊／门厅）一枚脚印都不许有**——用产品自己的楼身判定
+     buildingAt()（不在任何房间、但落在楼身包围盒内 ⇒ 室内）现读，不在这里另写一套楼壳几何。 */
+  let 室内=0;
+  for(const q of 表){
+    const r=__pv.Sim.ROOMS.find(r=>q.x>=r.x&&q.x<r.x+r.w&&q.y>=r.y&&q.y<r.y+r.h);
+    const 室 = r ? (r.id!=='park'&&r.id!=='river') : (__pv.buildingAt?!!__pv.buildingAt(q.x,q.y):false);
+    if(室) 室内++;
+  }
+  return { 枚:表.length, 室内枚:室内, 抽:抽.length, 比出:比出, 平均差:用?Math.round(差和/用*10)/10:0, 上限:(__pv.脚印?__pv.脚印.上限:0) };
 });
 await page.evaluate(摆走(5 * 1440 + 12 * 60));                     // 春：照走一段
 await page.waitForTimeout(3000);
@@ -156,7 +164,7 @@ const 阈值 = { 街道: 40, 岸线: 30, 广场: 40, 公园: 40, 江边步道: 4
 const 不吃的 = ['室内便利店', '江面'];
 const 脚印 = { 深冬: 脚印深冬, 春: 脚印春, 拨钟前, 拨钟后,
   过: 脚印深冬.枚 > 0 && 脚印深冬.枚 <= 脚印深冬.上限 && 脚印深冬.比出 >= 8
-      && 脚印春 === 0 && 拨钟前 > 0 && 拨钟后 === 0 };
+      && 脚印深冬.室内枚 === 0 && 脚印春 === 0 && 拨钟前 > 0 && 拨钟后 === 0 };
 const 读数 = { 春, 夏, 秋, 初冬, 深冬, 脚印, 错误: 错 };
 const 通过 = 地面.every(k => (深冬[k] - 初冬[k]) >= 阈值[k])
   && 不吃的.every(k => Math.abs(深冬[k] - 春[k]) <= 20)

@@ -554,7 +554,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v187</span>
+<span class="num dim" id="set-build">v188</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -8345,13 +8345,16 @@ function snowCaps(){                           // 广场大树＋公园树/灌�
    本段把它落到本作的雪面上：**有积雪的日子**（复用 冬积雪() 一处 gate），人走在雪面按"步距"
    踩出一枚淡脚印（左右脚交替换边），**先浓后淡、淡尽即清**；上限从配置表读。
    纯渲染层：零 rng、零存档、不改 SIM（脚印表只活本次会话、换季即清）。
-   画序与积雪同管道：室外在 snowGround 里（摊位与人物之前）、房内在 snowRoom 里（家具与树之前）。 */
+   画序与积雪同管道：室外在 snowGround 里（摊位与人物之前）、房内在 snowRoom 里（家具与树之前）。
+   【第 243 单·补丁】"雪面判定"补一处：**楼身包围盒内、不属任何房间的点（纵廊／门厅）也算室内**
+   （复用产品自己的 `buildingAt()`，不另立楼壳几何）——修掉首版"走廊里也踩出脚印"的观感 bug。 */
 const 脚印表=[];
 const 脚印={ 步距:0.7, 保真:30, 寿命:150, 上限:280, 长:0.14, 宽:0.085, 色:'96,112,142', 最浓:0.34 };
-function 印面雪(x,y){                                  // 雪面判定：房内只有公园/江边步道可踩，室外一律可踩
+function 印面雪(x,y){                                  // 雪面判定：房内只有公园/江边步道可踩；楼内纵廊/门厅也算室内
   if(!isFinite(x)||!isFinite(y)) return false;
   const r=Sim.ROOMS.find(r=>x>=r.x&&x<r.x+r.w&&y>=r.y&&y<r.y+r.h);
-  return r ? (r.id==='park'||r.id==='river') : true;
+  if(r) return r.id==='park'||r.id==='river';
+  return !buildingAt(x,y);                             // 第 243 单修：不在任何房间但落在楼身包围盒内 ⇒ 室内（纵廊/门厅），不许留印
 }
 function 脚印步(w){                                    // 每帧：按"走了够远没有"落一枚；换季即清
   if(!冬积雪(w.t)){ 脚印表.length=0; return; }
