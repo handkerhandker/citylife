@@ -6,6 +6,10 @@
 // 口径：对每个字段喂几种坏值（非对象／负值／字符串／空元素）→ 开机 → 依次点开 角色／剪辑（含
 // 切收藏视图）／短信 三页 → 判据：**起得来 + 零 pageerror**；`keeps` 那几例再查"逐项归一"
 // （`items` 里的非对象元素被丢掉、`d` 非有限的整张丢）。
+// 第 241 单·批后审计修：①「坏卡」样例原是没有 name 的裸卡——`clipCard` 走 `!c.name` 的"空卡"
+// 分支、碰不到 `items[null]`，把第 238 单的归一撤掉也照样全绿（故障注入复现过）；现改成"带 name
+// 的真卡再打断"。②归一结果从"只打印"改成**硬断言**：坏卡 keeps=1／items=0／q=0／收藏视图 1 张卡；
+// 其余 keeps 坏值（非数组／空元素／无 d）整张丢掉（keeps=0）。
 // 用法：node tools/meta-audit/probe.mjs [输出目录]   （要 CITYLIFE_CHROME）
 import http from 'http';
 import fs from 'fs';
@@ -51,7 +55,7 @@ const 案子 = [
   ['keeps=[null]',        m => m.keeps = [null]],
   ['keeps=[{}]',          m => m.keeps = [{}]],
   ['keeps=[{d:x}]',       m => m.keeps = [{ d: 'x' }]],
-  ['keeps=[坏卡]',         m => m.keeps = [{ d: 1, items: [null], q: [null] }]],
+  ['keeps=[坏卡]',         m => m.keeps = [{ d: 1, wd: 0, id: 'a1', name: '顾云帆', score: 2, base: 10, full: true, items: [null], q: [null], sc: {} }]],
   ['lastReflectDay=x',    m => m.lastReflectDay = 'x'],
   ['at=x',                m => m.at = 'x'],
 ];
@@ -82,7 +86,7 @@ for (const [名, 函数源] of 案表) {
   const 页错 = [];
   const 捕 = e => 页错.push(String((e && e.message) || e).slice(0, 90));
   page.on('pageerror', 捕);
-  let 起得来 = false, 明细 = '';
+  let 起得来 = false, 明细 = '', 归一过 = true;
   try {
     await page.goto(址, { waitUntil: 'load' }); await page.waitForTimeout(1500);
     起得来 = await page.evaluate(() => !!window.__pv && Array.isArray(window.__pv.state.keeps));
@@ -90,15 +94,24 @@ for (const [名, 函数源] of 案表) {
     await page.click('#tabbar [data-tab="clip"]'); await page.waitForTimeout(250);
     await page.click('#clip-mode'); await page.waitForTimeout(250);          // 收藏视图也要能开
     await page.click('#tabbar [data-tab="phone"]'); await page.waitForTimeout(200);
-    if (名.indexOf('keeps=[坏卡]') === 0) {
-      明细 = await page.evaluate(() => {
-        const k = (window.__pv.state.keeps || [])[0];
-        return k ? ('归一后 items=' + k.items.length + '、q=' + k.q.length) : '（没留下这张卡）';
+    if (名.indexOf('keeps=') === 0) {
+      /* 第 241 单·批后审计：这两条从"只打印"改成**硬断言**。故障注入复现过：原来的「坏卡」样例
+         没有 name，`clipCard` 走"空卡"分支、根本读不到 `items[null]`——把第 238 单的归一撤掉，
+         本工具照样全绿（假绿）。现样例＝"带 name 的真卡再打断"，并钉住：坏卡归一后
+         keeps=1／items=0／q=0／收藏视图 1 张卡；其余 keeps 坏值整张丢掉（keeps=0）。 */
+      const 归一 = await page.evaluate(() => {
+        const ks = window.__pv.state.keeps || [], k = ks[0];
+        return { n: ks.length, items: k ? k.items.length : -1, q: k ? k.q.length : -1,
+                 卡数: document.querySelectorAll('#clip-keeps .clip').length };
       });
+      明细 = '归一后 keeps=' + 归一.n + '、items=' + 归一.items + '、q=' + 归一.q + '、卡=' + 归一.卡数;
+      归一过 = (名 === 'keeps=[坏卡]')
+        ? (归一.n === 1 && 归一.items === 0 && 归一.q === 0 && 归一.卡数 === 1)
+        : (归一.n === 0);
     }
-  } catch (e) { 明细 = '点页抛错：' + String(e.message).slice(0, 60); }
+  } catch (e) { 明细 = '点页抛错：' + String(e.message).slice(0, 60); 归一过 = false; }
   page.off('pageerror', 捕);
-  const 过 = 起得来 && 页错.length === 0;
+  const 过 = 起得来 && 页错.length === 0 && 归一过;
   if (!过) 红++;
   结果.push({ 名, 过, 起得来, 页错: 页错.length, 首错: 页错[0] || '', 明细 });
   console.log((过 ? ' ok  ' : ' FAIL ') + 名 + (明细 ? '  ' + 明细 : '') + (页错.length ? ('  首错：' + 页错[0]) : ''));
