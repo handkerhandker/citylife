@@ -554,7 +554,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v184</span>
+<span class="num dim" id="set-build">v185</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -4794,7 +4794,24 @@ const bootAiGate=(()=>{
 const bootKeeps=(()=>{
   const a=(bootMeta && Array.isArray(bootMeta.keeps)) ? bootMeta.keeps : [];
   const out=[];
-  for(const k of a){ if(!k||typeof k!=='object'||Array.isArray(k)||!isFinite(k.d)) continue; out.push(k); if(out.length>=60) break; }
+  for(const k of a){
+    if(!k||typeof k!=='object'||Array.isArray(k)||!isFinite(k.d)) continue;
+    /* 第 238 单·批后审计：卡是"快照"——结构坏了不许带进页里（`clipCard` 会读 `items[].id`／
+       `q[].t`，`items:[null]` 这种一进收藏视图就当场崩）。逐项归一：只留能渲染的字段，
+       `items`／`q` 里非对象的元素就地丢掉，其余给安全缺省。 */
+    const items=Array.isArray(k.items)?k.items.filter(x=>x&&typeof x==='object'&&!Array.isArray(x)):[];
+    const q=Array.isArray(k.q)?k.q.filter(x=>x&&typeof x==='object'&&!Array.isArray(x)):[];
+    out.push({ d:Math.floor(k.d),
+      wd:isFinite(k.wd)?Math.floor(k.wd):0,
+      id:(typeof k.id==='string')?k.id:'',
+      name:(typeof k.name==='string')?k.name:'',
+      score:isFinite(k.score)?k.score:0,
+      base:isFinite(k.base)?k.base:0,
+      full:!!k.full,
+      items:items, q:q,
+      sc:(k.sc&&typeof k.sc==='object'&&!Array.isArray(k.sc))?k.sc:{} });
+    if(out.length>=60) break;
+  }
   return out;
 })();
 const state={

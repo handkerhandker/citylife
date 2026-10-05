@@ -27,6 +27,7 @@ if (html === rawHtml) { console.error('注入点没找到'); process.exit(2); }
 const PORT = 18985;
 const srv = http.createServer((q, r) => {
   const u = decodeURIComponent(q.url.split('?')[0]);
+  if (u === '/blank') { r.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }); r.end('<!doctype html><meta charset="utf-8"><title>blank</title>'); return; }
   if (u === '/' || u.endsWith('city-life-framework.html')) { r.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }); r.end(html); return; }
   const p = path.join(REPO, u);
   if (!p.startsWith(REPO) || !fs.existsSync(p) || fs.statSync(p).isDirectory()) { r.writeHead(404); r.end(); return; }
@@ -94,7 +95,26 @@ const 重载卡 = await page.evaluate(() => document.querySelector('#clip-keeps'
 记(重载后.n === 1 && 重载后.开关.indexOf('看收藏（1）') >= 0 && 重载卡 === 1,
    '存档→重载：收藏还在（信封带着走；收藏 ' + 重载后.n + ' 张）');
 
-// 取消收藏 ⇒ 回空态
+// ⑤ 存档码：导出 → 清档 → 导入 → 重载，收藏还在（这是升级/换机时走的那条路）
+await page.click('#tabbar [data-tab="settings"]'); await page.waitForTimeout(200);
+await page.click('#sv-export'); await page.waitForTimeout(300);
+const 码 = await page.evaluate(() => (document.querySelector('#sv-export-code') || {}).value || '');
+await page.click('#dialog-root [data-close]'); await page.waitForTimeout(150);
+await page.goto(`http://127.0.0.1:${PORT}/blank`, { waitUntil: 'load' });          // 到空白页清档（免得游戏页的自动存档盖回来）
+await page.evaluate(() => localStorage.removeItem('citylife-save-v1'));
+await page.goto(`http://127.0.0.1:${PORT}/city-life-framework.html`, { waitUntil: 'load' }); await page.waitForTimeout(2000);
+const 清后 = await page.evaluate(() => (window.__pv.state.keeps || []).length);
+await page.click('#tabbar [data-tab="settings"]'); await page.waitForTimeout(200);
+await page.click('#sv-import'); await page.waitForTimeout(200);
+await page.fill('#sv-import-code', 码);
+await page.click('#sv-import-go'); await page.waitForTimeout(2500);                  // 导入成功会自己 reload
+const 导入后 = await page.evaluate(() => (window.__pv.state.keeps || []).length);
+记(清后 === 0 && 码.length > 100 && 导入后 === 1,
+   '存档码（导出→清档→导入）：收藏跟着走（清档后 ' + 清后 + ' 张 → 导入后 ' + 导入后 + ' 张）');
+
+// ⑥ 取消收藏 ⇒ 回空态
+await page.click('#tabbar [data-tab="clip"]'); await page.waitForTimeout(250);
+await page.click('#clip-mode'); await page.waitForTimeout(250);
 await page.click('#clip-keeps [data-keep]'); await page.waitForTimeout(250);
 const 取消后 = await page.evaluate(() => ({
   n: __pv.state.keeps.length,
@@ -103,6 +123,26 @@ const 取消后 = await page.evaluate(() => ({
 }));
 记(取消后.n === 0 && 取消后.空态 && 取消后.开关.indexOf('看每日') >= 0,
    '再点一下＝取消收藏，回到空态文案');
+
+// ⑦ 坏档：收藏卡的结构被改坏（items:[null]／q:[null]）⇒ 启动不崩、收藏视图照常渲染（第 238 单·批后审计）
+await page.click('#tabbar [data-tab="settings"]'); await page.waitForTimeout(200);
+await page.click('#sv-now'); await page.waitForTimeout(300);
+await page.goto(`http://127.0.0.1:${PORT}/blank`, { waitUntil: 'load' });
+await page.evaluate(() => {
+  const 档 = JSON.parse(localStorage.getItem('citylife-save-v1'));
+  档.meta = 档.meta || {};
+  档.meta.keeps = [{ d: 1, wd: 0, id: 'a1', name: '顾云帆', score: 2, base: 10, full: true,
+                     items: [null], q: [null], sc: {} }];
+  localStorage.setItem('citylife-save-v1', JSON.stringify(档));
+});
+await page.goto(`http://127.0.0.1:${PORT}/city-life-framework.html`, { waitUntil: 'load' }); await page.waitForTimeout(2000);
+const 坏读 = await page.evaluate(() => ({ n: (window.__pv.state.keeps || []).length,
+  items: ((window.__pv.state.keeps || [])[0] || {}).items.length }));
+await page.click('#tabbar [data-tab="clip"]'); await page.waitForTimeout(300);
+await page.click('#clip-mode'); await page.waitForTimeout(400);
+const 坏卡 = await page.evaluate(() => document.querySelectorAll('#clip-keeps .clip').length);
+记(坏读.n === 1 && 坏读.items === 0 && 坏卡 === 1 && 错.length === 0,
+   '坏档（items:[null]／q:[null]）：逐项归一后照常渲染、不抛页错（实测 keeps=' + 坏读.n + '、items=' + 坏读.items + '、卡=' + 坏卡 + '）');
 
 记(错.length === 0, '全程零 pageerror（实测 ' + 错.length + '）');
 for (const x of 判) console.log((x.过 ? ' ok ' : ' FAIL') + ' ' + x.名);
