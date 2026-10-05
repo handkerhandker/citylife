@@ -1,0 +1,17 @@
+{
+  "方案": "D",
+  "名称": "简约昼夜·启动图",
+  "资产": {
+    "apk/android/app/src/main/res/drawable/splash.png": "7563ee959f3b9d92482e5b706c862f53646f74bbe8e7c5a747da895234c660e7",
+    "apk/android/app/src/main/res/drawable-land-mdpi/splash.png": "7563ee959f3b9d92482e5b706c862f53646f74bbe8e7c5a747da895234c660e7",
+    "apk/android/app/src/main/res/drawable-land-hdpi/splash.png": "eaa107a507339ae5e65107f31aa4237a82c3b336f498220df46c5da52fc1ecda",
+    "apk/android/app/src/main/res/drawable-land-xhdpi/splash.png": "f6d9e83e2a6854dfd106db17befd68a086642a99666410a03a6ce24607e7d1e8",
+    "apk/android/app/src/main/res/drawable-land-xxhdpi/splash.png": "efa75310582f02c156bce05b92556100b7cb75a89562f4e5610f7188a5e44e21",
+    "apk/android/app/src/main/res/drawable-land-xxxhdpi/splash.png": "0127c230576dad3d1a573c67670b018ed30dc788b090856b8adb7dc588011c69",
+    "apk/android/app/src/main/res/drawable-port-mdpi/splash.png": "af8eb7b846a566be7e1348ab4fd2f6c3012e7fd9b5590788c78dc8a630a3553b",
+    "apk/android/app/src/main/res/drawable-port-hdpi/splash.png": "632ddaaf75bac3d19f53aaed91beae00fabf2d420658fe9b31e5de8e0001cde0",
+    "apk/android/app/src/main/res/drawable-port-xhdpi/splash.png": "ce3bc023846e88e73edae78820cfaf8f16153f1b08c1ee51a00aa34b7541b01e",
+    "apk/android/app/src/main/res/drawable-port-xxhdpi/splash.png": "0925c1310fa36b6d364be2dcaec73a4282812cbabc9e2dc6b9b3b02bcf078cab",
+    "apk/android/app/src/main/res/drawable-port-xxxhdpi/splash.png": "7a0fb7822725525c801e3225b041cbf47951b1bc2121eb8b0a75ee0c48200138"
+  }
+}
