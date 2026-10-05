@@ -8851,6 +8851,14 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
       w3.boardNote={txt:5}; Sim.boardStep(w3);
     }catch(e){ 畸形好=false; }
     ok(畸形好,'第 217 单·行为：畸形 boardNote（数组／字符串／字段坏）一律不抛错（照旧档容错口径）');
+    let 带留言往返好=false;
+    try{
+      const w5=场景217(); Sim.贴留言(w5,0);
+      const h2=Sim.hydrate(Sim.serialize(w5));
+      带留言往返好=!!h2 && !!h2.world.boardNote && h2.world.boardNote.txt===标签217('cheer')
+        && h2.world.boardNote.read===false;
+    }catch(e){}
+    ok(带留言往返好,'第 217 单·行为：存档往返把留言原样带回来（未读态照旧；第 218 单批后审计补闸）');
     let 旧档好=false;
     try{
       const w4=场景217(); Sim.贴留言(w4,0);
