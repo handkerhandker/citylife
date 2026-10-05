@@ -9202,8 +9202,10 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
      '第 229 单·结构：三结局一处判定（忙＝171 同表；累／饿＝作息现成阈值）');
   ok(!/w\.rng\(/.test(段229)&&!/pickV\(|pickFresh\(|pick\(/.test(段229),
      '第 229 单·结构：通话段零 rng、零抽签（回话／开场／告别全走纯哈希）');
-  ok(/w\.credits--;[\s\S]{0,200}?relYouBump\(w, ag, false\);[\s\S]{0,300}?sms:'call'/.test(段229),
-     '第 229 单·结构：结算一处落点（额度共用 -1 ＋ relYouBump ＋ sms:call 日志）');
+  ok(/w\.credits--;[\s\S]{0,200}?relYouBump\(w, ag, false\);[\s\S]{0,300}?sms:'call',agent:ag\.id/.test(段229)
+     &&(段229.match(/sms:'call',agent:ag\.id/g)||[]).length===2,
+     '第 229 单·结构：结算一处落点（额度共用 -1 ＋ relYouBump ＋ sms:call 日志）＋两处 call 日志都挂人'
+     +'（第 230 单审计补：被拒那条不挂人会被整页重渲染抖掉——改型不删闸）');
   {
     const w=Sim.makeWorld(20260803), ag=w.agents[0];
     const 摆=(a,e,h)=>{ ag.activity={type:a}; ag.energy=e; ag.hunger=h; };

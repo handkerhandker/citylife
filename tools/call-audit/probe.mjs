@@ -144,6 +144,12 @@ const c1 = await 读数();
 记(拒文.indexOf('按掉了') >= 0 && c1.credits === c0.credits && c1.关系 === c0.关系
    && c1.日志数 === c0.日志数 + 1 && c1.末条 && c1.末条.sms === 'call',
    '累了＝被按掉（额度仍 '+c1.credits+'、关系仍 '+c1.关系+'、日志 +1）');
+// ④b 被拒也留在「往来记录」（第 230 单审计揪出的真 bug：起初不挂人 ⇒ 整页重渲染把它抖掉）
+await 关弹窗();
+await page.click('#ph-agents [data-to="a2"]'); await page.waitForTimeout(150);
+await page.click('#ph-agents [data-to="a1"]'); await page.waitForTimeout(150);
+const 拒史 = await page.evaluate(() => document.querySelector('#ph-history').textContent.replace(/\s+/g, ' '));
+记(拒史.indexOf('按掉了') >= 0, '被拒也留在「往来记录」里（切人重渲染后仍在）');
 
 // ⑤ 取消路径：开了就关 ⇒ 世界零变化
 await 关弹窗();
@@ -154,6 +160,17 @@ await page.click('#dialog-root [data-close]'); await page.waitForTimeout(200);
 const e1 = await 读数();
 记(e1.credits === e0.credits && e1.关系 === e0.关系 && e1.日志数 === e0.日志数,
    '取消路径不留账（额度 '+e0.credits+'→'+e1.credits+'、关系 '+e0.关系+'→'+e1.关系+'、日志 +'+(e1.日志数 - e0.日志数)+'）');
+
+// ⑥ 额度 0 ⇒ 入口禁用（与短信同一道门）
+await 设状态('idle', 100, 0, 0);
+await page.click('#ph-agents [data-to="a2"]'); await page.waitForTimeout(150);   // 走页面的真实重渲染路径
+await page.click('#ph-agents [data-to="a1"]'); await page.waitForTimeout(150);
+const 禁用 = await page.evaluate(() => {
+  const b = document.querySelector('#ph-call');
+  return { disabled: !!b.disabled, 提示: (document.querySelector('#ph-call-hint') || {}).textContent || '' };
+});
+记(禁用.disabled, '额度 0 时「📞 打电话」入口禁用（与短信同门）');
+await 设状态('idle', 100, 0, 3);
 
 记(错.length === 0, '全程零 pageerror（实测 '+错.length+'）' + (错.length ? '：' + 错[0] : ''));
 

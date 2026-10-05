@@ -536,7 +536,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v177</span>
+<span class="num dim" id="set-build">v178</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -4354,7 +4354,10 @@ function 电话结算(w, ag, 来回数){
 }
 function 电话被拒(w, ag){
   if(!w||!ag) return false;
-  pushLog(w,{type:'player',sms:'call',name:ag.name,text:'按掉了你打来的电话。',thought:''});
+  /* 第 230 单·批后审计（227–229）揪出的真 bug：这条起初不挂人 ⇒ 每 10 模拟分钟一次的整页重渲染
+     把它从「往来记录」里抖掉（实测 speed=1 下两秒后消失；接通那条同时存活——见交付件定向 ①）。
+     修法照接通那条：挂人（`agent`）＋居民口吻，既留在他的往来记录，也进他本人的 `personalLog`。 */
+  pushLog(w,{type:'player',sms:'call',agent:ag.id,name:ag.name,text:'按掉了你打来的电话。',thought:''});
   return true;
 }
 
