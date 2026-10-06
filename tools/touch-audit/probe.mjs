@@ -502,6 +502,42 @@ const 初始 = await 取态();
 
 判('⑦ 全程零 pageerror', 错.length === 0, { 错: 错.length });
 
+/* ㉑ 第 287 单·批后审计补闸：**自适应换档端到端**（把 rAF 每拍压 34ms ＝ 弱机 ⇒ 该自动降档）
+   ——① 档位真的降了；② `state.dpr` 跟着降到那一档的上限；③ **档位落进 localStorage**；
+   ④ 同一 context 重开一页，开机读回的就是这一档（"下次别再从头卡一遍"这条承诺）。
+   补它的缘由：批后审计的"专挑软肋"注入（把 `分辨率记档()` 抠掉）**当时全闸照绿**——
+   "换档落盘"这条没人看。 */
+{
+  const ctxD = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 2.75 });
+  const pD = await ctxD.newPage();
+  pD.on('pageerror', e => 错.push(String((e && e.message) || e)));
+  await pD.goto(`http://127.0.0.1:${PORT}/city-life-framework.html`, { waitUntil: 'load' });
+  await pD.waitForTimeout(2400);
+  const 初始 = await pD.evaluate(() => __pv.分辨率档);
+  await pD.evaluate(() => {                     // 模拟弱机：每拍烧 34ms（>22ms 的降档线）
+    const 原 = window.requestAnimationFrame.bind(window);
+    window.requestAnimationFrame = cb => 原(() => { const t = performance.now(); while (performance.now() - t < 34) {} cb(performance.now()); });
+  });
+  let 落 = null;
+  for (let i = 0; i < 44; i++) {
+    await pD.waitForTimeout(500);
+    const r = await pD.evaluate(() => ({ 档: __pv.分辨率档, dpr: __pv.state.dpr,
+      存: (() => { try { return localStorage.getItem('citylife-dpr'); } catch (e) { return null; } })() }));
+    if (r.档 < 初始) { 落 = r; break; }
+  }
+  const 档表 = [1, 1.5, 2, 2.5];
+  const 一 = !!落 && 落.档 < 初始 && Math.abs(落.dpr - 档表[落.档]) < 0.001 && String(落.存) === String(落.档);
+  const pD2 = await ctxD.newPage();
+  pD2.on('pageerror', e => 错.push(String((e && e.message) || e)));
+  await pD2.goto(`http://127.0.0.1:${PORT}/city-life-framework.html`, { waitUntil: 'load' });
+  await pD2.waitForTimeout(1600);
+  const 重开 = await pD2.evaluate(() => ({ 档: __pv.分辨率档, dpr: __pv.state.dpr }));
+  判('㉑ 自适应换档端到端：压帧 ⇒ 自动降档＋dpr 跟着降＋**档位落盘**；重开一页开机即读回同一档',
+    一 && !!落 && 重开.档 === 落.档 && Math.abs(重开.dpr - 档表[重开.档]) < 0.001,
+    { 初始档: 初始, 降后: 落, 落盘: 落 && 落.存, 重开页: 重开 });
+  await ctxD.close();
+}
+
 await ctx.close(); await browser.close(); srv.close();
 const 红 = 断言.filter(x => !x.ok).length;
 fs.writeFileSync(path.join(OUT, 'report.json'), JSON.stringify({ 断言, 页面错误: 错, 红, 通过: 红 === 0 && 错.length === 0 }, null, 2), 'utf8');
