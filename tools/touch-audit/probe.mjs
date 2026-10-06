@@ -251,35 +251,69 @@ const 初始 = await 取态();
     { 下缘: +(竖下.oy + 竖下.mh).toFixed(1), 可视底: +(竖下.cvH - 竖下.bottom).toFixed(1) });
 }
 
-/* ⑩ 第 282 单·转屏第一帧：竖→横那一帧的相机夹取就得按**新内衬**算。
+/* ⑩–⑬ 第 282／283 单·"布局变化后的第一帧"全线：转屏（竖→横／横→竖）、强制布局、界面缩放——
+   四条路径都必须在**第一帧**就按新内衬摆位。
    旧病（用户 2026-10-06 截图实证）：内衬缓存只在"每秒兜底"时重测——转屏那一刻缓存里左栏宽还是
    竖屏量出的 0 ⇒ 这一帧按"没有左栏"夹取，地图左缘压到 0 被工具栏盖住；最多 1 秒后兜底重测才跳正
-   （就是那"闪一下"）。判据：先把缓存**刷到刚刚**（＝转屏前一秒内刚量过的真实现场），立刻转屏，
-   再把镜头顶到世界左上角 ⇒ 下一帧读 ox：修复后该＝左栏右缘；旧版该＝0。 */
+   （就是那"闪一下"）。判据口径：先把缓存**刷到刚刚**（＝变化前一秒内刚量过的真实现场），再变化，
+   把镜头顶到世界对应角落 ⇒ **下一帧**读：地图边该贴栏边。 */
 {
   const ctxR = await browser.newContext({ viewport: { width: 480, height: 812 }, hasTouch: true, isMobile: true, deviceScaleFactor: 2.75 });
   const pR = await ctxR.newPage();
   pR.on('pageerror', e => 错.push(String((e && e.message) || e)));
   await pR.goto(`http://127.0.0.1:${PORT}/city-life-framework.html`, { waitUntil: 'load' });
   await pR.waitForTimeout(2200);
-  await pR.evaluate(() => { const st = __pv.state; st.world.speed = 0; st.llm.on = false;
-    if (__pv.量内衬) __pv.量内衬(); });                    // 缓存刷到"刚刚"（模拟转屏前一秒内刚量过）
-  await pR.setViewportSize({ width: 812, height: 480 });  // 转屏（竖→横）
-  const 首帧 = await pR.evaluate(() => new Promise(r => {
+  const 刷缓存 = () => pR.evaluate(() => { if (__pv.量内衬) __pv.量内衬(); });
+  const 读帧 = (fx, fy) => pR.evaluate(([x, y]) => new Promise(r => {
     const st = __pv.state;
-    st.cam.manual = true; st.cam.fx = 0; st.cam.fy = 0;     // 镜头顶到世界左上角 ⇒ 夹取上限＝内衬本身
-    requestAnimationFrame(() => r({
-      layout: document.getElementById('app').dataset.layout,
-      ox: Math.round(st.view.ox), oy: Math.round(st.view.oy),
-      rail: Math.round(document.querySelector('#tabbar').getBoundingClientRect().right),
-      top: Math.round(document.querySelector('#topbar').getBoundingClientRect().bottom),
-      cvW: st.cvW, cvH: st.cvH,
-    }));
-  }));
-  判('⑩ 转屏第一帧：夹取已按新内衬（横屏左缘＝左栏右缘、上缘＝顶栏下沿）',
+    st.cam.manual = true; st.cam.fx = x; st.cam.fy = y;      // 镜头顶到世界角落 ⇒ 夹取边界＝内衬本身
+    requestAnimationFrame(() => {
+      const bar = document.querySelector('#tabbar').getBoundingClientRect();
+      const tb = document.querySelector('#topbar').getBoundingClientRect();
+      r({ layout: document.getElementById('app').dataset.layout,
+        ox: Math.round(st.view.ox), oy: Math.round(st.view.oy),
+        mw: Math.round(__pv.Sim.MAPW * st.view.s), mh: Math.round(__pv.Sim.MAPH * st.view.s),
+        rail: Math.round(bar.left < st.cvW * 0.4 && bar.right < st.cvW * 0.6 ? bar.right : 0),
+        底栏上沿: Math.round(bar.top > st.cvH * 0.5 ? bar.top : st.cvH),
+        top: Math.round(tb.top < st.cvH * 0.4 ? tb.bottom : 0),
+        缩放: document.documentElement.style.getPropertyValue('--ui-scale') || '1' });
+    });
+  }), [fx, fy]);
+  await pR.evaluate(() => { const st = __pv.state; st.world.speed = 0; st.llm.on = false; });
+  // ⑩ 竖→横
+  await 刷缓存();
+  await pR.setViewportSize({ width: 812, height: 480 });
+  const 首帧 = await 读帧(0, 0);
+  判('⑩ 转屏第一帧（竖→横）：左缘＝左栏右缘、上缘＝顶栏下沿',
     首帧.layout === 'compact-landscape' && 首帧.rail >= 20 && Math.abs(首帧.ox - 首帧.rail) <= 1
     && Math.abs(首帧.oy - 首帧.top) <= 1,
     { layout: 首帧.layout, ox: 首帧.ox, 左栏右缘: 首帧.rail, oy: 首帧.oy, 顶栏下沿: 首帧.top });
+  // ⑪ 横→竖（同一页转回去）
+  await 刷缓存();
+  await pR.setViewportSize({ width: 480, height: 812 });
+  const 竖首帧 = await 读帧(0, 999);                          // 镜头顶到世界左下角 ⇒ 夹取下限＝底内衬
+  判('⑪ 转屏第一帧（横→竖）：下缘＝底栏上沿（地图下缘 ≈ 屏底 − 底内衬）',
+    竖首帧.layout === 'compact-portrait' && 竖首帧.底栏上沿 < 竖首帧.mh
+    && Math.abs((竖首帧.oy + 竖首帧.mh) - 竖首帧.底栏上沿) <= 1,
+    { layout: 竖首帧.layout, 地图下缘: 竖首帧.oy + 竖首帧.mh, 底栏上沿: 竖首帧.底栏上沿 });
+  // ⑫ 强制布局切换（480×812 窗口里切到"手机横屏"——左栏从无到有，最考验"第一帧就按新内衬"）
+  await pR.click('button.tab[data-tab="settings"]');
+  await pR.waitForTimeout(250);
+  await 刷缓存();
+  await pR.click('#set-layout'); await pR.waitForTimeout(80);   // 自动 → 手机竖屏
+  await pR.click('#set-layout');                                // 手机竖屏 → 手机横屏（左栏出现）
+  const 强首帧 = await 读帧(0, 0);
+  判('⑫ 强制布局切换第一帧（自动→手机横屏）：左缘＝新左栏右缘',
+    强首帧.layout === 'compact-landscape' && 强首帧.rail >= 20 && Math.abs(强首帧.ox - 强首帧.rail) <= 1,
+    { layout: 强首帧.layout, ox: 强首帧.ox, 左栏右缘: 强首帧.rail });
+  // ⑬ 界面缩放：root 字号随 --ui-scale 走 ⇒ 左栏宽度变化，第一帧也得按新几何
+  await 刷缓存();
+  await pR.click('#set-scale-plus');
+  const 缩首帧 = await 读帧(0, 0);
+  判('⑬ 改界面缩放后第一帧（＋5%）：左缘＝变宽后的左栏右缘',
+    缩首帧.layout === 'compact-landscape' && 缩首帧.rail >= 20 && Math.abs(缩首帧.ox - 缩首帧.rail) <= 1
+    && Math.abs(parseFloat(缩首帧.缩放) - 1.05) < 0.001,
+    { layout: 缩首帧.layout, ox: 缩首帧.ox, 左栏右缘: 缩首帧.rail, 缩放: 缩首帧.缩放 });
   await pR.locator('#cv').screenshot({ path: path.join(OUT, '转屏第一帧.png') }).catch(() => {});
   await ctxR.close();
 }
