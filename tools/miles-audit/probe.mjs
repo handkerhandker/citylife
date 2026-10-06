@@ -1,6 +1,8 @@
 // 第 131 单·云港手账探针（真浏览器；只读诊断，进冒烟档 2）
 //
-// 判据：① 开局手账卡在（21 条、0/21；第 274 单四期 +1＝漂流瓶）；② 发一条短信 →（等回音落定）小账 sms≥1、replies≥1，
+// 判据：① 开局手账卡在（25 条、0/25；第 274 单四期 +1＝漂流瓶、第 294 单五期 +4＝见过的风景）；
+//   ①b 第 294 单五期：开局四把"见过"都是未见过（提示位写"去哪看"）；**秋天把相机对准江边岸线等一帧 ⇒ 蜓 变 ✓**（端到端）；
+//   ② 发一条短信 →（等回音落定）小账 sms≥1、replies≥1，
 // 卡上也勾上那两条；③ 刷新 → 小账不重不漏（值与刷新前一致，**不翻倍**）；
 // ④ 第 237 单·二期：打一通电话／回一次主意／捎一句话／收藏一张卡 ⇒ 三本小账各 +1、
 //    四条新里程碑逐条打勾（"收藏满十张"仍空）；全程零 pageerror。
@@ -61,8 +63,36 @@ await page.waitForTimeout(800);
 await page.click('button.tab[data-tab="roles"]');
 await page.waitForTimeout(400);
 let R = await 读数(page);
-判('① 开局：手账卡 21 条、计数 0/21、小账清零',
-  R.枚数 === 21 && R.计数 === '0/21' && R.小账.sms === 0 && R.小账.replies === 0, R);
+/* ★口径：开局那一屏**本来就看得见公园的蝴蝶** ⇒ "见过白天的蝴蝶"开局即 ✓（计数不是 0/25 而是 1/25）；
+   这里钉的是"25 条 ＋ 计数与勾一致 ＋ 短信两条小账清零"，不再拿 0/25 当判据（本单第一版栽过）。 */
+判('① 开局：手账卡 25 条、计数与勾一致、短信两条小账清零（蝴蝶那行开局即 ✓——相机默认就对着公园）',
+  R.枚数 === 25 && /^\d+\/25$/.test(R.计数) && R.勾 === Number(R.计数.split('/')[0]) && R.小账.sms === 0 && R.小账.replies === 0, R);
+/* ①b／①c 第 294 单·见过的风景。
+   ★口径（本单第一版栽过两条）：① 开局那一屏**本来就看得见公园的蝴蝶**（相机默认对着园区）⇒
+   "四项全未见"这个前提不成立，不能那么钉；② "看见"只在**现场页**才发生——`draw()` 只在
+   `#scr-live` 激活时跑，在角色页上等一帧什么都不会发生（第一版就在角色页上等，蜓 恒 0）。 */
+{
+  const 初 = await page.evaluate(() => ({ ...window.__pv.state.miles.saw }));
+  const 提示 = await page.evaluate(() => [...document.querySelectorAll('#mile-list li')]
+    .filter(li => /蝴蝶|蜻蜓|蜗牛|雪人/.test(li.textContent)).map(li => li.textContent.replace(/\s+/g, ' ').trim()));
+  判('①b 第 294 单·见过的风景：四行都在、四把钥匙都是布尔 0/1，**没见着的那几行写清"去哪看"**（已见着的那行是 ✓）',
+    Object.values(初).every(v => v === 0 || v === 1) && 提示.length === 4
+    && 提示.every((t, i) => { const 键 = ['蝶', '蜓', '蜗牛', '雪人'][i]; return 初[键] === 1 ? /✓/.test(t) : /公园|江边|下雨|积雪期/.test(t); }),
+    { saw: 初, 提示 });
+  await page.evaluate(() => {
+    const st = window.__pv.state;
+    document.querySelector('button.tab[data-tab="live"]').click();   // ★必须先回现场页：只有现场页才画
+    st.world.speed = 0;                                            // 冻住世界：季节/天气在等帧期间不许漂
+    st.world.t = (200 - 1) * 1440 + 12 * 60;              // 秋·正午（蜻蜓的窗口）
+    st.world.weather = { rain: false, until: 0 };
+    st.cam.manual = true; st.cam.fx = 33; st.cam.fy = 21;  // 相机对江边岸线东段
+  });
+  await page.waitForTimeout(900);
+  const 后 = await page.evaluate(() => ({ saw: { ...window.__pv.state.miles.saw } }));
+  判('①c 端到端：回现场页＋秋日把相机对准岸线 ⇒ 蜻蜓画进屏幕 ⇒ 手账"见过秋天的蜻蜓"当场打勾（蜗牛／雪人仍未见）',
+    后.saw.蜓 === 1 && 后.saw.蜗牛 === 0 && 后.saw.雪人 === 0, 后.saw);
+  await page.evaluate(() => { window.__pv.state.world.speed = 1; });   // ★把世界放开：②③ 要靠世界跑起来才等得到回音
+}
 await page.click('button.tab[data-tab="phone"]');
 await page.waitForSelector('#ph-msgs button[data-msg]:not([disabled])', { timeout: 10000 }).catch(() => {});
 await page.waitForTimeout(200);

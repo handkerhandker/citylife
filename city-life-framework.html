@@ -554,7 +554,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v216</span>
+<span class="num dim" id="set-build">v217</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -4940,6 +4940,10 @@ const bootMiles=(()=>{
            /* 第 274 单·手账四期：漂流瓶只记"第一次捡到"这一笔（布尔归一：true/1 才算，其余归 0；
               旧档没有这一项 ⇒ 0——照 phSeen／ai 小账的归一先例，绝不因小账畸形拒载存档）。 */
            bottle:(m.bottle===true||m.bottle===1)?1:0,
+           /* 第 294 单·手账五期·见过的风景：四个布尔键（true/1 才算，其余归 0；旧档没有 ⇒ 全 0）——
+              口径照 bottle 那条（布尔归一，绝不因小账畸形拒载存档）。键表在下面 `见过键`。 */
+           saw:(()=>{ const s=(m.saw&&typeof m.saw==='object')?m.saw:{}; const o={};
+             for(const k of ['蝶','蜓','蜗牛','雪人']) o[k]=(s[k]===true||s[k]===1)?1:0; return o; })(),
            countedLid:(isFinite(m.countedLid)&&m.countedLid>=0)?Math.floor(m.countedLid):(bootWorld?bootWorld.lidSeq:0) };
 })();
 /* 第 177 单·AI 成本闸的本地小账（《AI 通道与成本闸方案 v1》阶段一）：{day, used}。
@@ -6016,6 +6020,20 @@ document.addEventListener('visibilitychange',()=>{        // 切走静音（礼�
    milestones, and daily goals」）；星露谷 wiki·Achievements——生活模拟里"长期目标清单"是标配。
    口径：计数**只看日志**（发出去的短信／收到的回音／留言），按 lid 水位增量扫 ⇒ 重载不重复计；
    "生日那天说声快乐"扫到 out 条目时对一下当天；旧档从 0 起算（见 bootMiles 的登记）。 */
+/* 第 294 单·手账五期·见过的风景——**只有它真的画进屏幕里**才记一笔（纯玩家侧小账，不写世界）。
+   出处（2026-10-08 实取 HTTP 200，逐字）：Nookipedia·Critterpedia「The Critterpedia is an NookPhone
+   app … that lists all the insects, fish, and sea creatures the player has caught… Each Critterpedia
+   entry shows the creature's **seasonality, active hours, location**…」——本作取它两半：
+   ①"见过就记一笔"；②每条**带上季节／时段／地点**（写在到手账那一行的提示位）。
+   判据：屏幕坐标落在画布内（留 8px 边）⇒ 才算"看见了"；一次记一笔、当场落盘（不写世界）。 */
+const 见过键=['蝶','蜓','蜗牛','雪人'];
+function 见过(键, 屏x, 屏y){
+  const M=state.miles; if(!M || !M.saw || !(键 in M.saw)) return;
+  if(M.saw[键]) return;
+  if(!(屏x>=8 && 屏y>=8 && 屏x<=state.cvW-8 && 屏y<=state.cvH-8)) return;
+  M.saw[键]=1;
+  try{ saveNow(); }catch(_){}
+}
 function milesStep(){
   const w=state.world, M=state.miles;
   if(!isFinite(M.countedLid)) M.countedLid=0;
@@ -6072,6 +6090,12 @@ function milesList(){
   加('看过第一场雪', d>=271, 'D'+Math.min(d,271)+'/271');
   加('发满 100 条短信', M.sms>=100, Math.min(M.sms,100)+'/100');
    加('捡到第一个漂流瓶', M.bottle>=1, M.bottle>=1?'✓':'0/1');      // 第 274 单·手账四期（点开漂流瓶那一刻记一笔）
+   /* 第 294 单·手账五期·见过的风景（照 Critterpedia：见过就记一笔，**每条带季节／时段／地点**；
+      四项都靠渲染层"画进屏幕那一刻"记账 ⇒ 不碰世界、不改 SIM）。未见过时提示位写"去哪看"。 */
+   加('见过白天的蝴蝶', M.saw.蝶>=1, M.saw.蝶>=1?'✓':'公园花丛 · 非冬白天');
+   加('见过秋天的蜻蜓', M.saw.蜓>=1, M.saw.蜓>=1?'✓':'江边岸线 · 秋天 08:00–19:00');
+   加('见过雨天的蜗牛', M.saw.蜗牛>=1, M.saw.蜗牛>=1?'✓':'下雨时的灌木边／树池边');
+   加('见过路边的小雪人', M.saw.雪人>=1, M.saw.雪人>=1?'✓':'积雪期（入冬第 11 天起）的广场路边');
   加('看过一整年', d>=360, 'D'+Math.min(d,360)+'/360');
   return 条;
 }
@@ -7926,6 +7950,7 @@ function 画蜗牛(){
   const s=state.view.s;
   for(const 点 of 蜗牛点){
     const bx=sx(点.x), by=sy(点.y), u=s*0.30;
+    见过('蜗牛', bx, by);                                  // 第 294 单·手账五期：画进屏幕才算"看见"
     ctx.save();
     ctx.fillStyle='rgba(0,0,0,.25)';                   // 影子
     ctx.beginPath(); ctx.ellipse(bx,by+u*0.44,u*0.95,u*0.26,0,0,7); ctx.fill();
@@ -8074,6 +8099,7 @@ function 画蝶(){
     const p=蝶点[i], 黄=(i%2===1);
     const ph=((t/3+i*0.37)%1+1)%1, ang=ph*Math.PI*2;
     const cx=sx(p.x+Math.cos(ang)*0.30), cy=sy(p.y-0.22+Math.sin(ang)*0.22);
+    见过('蝶', cx, cy);                                    // 第 294 单·手账五期：画进屏幕才算"看见"
     const 扑=Math.abs(Math.sin(t*1.7+i*1.1));                  // 翅膀张合（相位只认世界时间）
     ctx.save();
     ctx.translate(cx,cy);
@@ -8114,6 +8140,7 @@ function 画蜻蜓(){
     const p=蜓点[i];
     const ph=((t/2.2+i*0.31)%1+1)%1, ang=ph*Math.PI*2;            // 悬停小圈（相位只认世界时间）
     const cx=sx(p.x+Math.cos(ang)*0.55), cy=sy(p.y+Math.sin(ang*2)*0.10-0.10);   // 沿江岸来回、微微压低
+    见过('蜓', cx, cy);                                    // 第 294 单·手账五期：画进屏幕才算"看见"
     const 抖=Math.abs(Math.sin(t*6.2+i*1.7));                     // 翅抖比蝶快一倍多（蜻蜓悬停的观感）
     ctx.save();
     ctx.translate(cx,cy);
@@ -8156,6 +8183,7 @@ function 画雪人(){
   const s=state.view.s, cx=sx(p.x), cy=sy(p.y);
   if(cx<-s*2||cx>state.cvW+s*2||cy<-s*2||cy>state.cvH+s*2) return;   // 出屏不画
   const 白='#eef3fb', 影='#cfdcee', 深='#2b2f3a', 胡萝卜='#e07a2f', 枝='#7a5a3a', 帽='#49536b';
+  见过('雪人', cx, cy);                                    // 第 294 单·手账五期：画进屏幕才算"看见"
   ctx.save();
   // 底座（雪堆）＋影子
   ctx.fillStyle='rgba(20,26,38,0.18)';
