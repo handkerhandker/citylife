@@ -10255,6 +10255,10 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   ok(Sim.CAT_SMS && ['work','clerk','trade','write'].every(k=>Array.isArray(Sim.CAT_SMS[k]) && Sim.CAT_SMS[k].length>=2
      && Sim.CAT_SMS[k].every(s=>typeof s==='string' && s.indexOf('{名}')>=0)),
      '第 257 单·结构：四户各两条、条条带 `{名}` 占位（按日号取，零 rng）');
+  /* 第 258 单（批后审计）补的门：**"取第几条"必须钉在日号上**——把取句简化成"固定第一句"时，
+     每条池子的第二句就永远不出现（内容静默死掉），而旧判据照样全绿（258 单注入 F5 实测）。 */
+  ok(/池\[\(\(\(今天0%池\.length\)\+池\.length\)%池\.length\)\]/.test(src257),
+     '第 257 单·结构：按日号取句（零 rng）——把取句简化成"固定取第一句"要当场判红');
   ok(/let 猫话='';/.test(src257) && /ag\.catSaid!==今天0/.test(src257)
      && /PURE\.dayOf\(ag\.lastCat\.t\)===今天0/.test(src257) && /\+\s*猫话\}\);/.test(src257),
      '第 257 单·结构：回话尾巴的 `猫话` 带"同一天"与 `catSaid` 两个守卫（一天至多一次）');
@@ -10283,6 +10287,11 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
     const 病=src257.replace('PURE.dayOf(ag.lastCat.t)===今天0','true');
     ok(病!==src257 && !/PURE\.dayOf\(ag\.lastCat\.t\)===今天0/.test(病),
        '第 257 单·反向自查·拦得住：把"同一天"守卫抠掉 ⇒ 上面的结构判据当场判红');
+  }
+  {
+    const 病=src257.replace(/池\[\(\(\(今天0%池\.length\)\+池\.length\)%池\.length\)\]/,'池[0]');
+    ok(病!==src257 && !/池\[\(\(\(今天0%池\.length\)\+池\.length\)%池\.length\)\]/.test(病),
+       '第 257 单·反向自查·拦得住：把取句简化成"固定第一句" ⇒ 结构判据当场判红（258 单补的门）');
   }
 }
 
