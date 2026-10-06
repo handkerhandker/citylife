@@ -13,6 +13,10 @@
 //     **321 px** 落进同色窗——逐项排查＝**中线短划的抗锯齿边**（短划也拿掉后归 0；F7／F7b 实测）。
 //     三档实测：正常 10182 ／ 只去细缝 321 ／ 细缝＋短划都去 0 ⇒ 阈值取 3000 三档分得开。
 //   --改前=<git-ref>：v203 版广场四块平色、v204 版江边／岸线无纹样 ⇒ 对应条全 0、判红。
+// ③ 雨天湿地（第 278 单）：雨天把相机依次对到三块（广场／江边／公园路），在**五处水洼各自的盒**里数
+//   **涟漪两级色**（`#d7e6f8` 新圈／`#9db4d2` 旧圈——不透明直线 ⇒ ±2 精确匹配）：雨天三块都数得到、
+//   重复一次逐数相同（相位只认世界时间、speed=0 即冻结）、**雨停即收** ≤4。
+//   `--改前=v208`：旧版没有水洼概念 ⇒ 三条判红（判据不是恒绿）。
 // 用法：node tools/plaza-audit/probe.mjs [输出目录] [--改前=<git-ref>]   （要 CITYLIFE_CHROME）
 import http from 'http';
 import fs from 'fs';
@@ -30,7 +34,8 @@ const BEFORE = (process.argv.find(a => a.startsWith('--改前=')) || '').split('
 const rawHtml = BEFORE
   ? execFileSync('git', ['show', `${BEFORE}:city-life-framework.html`], { cwd: REPO, maxBuffer: 1 << 28, encoding: 'utf8' })
   : fs.readFileSync(path.join(REPO, 'city-life-framework.html'), 'utf8');
-const html = rawHtml.replace(/\}\)\(\);\s*<\/script>/, 'window.__pv={get state(){return state},get Sim(){return Sim}};\n})();\n</script>');
+const html = rawHtml.replace(/\}\)\(\);\s*<\/script>/, 'window.__pv={get state(){return state},get Sim(){return Sim},'
+  + 'get 水洼点(){try{return (typeof 水洼点!==\'undefined\')?水洼点:null}catch(e){return null}}};\n})();\n</script>');
 if (html === rawHtml) { console.error('注入点没找到'); process.exit(2); }
 const PORT = 18991;
 const srv = http.createServer((q, r) => {
@@ -156,6 +161,40 @@ await page.screenshot({ path: path.join(OUT, BEFORE ? '蜗牛-改前.png' : '蜗
 await page.evaluate(() => { const st = __pv.state; st.world.weather = { rain: false, until: 0 }; });
 await page.waitForTimeout(400);
 const 蜗晴 = await 数蜗();
+// ── 第 278 单·雨天湿地：雨天三块各数一次＋重复一次＋雨停对照 ──────────────────────
+const 洼表备=[[24.8,18.2],[19.8,21.3],[33.0,17.6],[41.2,22.1],[9.6,18.6]];   // 与源码水洼点同坐标（耦合闸在 harness）
+const 数洼 = (fx, fy) => page.evaluate(([x, y]) => {
+  const st = __pv.state; st.cam.manual = true; st.cam.fx = x; st.cam.fy = y;
+}, [fx, fy]).then(() => page.waitForTimeout(420)).then(() => page.evaluate((备) => {
+  const st = __pv.state;
+  const 点 = (__pv.水洼点 && __pv.水洼点.length) ? __pv.水洼点 : 备.map(([x, y]) => ({ x, y }));
+  const s = st.view.s, cv = document.querySelector('#cv'), g = cv.getContext('2d');
+  const dpr = cv.width / cv.clientWidth;
+  const 色 = [[0xd7, 0xe6, 0xf8], [0x9d, 0xb4, 0xd2]];
+  const 近 = (r, gg, b, q) => Math.abs(r - q[0]) <= 2 && Math.abs(gg - q[1]) <= 2 && Math.abs(b - q[2]) <= 2;
+  let 洼 = 0, 框 = 0;
+  for (const p of 点) {
+    const cx = st.view.ox + p.x * s, cy = st.view.oy + p.y * s;
+    const x0 = Math.round((cx - s * 0.95) * dpr), y0 = Math.round((cy - s * 0.65) * dpr);
+    const wp = Math.round(s * 1.9 * dpr), hp = Math.round(s * 1.3 * dpr);
+    if (x0 < 0 || y0 < 0 || x0 + wp > cv.width || y0 + hp > cv.height) continue;   // 出屏不计
+    框++;
+    const dd = g.getImageData(x0, y0, wp, hp).data;
+    for (let i = 0; i < dd.length; i += 4) {
+      const r = dd[i], gg = dd[i + 1], b = dd[i + 2];
+      if (近(r, gg, b, 色[0]) || 近(r, gg, b, 色[1])) 洼++;
+    }
+  }
+  return { 洼, 框, s: +s.toFixed(2) };
+}, 洼表备));
+await page.evaluate(() => { const st = __pv.state; st.world.weather = { rain: true, until: st.world.t + 600 }; });
+const 洼广场 = await 数洼(23.2, 18.6);
+const 洼广场2 = await 数洼(23.2, 18.6);          // 重复一次（speed=0 ⇒ 相位冻结，应逐数相同）
+const 洼江边 = await 数洼(36.5, 20.2);
+const 洼公园 = await 数洼(9.6, 18.8);
+await page.screenshot({ path: path.join(OUT, BEFORE ? '雨天湿地-改前.png' : '雨天湿地.png') });
+await page.evaluate(() => { const st = __pv.state; st.world.weather = { rain: false, until: 0 }; });
+const 洼雨停 = await 数洼(23.2, 18.6);
 await browser.close(); srv.close();
 
 const 断言 = [];
@@ -179,6 +218,13 @@ const 判 = (n, ok, 读数_) => { 断言.push({ n, ok, 读数_ }); console.log((
    Math.abs(园甲.草色 - 园乙.草色) <= 30 && Math.abs(园甲.花色 - 园乙.花色) <= 30, { 甲: 园甲, 乙: 园乙 });
 判('⑫ 雨天蜗牛：下雨时壳色 ≥ 60（(201,154,91)±2）', 蜗雨.壳色 >= 60, { 壳色: 蜗雨.壳色, 足色: 蜗雨.足色, box: 蜗雨.box });
 判('⑬ 雨停就收：不下雨时壳色 ≤ 4（出处 Nookipedia·Snail「Rain only」）', 蜗晴.壳色 <= 4, { 壳色: 蜗晴.壳色 });
+判('⑭ 雨天湿地：雨天三块都数得到涟漪（广场 ≥60／江边 ≥60／公园 ≥30；两级色 ±2）',
+  洼广场.洼 >= 60 && 洼江边.洼 >= 60 && 洼公园.洼 >= 30,
+  { 广场: 洼广场, 江边: 洼江边, 公园: 洼公园 });
+判('⑮ 雨天湿地·重复稳定（涟漪相位只认世界时间、speed=0 即冻结；雨丝是动画层会扫过水洼盒 ⇒ 差 ≤ 30，照 ④ 先例）',
+  Math.abs(洼广场2.洼 - 洼广场.洼) <= 30 && 洼广场2.框 === 洼广场.框, { 一: 洼广场.洼, 二: 洼广场2.洼, 框: 洼广场.框 });
+判('⑯ 雨停就收：不下雨时水洼色 ≤ 4（出处 Wikipedia·Puddle「primarily due to precipitation」）',
+  洼雨停.洼 <= 4, { 雨停: 洼雨停 });
 const 结论 = { 版本: BEFORE || '（工作区当前版本）', 读数: 甲, 第二次: 乙, 江边: 江甲, 江边第二次: 江乙,
   公园: 园甲, 公园第二次: 园乙, 蜗牛: 蜗雨, 蜗牛雨停: 蜗晴,
   断言, 页面错误: 错, 通过: 断言.every(x => x.ok) };

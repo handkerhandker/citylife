@@ -554,7 +554,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v208</span>
+<span class="num dim" id="set-build">v209</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -7883,6 +7883,52 @@ function 画蜗牛(){
 }
 /*SNAIL-END*/
 
+/* 第 278 单·室外篇·四期：雨天湿地（水洼＋雨点涟漪）——纯画面件（照动森"purely cosmetic"口径），
+   出处（2026-10-06 实取，逐字见 docs/规划/借鉴调研-2026-10-06-雨天湿地.md）：
+   Wikipedia·Puddle「A puddle is a small accumulation of liquid, usually water, on a surface… primarily
+   due to precipitation」（HTTP 200）＋ Nookipedia·Weather「Precipitation can change from hour to hour,
+   but will often last for much of the day, easing off as the day progresses.」（HTTP 200）。
+   落成＝**只有下雨天才画**（纯读 `weather.rain`，雨停即收）、五处固定水洼（坐标常量一处登记，
+   每处都落在既有矩形里——harness 耦合闸照第 70／272 单家法），水面**只压暗一档**（不动面层本身，
+   第 268 单的教训），雨点涟漪两圈、相位**只认世界时间**（`speed=0` 时冻结 ⇒ 探针可复现）。
+   纯渲染：零 rng、零新增字段、不占格 ⇒ 三指纹原样；画在 `snowGround()` 之前（冬日积雪照旧盖住）。
+   大小约 1.5×0.8 格——照家具口径**不进"房间名让位"账**（贴地的东西不挡房间名）。 */
+/*RAINPOOL-START*/
+const 水洼点=[                    // 区＝耦合闸的判据：广场 PLAZA／江边 river 房／公园路 ROOM_FURN.park 的 path
+  {x:24.8, y:18.2, 长:1.5, 宽:0.8, 区:'广场'},    // ① 云港广场·树池北（PLAZA 内、T 口净道以东）
+  {x:19.8, y:21.3, 长:1.2, 宽:0.7, 区:'广场'},    // ② 云港广场·西南角（PLAZA 内；摊位行以南）
+  {x:33.0, y:17.6, 长:1.5, 宽:0.8, 区:'江边'},    // ③ 江边步道·西段（river 房内）
+  {x:41.2, y:22.1, 长:1.3, 宽:0.7, 区:'江边'},    // ④ 江边步道·东南贴水（river 房内）
+  {x:9.6,  y:18.6, 长:1.2, 宽:0.7, 区:'公园路'},  // ⑤ 滨江公园·碎石路（ROOM_FURN.park 的 path 内）
+];
+function 雨天湿地(){
+  const w=state.world;
+  if(!(w&&w.weather&&w.weather.rain)) return;        // 雨天才积水；雨停即收（出处：Puddle·precipitation）
+  const s=state.view.s, t=w.t;
+  for(const p of 水洼点){
+    const cx=sx(p.x), cy=sy(p.y);
+    if(cx<-s*2||cx>state.cvW+s*2||cy<-s*2||cy>state.cvH+s*2) continue;   // 出屏不画
+    const rx=s*p.长/2, ry=s*p.宽/2;
+    ctx.save();
+    ctx.beginPath(); ctx.ellipse(cx,cy,rx,ry,0,0,7);
+    ctx.fillStyle='rgba(18,34,60,0.22)';              // 水面：只压暗一档（不动面层本身）
+    ctx.fill();
+    ctx.lineWidth=Math.max(1,s*0.022); ctx.strokeStyle='rgba(150,178,214,0.30)';
+    ctx.stroke();                                     // 水沿
+    for(let k=0;k<2;k++){
+      const ph=((t/6+k*0.5)%1+1)%1;                   // 相位只认世界时间（speed=0 冻结；1× 下 6 分钟≈0.6 真秒一圈）
+      const r=(0.24+ph*0.62)*s;
+      if(r>rx*0.78) continue;                         // 涟漪不出水沿
+      ctx.beginPath(); ctx.ellipse(cx,cy,r,r*0.52,0,0,7);
+      ctx.strokeStyle=(ph<0.5)?'#d7e6f8':'#9db4d2';   // 新圈亮、旧圈暗（两级都在探针色窗里）
+      ctx.lineWidth=Math.max(1,s*0.028);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+}
+/*RAINPOOL-END*/
+
 /* ---------- 楼身分组表与楼内连通（第 16 单）：同楼房间互访走内部路径，不出楼门、不上街 ----------
    归属判定用集中登记的分组表（ROOMS 的 door.via 只有 kitchen 一条且卧室缺位，见总规文档「室内连通」节，
    故取任务书许可的「等价楼身分组表」路线；door.via 字段本身零触碰）。表外房间一律按跨楼处理，照旧经动脉。 */
@@ -9232,6 +9278,7 @@ function draw(now){
   江边铺装();                  // 第 270 单·室外篇·二期：江边步道＋岸线步道的石板纹样（在雪之前——冬日积雪照旧盖上去）
   碎石点();                    // 第 271 单·室外篇·三期：碎石路上的小石子（画在路之后、雪之前）
   画蜗牛();                    // 第 272 单：雨天才出来的小蜗牛（公园灌木南沿／广场树池东沿；在雪之前）
+  雨天湿地();                  // 第 278 单·室外篇·四期：雨天水洼＋雨点涟漪（纯画面件；在雪之前——积雪照旧盖上去）
   snowGround(state.world.t);   // 第 168 单：冬日积雪——街道/岸线/广场＋雪堆（房间循环之后、摊位与人物之前）
   // 广场常设件（B 案）：街市摊位 ×3 贴排于广场西列（已撤离步行动脉）＋夜谈角＋江畔景观锚；脚底全部 ≥ 行 15，零压主干道
   /* 第 85 单·门洞记号（**零素材**）：此前门洞就是墙上一个"纯地板留口"——尤其被拼合图接管的
