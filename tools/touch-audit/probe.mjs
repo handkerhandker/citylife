@@ -32,7 +32,11 @@ const rawHtml = BEFORE
   : fs.readFileSync(path.join(REPO, 'city-life-framework.html'), 'utf8');
 const html = rawHtml.replace(/\}\)\(\);\s*<\/script>/,
   'window.__pv={get state(){return state},get Sim(){return Sim},get sx(){return sx},get sy(){return sy},'
-  + 'get 量内衬(){try{return (typeof 量内衬===\'function\')?量内衬:null}catch(e){return null}}};\n})();\n</script>');
+  + 'get 量内衬(){try{return (typeof 量内衬===\'function\')?量内衬:null}catch(e){return null}},'
+  /* 第 286 单：画布刷新闸的数（旧版没有这些标识符 ⇒ try/catch 给 −1／false，判据当场判红） */
+  + 'get 画布帧计数(){try{return 画布帧计数}catch(e){return -1}},'
+  + 'get 分辨率档(){try{return 分辨率档}catch(e){return -1}},'
+  + '设分辨率档(i){try{分辨率档=Math.max(0,Math.min(分辨率档表.length-1,i|0));resizeCanvas();return true}catch(e){return false}}};\n})();\n</script>');
 if (html === rawHtml) { console.error('注入点没找到'); process.exit(2); }
 const PORT = 18964;
 const srv = http.createServer((q, r) => {
@@ -316,6 +320,184 @@ const 初始 = await 取态();
     { layout: 缩首帧.layout, ox: 缩首帧.ox, 左栏右缘: 缩首帧.rail, 缩放: 缩首帧.缩放 });
   await pR.locator('#cv').screenshot({ path: path.join(OUT, '转屏第一帧.png') }).catch(() => {});
   await ctxR.close();
+}
+
+/* ⑭–⑳ 第 286 单·"跟手"（决策者真机 2026-10-07：地图拖动、列表／日志滚动都黏手）。
+   桌面同版本实测每帧 JS 只 0.5–0.7ms ⇒ 不是算得慢；模拟弱机（软件光栅＋CPU×4）实测
+   dpr 2.75 整页 18fps／dpr 1 有 50fps ⇒ 病在"每帧要过的管线太重"。本单只动
+   "多久画一次、画多大"，并把手感拆成可复现的读数（另开一页干净上下文）：
+     ⑭ 起手更跟手：1px 一步拖 6 步，画面第一次动的手指数 ≤6（改前＝9，越过 8px 阈值那一拍）；
+     ⑮ 点按峰值 14px：慢速横漂 10px（＞旧阈值 8px）仍算点按 ⇒ 弹卡且镜头一分不动（改前：判成拖动、不弹卡）；
+     ⑯ 拖动热路径零布局读：2.5s 拖动里 getBoundingClientRect 调用 = 0（改前每秒兜底重测，至少 4 次）；
+     ⑰ 刷新闸·静止：画布帧数 ≈ rAF 拍子的一半（60fps 档；改前每拍都画）；
+     ⑱ 刷新闸·手在屏：手指持续移动时画布帧数 ≈ rAF 拍子（跟手优先，不设闸）；
+     ⑲ 刷新闸·弹窗：弹窗盖住画布时画布帧数 ≈ rAF 的 1/4（30fps 档）；
+     ⑳ 分辨率档真作用到画布：最低档 dpr≤1、越界夹回最高档 2.5（改前无此开关 ⇒ 判红）。 */
+{
+  const ctxF = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 2.75 });
+  await ctxF.addInitScript(() => {
+    window.__rAF数 = 0;
+    const 原 = window.requestAnimationFrame.bind(window);
+    window.requestAnimationFrame = cb => 原(t => { window.__rAF数++; cb(t); });
+    /* draw() 每帧第一句就是 ctx.setTransform（全站唯一一处）⇒ 数它＝数"画布落笔次数"，
+       新旧两版通用（第 286 单新加的 画布帧计数 在旧版根本不存在，数不出来）。 */
+    window.__画数 = 0;
+    const 原ST = CanvasRenderingContext2D.prototype.setTransform;
+    CanvasRenderingContext2D.prototype.setTransform = function () { window.__画数++; return 原ST.apply(this, arguments); };
+  });
+  const pF = await ctxF.newPage();
+  pF.on('pageerror', e => 错.push(String((e && e.message) || e)));
+  await pF.goto(`http://127.0.0.1:${PORT}/city-life-framework.html`, { waitUntil: 'load' });
+  await pF.waitForTimeout(2400);
+  const cdpF = await ctxF.newCDPSession(pF);
+  const 发 = (类型, 点) => cdpF.send('Input.dispatchTouchEvent', 类型 === 'touchEnd'
+    ? { type: 'touchEnd', touchPoints: [] }
+    : { type: 类型, touchPoints: [{ x: Math.round(点[0]), y: Math.round(点[1]), id: 1 }] });
+  const 取镜 = () => pF.evaluate(() => ({ fx: __pv.state.cam.fx, fy: __pv.state.cam.fy, manual: __pv.state.cam.manual,
+    弹窗: !!document.querySelector('#dialog-root.open'), 画: window.__画数, rAF: window.__rAF数,
+    档: __pv.分辨率档, dpr: __pv.state.dpr }));
+  /* 本页自己的"点小人"（上面那个 点小人 绑的是外层 page，在本页用会把镜头挪到别处 ⇒ 点空） */
+  const 点小人F = async id => {
+    await pF.evaluate(i => { const v = __pv.state.vis[i];
+      __pv.state.cam.manual = true; __pv.state.cam.fx = v.dspX; __pv.state.cam.fy = v.dspY; }, id);
+    await pF.waitForTimeout(250);
+    return pF.evaluate(i => {
+      const v = __pv.state.vis[i], r = document.querySelector('#cv').getBoundingClientRect();
+      /* 命中锚点＝精灵视觉中心再往下约三分之一格（游戏 pointerup 那条算式）——对准它留出容差，
+         否则"视觉中心"离锚点本就 25px、只剩 2px 余量，稍微一漂就点空。 */
+      return { x: r.x + __pv.sx(v.dspX), y: r.y + __pv.sy(v.dspY) - __pv.state.view.s * 0.5 + __pv.state.view.s * 0.35,
+               底: __pv.state.view.s };
+    }, id);
+  };
+  await pF.evaluate(() => { const st = __pv.state; st.world.speed = 0; st.llm.on = false; st.selected = null; });
+  // 把四人摆到互不相邻的空地并冻住（同 ① 的家法）：不然"点小人"和慢漂那 300ms 里人会走开 ⇒ 假红
+  await pF.evaluate(() => {
+    const st = __pv.state;
+    const 摆 = (id, x, y) => { const v = st.vis[id]; v.x = v.dspX = x; v.y = v.dspY = y; v.path = []; v.moving = false; };
+    摆('a1', 8, 18.0); 摆('a2', 30, 18.0); 摆('a3', 44, 18.0); 摆('a4', 5, 13.5);
+  });
+  await pF.waitForTimeout(300);
+
+  // ⑭ 起手死区：1px 一步找"画面第一次动"的那一步
+  {
+    const 起 = await 取镜();
+    await 发('touchStart', [200, 420]);
+    let 死 = -1;
+    for (let i = 1; i <= 6; i++) {
+      await 发('touchMove', [200 - i, 420]);
+      await pF.waitForTimeout(34);
+      const fx = await pF.evaluate(() => __pv.state.cam.fx);
+      if (死 < 0 && Math.abs(fx - 起.fx) > 1e-9) 死 = i;
+    }
+    await 发('touchEnd');
+    await pF.waitForTimeout(200);
+    判('⑭ 起手更跟手：手指移 ≤6px 画面就该动（改前＝9px）', 死 >= 3 && 死 <= 6, { 死区px: 死 });
+  }
+  // ⑮ 点按峰值 14px：慢速横向漂 10px ⇒ 仍算点按（弹卡＋镜头一分不动）
+  {
+    const 点 = await 点小人F('a1');
+    const 前 = await 取镜();
+    await 发('touchStart', [点.x, 点.y]);
+    for (let i = 1; i <= 5; i++) { await 发('touchMove', [点.x, 点.y + i * 2]); await pF.waitForTimeout(60); }
+    await 发('touchEnd');
+    await pF.waitForTimeout(400);
+    const 后 = await 取镜();
+    判('⑮ 点按峰值 14px：慢漂 10px 仍弹卡、镜头 Δfx/Δfy 都为 0（改前：判成拖动、不弹卡）',
+      后.弹窗 && Math.abs(后.fx - 前.fx) < 0.01 && Math.abs(后.fy - 前.fy) < 0.01,
+      { 弹窗: 后.弹窗, Δfx: +(后.fx - 前.fx).toFixed(3), Δfy: +(后.fy - 前.fy).toFixed(3), manual: 后.manual });
+    await pF.evaluate(() => document.querySelector('#dialog-root').classList.remove('open'));
+    await pF.waitForTimeout(250);
+    // ⑮b 同一手势点在空地上：不弹卡、镜头仍一分不动、也不偷偷改成"手动"
+    const 空 = [点.x - 120, 点.y];
+    const 前2 = await 取镜();
+    await 发('touchStart', 空);
+    for (let i = 1; i <= 5; i++) { await 发('touchMove', [空[0], 空[1] + i * 2]); await pF.waitForTimeout(60); }
+    await 发('touchEnd');
+    await pF.waitForTimeout(400);
+    const 后2 = await 取镜();
+    判('⑮b 同一慢漂点在空地：不弹卡、镜头 Δfx/Δfy 都为 0、manual 原样（点按＝世界一格不动）',
+      后2.弹窗 === false && Math.abs(后2.fx - 前2.fx) < 0.01 && Math.abs(后2.fy - 前2.fy) < 0.01 && 后2.manual === 前2.manual,
+      { 弹窗: 后2.弹窗, Δfx: +(后2.fx - 前2.fx).toFixed(3), Δfy: +(后2.fy - 前2.fy).toFixed(3), manual: 后2.manual });
+  }
+  // ⑯ 高刷采样挂上了：真浏览器里 #cv 上必须有 pointerrawupdate 监听（改前没有 ⇒ 判红）
+  {
+    const { root } = await cdpF.send('DOM.getDocument');
+    const { nodeId } = await cdpF.send('DOM.querySelector', { nodeId: root.nodeId, selector: '#cv' });
+    const { object } = await cdpF.send('DOM.resolveNode', { nodeId });
+    const { listeners } = await cdpF.send('DOMDebugger.getEventListeners', { objectId: object.objectId });
+    const 种 = [...new Set(listeners.map(l => l.type))];
+    判('⑯ 高刷采样：真浏览器里 #cv 挂着 pointerrawupdate 监听（高刷屏少一帧延迟；改前没有）',
+      种.indexOf('pointerrawupdate') >= 0, { 监听: 种.join('／') });
+  }
+  // ⑯b 附带读数（不作断言）：拖动 2.5s 里 getBoundingClientRect 调用数——热路径已不调 可视区()，
+  //     剩下的都是**主循环每秒兜底**那一次（每处 4~5 次），与改前同量级；这里只记账。
+  {
+    await pF.evaluate(() => {
+      if (!window.__读原) window.__读原 = Element.prototype.getBoundingClientRect;
+      window.__读N = 0;
+      Element.prototype.getBoundingClientRect = function () { window.__读N++; return window.__读原.apply(this, arguments); };
+    });
+    await 发('touchStart', [300, 500]);
+    await pF.evaluate(() => { window.__读N = 0; });            // 从"按下之后"开始数（起手快照那一次不算）
+    for (let i = 1; i <= 25; i++) { await 发('touchMove', [i % 2 ? 340 : 300, 500]); await pF.waitForTimeout(100); }
+    const 读 = await pF.evaluate(() => window.__读N);
+    await 发('touchEnd');
+    await pF.waitForTimeout(200);
+    console.log('  · 读数（不作断言）：2.5s 拖动里 getBoundingClientRect 调用 ' + 读 + ' 次（主循环每秒兜底那一次）');
+  }
+  // ⑰ 刷新闸·静止（手不在屏）⇒ 60fps 档
+  {
+    await pF.waitForTimeout(700);
+    const 前 = await 取镜();
+    await pF.waitForTimeout(2200);
+    const 后 = await 取镜();
+    const rAF = 后.rAF - 前.rAF, 画 = 后.画 - 前.画;
+    判('⑰ 刷新闸·静止：画布帧数 ≈ rAF 的一半（60fps 档，比 0.3~0.62）',
+      rAF > 60 && 画 >= rAF * 0.3 && 画 <= rAF * 0.62, { rAF, 画, 比: +(画 / Math.max(1, rAF)).toFixed(2) });
+  }
+  // ⑱ 刷新闸·手在屏（持续移动）⇒ 满帧（跟手优先）
+  {
+    const 前 = await 取镜();
+    await 发('touchStart', [300, 500]);
+    for (let i = 1; i <= 22; i++) { await 发('touchMove', [300 + (i % 2 ? 30 : 0), 500]); await pF.waitForTimeout(100); }
+    const 后 = await 取镜();
+    await 发('touchEnd');
+    const rAF = 后.rAF - 前.rAF, 画 = 后.画 - 前.画;
+    判('⑱ 刷新闸·手在屏：手指一直动着时画布 ≈ 每拍都画（比 ≥0.85，跟手优先）',
+      rAF > 60 && 画 >= rAF * 0.85, { rAF, 画, 比: +(画 / Math.max(1, rAF)).toFixed(2) });
+  }
+  // ⑲ 刷新闸·弹窗（画布被半透明背景盖住）⇒ 30fps 档
+  {
+    const 点3 = await 点小人F('a3');
+    await pF.touchscreen.tap(点3.x, 点3.y);
+    await pF.waitForTimeout(600);
+    const 开 = await pF.evaluate(() => !!document.querySelector('#dialog-root.open'));
+    await pF.waitForTimeout(500);
+    const 前 = await 取镜();
+    await pF.waitForTimeout(2200);
+    const 后 = await 取镜();
+    const rAF = 后.rAF - 前.rAF, 画 = 后.画 - 前.画;
+    判('⑲ 刷新闸·弹窗：弹窗盖住画布时画布帧数 ≈ rAF 的 1/4（30fps 档，比 0.12~0.45）',
+      开 && rAF > 60 && 画 >= rAF * 0.12 && 画 <= rAF * 0.45, { 弹窗: 开, rAF, 画, 比: +(画 / Math.max(1, rAF)).toFixed(2) });
+    await pF.evaluate(() => document.querySelector('#dialog-root').classList.remove('open'));
+    await pF.waitForTimeout(250);
+  }
+  // ⑳ 分辨率档真作用到画布（最低档 dpr≤1；越界夹回最高档 2.5）
+  {
+    const r = await pF.evaluate(() => {
+      const 原 = __pv.state.dpr;
+      const ok0 = __pv.设分辨率档(0);
+      const 低 = { dpr: __pv.state.dpr, w: document.querySelector('#cv').width, 视口W: innerWidth };
+      __pv.设分辨率档(9);
+      const 高 = { dpr: __pv.state.dpr, 档: __pv.分辨率档, w: document.querySelector('#cv').width };
+      return { 原, ok0, 低, 高 };
+    });
+    判('⑳ 分辨率档真作用到画布：最低档 dpr≤1（画布宽＝视口宽）、越界夹回最高档 2.5',
+      r.ok0 === true && r.低.dpr <= 1.001 && Math.abs(r.低.w - r.低.视口W) <= 1
+      && Math.abs(r.高.dpr - 2.5) < 0.001 && r.高.档 === 3,
+      { 原dpr: r.原, 低: r.低, 高: r.高 });
+  }
+  await ctxF.close();
 }
 
 判('⑦ 全程零 pageerror', 错.length === 0, { 错: 错.length });

@@ -33,7 +33,16 @@ const srv = http.createServer((q, r) => {
   if (!p.startsWith(REPO) || !fs.existsSync(p) || fs.statSync(p).isDirectory()) { r.writeHead(404); r.end(); return; }
   r.writeHead(200, { 'content-type': MIME[path.extname(p)] || 'application/octet-stream' });
   fs.createReadStream(p).pipe(r);
-}).listen(PORT);
+});
+/* 第 286 单·加固：冒烟里这支偶发 `EADDRINUSE` 中途退出（2026-10-07 01:08 实测：前一拍刚跑完的
+   进程还没把端口放掉，整支 → 1 红；隔几分钟单跑即过）。端口被占就**等一等再监听**（最多 10 次 ×1.5s），
+   10 次仍不成才如实报错退出——把"偶发"从冒烟里拿掉，不掩盖真错误。 */
+let 监听试=0;
+srv.on('error', e=>{
+  if(e.code==='EADDRINUSE' && 监听试<10){ 监听试++; setTimeout(()=>srv.listen(PORT), 1500); return; }
+  console.error('监听失败：'+((e&&e.code)||e)); process.exit(1);
+});
+srv.listen(PORT);
 
 const exe = process.env.CITYLIFE_CHROME || '/opt/pw-browsers/chromium';
 const browser = await chromium.launch({ executablePath: exe });
