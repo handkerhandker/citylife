@@ -554,7 +554,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v210</span>
+<span class="num dim" id="set-build">v211</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -7109,6 +7109,12 @@ function resizeCanvas(){
   const 铺高 = 手机竖屏 ? (box.height / Sim.MAPH) : fit;
   // 地图整幅能看清就整幅显示；否则放大到可读的最小瓦片尺寸，镜头改为跟随+平移
   state.view.s=Math.max(fit, 铺宽, 铺高, Math.min(13, box.width/14, box.height/10));
+  /* 第 282 单·转屏闪帧（用户 2026-10-06 截图实证：竖→横第一帧左缘被工具栏压住、零点几秒后才跳正）：
+     内衬缓存原先只在**每秒兜底**重测（`可视区()` 里满 1 秒才量）——转屏那一刻缓存里的左栏宽还是
+     竖屏量出的 0 ⇒ 这一帧的相机夹取按"没有左栏"算，地图左缘压到 0、被工具栏盖住；等下一次兜底
+     重测（最多 1 秒后）才跳正 —— 就是那"闪一下"。治法：**任何一次尺寸/布局变化（resizeCanvas 必经）
+     都就地作废缓存** ⇒ 下一帧 `可视区()` 现读新几何，转屏第一帧就摆对。 */
+  内衬上次=0;
 }
 new ResizeObserver(resizeCanvas).observe($('#live-wrap'));
 

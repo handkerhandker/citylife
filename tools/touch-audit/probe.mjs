@@ -31,7 +31,8 @@ const rawHtml = BEFORE
   ? execFileSync('git', ['show', `${BEFORE}:city-life-framework.html`], { cwd: REPO, maxBuffer: 1 << 28, encoding: 'utf8' })
   : fs.readFileSync(path.join(REPO, 'city-life-framework.html'), 'utf8');
 const html = rawHtml.replace(/\}\)\(\);\s*<\/script>/,
-  'window.__pv={get state(){return state},get Sim(){return Sim},get sx(){return sx},get sy(){return sy}};\n})();\n</script>');
+  'window.__pv={get state(){return state},get Sim(){return Sim},get sx(){return sx},get sy(){return sy},'
+  + 'get 量内衬(){try{return (typeof 量内衬===\'function\')?量内衬:null}catch(e){return null}}};\n})();\n</script>');
 if (html === rawHtml) { console.error('注入点没找到'); process.exit(2); }
 const PORT = 18964;
 const srv = http.createServer((q, r) => {
@@ -248,6 +249,39 @@ const 初始 = await 取态();
   判('⑨ 竖屏·下缘能推到底栏上沿（地图下缘 ≈ 屏底 − 底内衬）',
     Math.abs((竖下.oy + 竖下.mh) - (竖下.cvH - 竖下.bottom)) <= 4,
     { 下缘: +(竖下.oy + 竖下.mh).toFixed(1), 可视底: +(竖下.cvH - 竖下.bottom).toFixed(1) });
+}
+
+/* ⑩ 第 282 单·转屏第一帧：竖→横那一帧的相机夹取就得按**新内衬**算。
+   旧病（用户 2026-10-06 截图实证）：内衬缓存只在"每秒兜底"时重测——转屏那一刻缓存里左栏宽还是
+   竖屏量出的 0 ⇒ 这一帧按"没有左栏"夹取，地图左缘压到 0 被工具栏盖住；最多 1 秒后兜底重测才跳正
+   （就是那"闪一下"）。判据：先把缓存**刷到刚刚**（＝转屏前一秒内刚量过的真实现场），立刻转屏，
+   再把镜头顶到世界左上角 ⇒ 下一帧读 ox：修复后该＝左栏右缘；旧版该＝0。 */
+{
+  const ctxR = await browser.newContext({ viewport: { width: 480, height: 812 }, hasTouch: true, isMobile: true, deviceScaleFactor: 2.75 });
+  const pR = await ctxR.newPage();
+  pR.on('pageerror', e => 错.push(String((e && e.message) || e)));
+  await pR.goto(`http://127.0.0.1:${PORT}/city-life-framework.html`, { waitUntil: 'load' });
+  await pR.waitForTimeout(2200);
+  await pR.evaluate(() => { const st = __pv.state; st.world.speed = 0; st.llm.on = false;
+    if (__pv.量内衬) __pv.量内衬(); });                    // 缓存刷到"刚刚"（模拟转屏前一秒内刚量过）
+  await pR.setViewportSize({ width: 812, height: 480 });  // 转屏（竖→横）
+  const 首帧 = await pR.evaluate(() => new Promise(r => {
+    const st = __pv.state;
+    st.cam.manual = true; st.cam.fx = 0; st.cam.fy = 0;     // 镜头顶到世界左上角 ⇒ 夹取上限＝内衬本身
+    requestAnimationFrame(() => r({
+      layout: document.getElementById('app').dataset.layout,
+      ox: Math.round(st.view.ox), oy: Math.round(st.view.oy),
+      rail: Math.round(document.querySelector('#tabbar').getBoundingClientRect().right),
+      top: Math.round(document.querySelector('#topbar').getBoundingClientRect().bottom),
+      cvW: st.cvW, cvH: st.cvH,
+    }));
+  }));
+  判('⑩ 转屏第一帧：夹取已按新内衬（横屏左缘＝左栏右缘、上缘＝顶栏下沿）',
+    首帧.layout === 'compact-landscape' && 首帧.rail >= 20 && Math.abs(首帧.ox - 首帧.rail) <= 1
+    && Math.abs(首帧.oy - 首帧.top) <= 1,
+    { layout: 首帧.layout, ox: 首帧.ox, 左栏右缘: 首帧.rail, oy: 首帧.oy, 顶栏下沿: 首帧.top });
+  await pR.locator('#cv').screenshot({ path: path.join(OUT, '转屏第一帧.png') }).catch(() => {});
+  await ctxR.close();
 }
 
 判('⑦ 全程零 pageerror', 错.length === 0, { 错: 错.length });
