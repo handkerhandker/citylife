@@ -554,7 +554,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v203</span>
+<span class="num dim" id="set-build">v204</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -7697,6 +7697,60 @@ const PLAZA_TREE={x:24, y:20, w:3, h:3};            // 江畔景观锚（大树�
 const SHORE_Y=23;                                   // 岸线步道：第 23 行，贯通东西
 const RIVER_Y=24;                                   // 江面：第 24–27 行＝4 行落地（南锚，下缘恰为 MAPH）
 
+/*PLAZA-START*/
+/* 第 268 单·广场铺装（室外篇·一期）——把第 16 单留的那句"广场＝中心节点（**色块底图**，二期·室外篇
+   铺装接手）"接上：广场不再是四块平色，而是**石材铺装**——基色 ＋ 每格细缝 ＋ 每三格粗缝 ＋ 一圈缘石；
+   T 口净道铺成一条浅色跑道（带中线短划，照街道虚线先例）；江畔景观锚外圈一圈树池缘石。
+   口径：① **数值全部从 `PLAZA*` 常量与 ROOMS 现读**（不写第二套坐标——这是第 16 单那句"以此为底图坐标"
+   的兑现）；② **纯渲染**：零新增 `PIX_SOLID`／`ANCHORS`／`STAND_SPOTS`（不占格、不影响走线与站立）、
+   零 rng、不写世界；③ 全套画在**雪之前**（冬日积雪照旧盖在上面——第 168 单口径不变）；
+   ④ **面层三色一律照旧值**（底 `#363a55`／驻足带 `#3c4165`／净道 `#434877`）——本单只加**纹样**
+   （缝／缘石／中线／树池），**不改地面亮度**：夜间亮度体检（第 44／152 单那套 ±0.01 基线）当场咬过
+   一次（广场 T 口 0.304→0.327），改回旧值即归位——这是"只铺纹样、不动光"的落地口径。 */
+function plazaPave(){
+  const s=state.view.s;
+  const X0=sx(PLAZA.x), Y0=sy(PLAZA.y), W=PLAZA.w*s, H=PLAZA.h*s;
+  // 1) 面层三色＝旧值（亮度不动；纹样随后叠上去）
+  ctx.fillStyle='#363a55';
+  ctx.fillRect(X0,Y0,W,H);
+  ctx.fillStyle='#3c4165';                                             // 摊前驻足带（列 20）
+  ctx.fillRect(sx(PLAZA_BROWSE.x),Y0,PLAZA_BROWSE.w*s,H);
+  ctx.fillStyle='#434877';                                             // T 竖净道＝T 口（列 21–23）
+  ctx.fillRect(sx(PLAZA_WAY.x),Y0,PLAZA_WAY.w*s,H);
+  // 2) 石板缝：每格细缝、每三格粗缝（**整场铺满**——三条面层一起被缝切开）
+  ctx.lineWidth=1;
+  ctx.strokeStyle='rgba(255,255,255,.05)';
+  for(let i=1;i<PLAZA.w;i++){
+    ctx.beginPath(); ctx.moveTo(sx(PLAZA.x+i),Y0); ctx.lineTo(sx(PLAZA.x+i),Y0+H); ctx.stroke();
+  }
+  for(let j=1;j<PLAZA.h;j++){
+    ctx.beginPath(); ctx.moveTo(X0,sy(PLAZA.y+j)); ctx.lineTo(X0+W,sy(PLAZA.y+j)); ctx.stroke();
+  }
+  ctx.strokeStyle='rgba(255,255,255,.10)';
+  for(let i=3;i<PLAZA.w;i+=3){
+    ctx.beginPath(); ctx.moveTo(sx(PLAZA.x+i),Y0); ctx.lineTo(sx(PLAZA.x+i),Y0+H); ctx.stroke();
+  }
+  for(let j=3;j<PLAZA.h;j+=3){
+    ctx.beginPath(); ctx.moveTo(X0,sy(PLAZA.y+j)); ctx.lineTo(X0+W,sy(PLAZA.y+j)); ctx.stroke();
+  }
+  // 3) 缘石一圈（贴广场内沿，线宽随缩放；位置正是旧"广场边界"那一圈）
+  ctx.strokeStyle='#565c86';
+  ctx.lineWidth=Math.max(2,s*0.10);
+  ctx.strokeRect(X0+s*0.05,Y0+s*0.05,W-s*0.10,H-s*0.10);
+  // 4) 净道中线短划（照街道虚线先例：短划＋间隔，不压人）
+  ctx.fillStyle='rgba(201,207,232,.18)';
+  const 中x=sx(PLAZA_WAY.x+PLAZA_WAY.w/2);
+  for(let j=PLAZA.y+0.6;j<PLAZA.y+PLAZA.h-0.4;j+=1.2) ctx.fillRect(中x-Math.max(1,s*0.05),sy(j),Math.max(2,s*0.10),s*0.42);
+  // 5) 树池缘石（江畔景观锚外圈；树干树冠随后照旧画在上面）
+  ctx.strokeStyle='#5d6489';
+  ctx.lineWidth=Math.max(2,s*0.12);
+  ctx.beginPath();
+  ctx.arc(sx(PLAZA_TREE.x+PLAZA_TREE.w/2),sy(PLAZA_TREE.y+PLAZA_TREE.h*0.5),
+          Math.min(PLAZA_TREE.w,PLAZA_TREE.h)*s*0.46,0,Math.PI*2);
+  ctx.stroke();
+}
+/*PLAZA-END*/
+
 /* ---------- 楼身分组表与楼内连通（第 16 单）：同楼房间互访走内部路径，不出楼门、不上街 ----------
    归属判定用集中登记的分组表（ROOMS 的 door.via 只有 kitchen 一条且卧室缺位，见总规文档「室内连通」节，
    故取任务书许可的「等价楼身分组表」路线；door.via 字段本身零触碰）。表外房间一律按跨楼处理，照旧经动脉。 */
@@ -9019,14 +9073,7 @@ function draw(now){
   ctx.fillRect(sx(0),sy(SHORE_Y),Sim.MAPW*s,s);
   ctx.fillStyle='#5a6480';                                             // 岸线护栏（贴江侧）
   ctx.fillRect(sx(0),sy(SHORE_Y+1)-2,Sim.MAPW*s,2);
-  ctx.fillStyle='#363a55';                                             // 广场铺装 9×8
-  ctx.fillRect(sx(PLAZA.x),sy(PLAZA.y),PLAZA.w*s,PLAZA.h*s);
-  ctx.fillStyle='#3c4165';                                             // 摊前驻足带（列 20）
-  ctx.fillRect(sx(PLAZA_BROWSE.x),sy(PLAZA.y),PLAZA_BROWSE.w*s,PLAZA.h*s);
-  ctx.fillStyle='#434877';                                             // T 竖净道＝T 口（列 21–23，北接动脉、南下岸线）
-  ctx.fillRect(sx(PLAZA_WAY.x),sy(PLAZA.y),PLAZA_WAY.w*s,PLAZA.h*s);
-  ctx.strokeStyle='#5b5f8c'; ctx.lineWidth=2;                          // 广场边界
-  ctx.strokeRect(sx(PLAZA.x)+1,sy(PLAZA.y)+1,PLAZA.w*s-2,PLAZA.h*s-2);
+  plazaPave();                                                          // 第 268 单·广场铺装（室外篇·一期；数值全从 PLAZA* 常量放样）
   // 像素画风：开关开且两图就绪才走贴图；否则完全走下方旧渲染路径（含加载中/加载失败/开关关）
   const pixOn=pix.on&&pix.ready;
   if(pixOn){

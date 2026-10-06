@@ -10623,6 +10623,79 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   }
 }
 
+// ═══ 第 268 单·广场铺装（室外篇·一期；纯渲染，数值全从 PLAZA* 常量放样）═════════════════
+/* 被验的是生产源码：`/*PLAZA-START*\/ … END` 整块＋四个 PLAZA* 常量抠出来，在只记账的假 ctx 上跑
+   （照第 36 单 ROOMTILE 先例）。四条闸：
+     闸一 · **一笔都不出广场**（逐笔核每个 fillRect／strokeRect／线段两端／圆弧包围盒；容差 2px＝线宽半宽）；
+     闸二 · **不碰占格与站位**（段内零 PIX_SOLID／ANCHORS／STAND_SPOTS／零 rng——铺装不许动走线）；
+     闸三 · **画在雪之前**：draw() 里 `plazaPave()` 的调用排在 `snowGround(` 之前（冬日积雪照旧盖上去）；
+     闸四 · 反向自查×2：把一笔画到广场外 ⇒ 闸一判红；往段里塞一句 `PIX_SOLID.add(...)` ⇒ 闸二判红。 */
+{
+  const fsP=require('fs'), pathP=require('path');
+  const srcP=fsP.readFileSync(pathP.resolve(__dirname,'city-life-framework.html'),'utf8');
+  const 段P=(srcP.match(/\/\*PLAZA-START\*\/[\s\S]*?\/\*PLAZA-END\*\//)||[''])[0];
+  const 常P=s=>{ const m=srcP.match(new RegExp('const '+s+'=\\{[^}]*\\};')); return m?m[0]:''; };
+  const PLAZA_SRC=常P('PLAZA'), WAY_SRC=常P('PLAZA_WAY'), BROWSE_SRC=常P('PLAZA_BROWSE'),
+        TALK_SRC=常P('PLAZA_TALK'), TREE_SRC=常P('PLAZA_TREE');
+  ok(!!段P&&!!PLAZA_SRC&&!!WAY_SRC&&!!BROWSE_SRC&&!!TALK_SRC&&!!TREE_SRC,
+     '第 268 单·结构：PLAZA 段与五个 PLAZA* 常量都可抽取');
+  const 跑P=()=>{
+    const rec={rect:[], seg:[], arc:[], 色:[]};
+    const ctx={ fillStyle:'', strokeStyle:'', lineWidth:1,
+      beginPath(){}, moveTo(x,y){ rec.seg.push([x,y]); }, lineTo(x,y){ rec.seg.push([x,y]); },
+      stroke(){}, fill(){}, arc(x,y,r){ rec.arc.push([x-r,y-r,x+r,y+r]); },
+      fillRect(x,y,w,h){ rec.rect.push([x,y,x+w,y+h]); rec.色.push(String(ctx.fillStyle)); },
+      strokeRect(x,y,w,h){ rec.rect.push([x,y,x+w,y+h]); rec.色.push(String(ctx.strokeStyle)); } };
+    const S=20, st={view:{s:S}};
+    /* 常量**只从源码那一份来**（当参数传会与段里的 `const PLAZA=…` 撞车——本单第一版就栽在这里）。 */
+    const M=new Function('ctx','state','sx','sy',
+      [PLAZA_SRC,WAY_SRC,BROWSE_SRC,TALK_SRC,TREE_SRC,段P].join('\n')+'\nreturn {plazaPave};')(
+      ctx, st, x=>x*S, y=>y*S);
+    M.plazaPave();
+    return rec;
+  };
+  const 内置=跑P();
+  const X0=18*20, Y0=15*20, X1=27*20, Y1=23*20, 容=2;
+  const 在=([a,b,c,d])=>a>=X0-容 && b>=Y0-容 && c<=X1+容 && d<=Y1+容;
+  const 出界=[...内置.rect, ...内置.arc].filter(r=>!在(r));
+  const 点界=[]; for(let i=0;i<内置.seg.length;i+=2){ const a=内置.seg[i], b=内置.seg[i+1]||内置.seg[i];
+    if(!在([Math.min(a[0],b[0]),Math.min(a[1],b[1]),Math.max(a[0],b[0]),Math.max(a[1],b[1])])) 点界.push([a,b]); }
+  ok(内置.rect.length>=4 && 出界.length===0 && 点界.length===0,
+     '第 268 单·闸一·一笔都不出广场：实测 '+内置.rect.length+' 个矩形／'+内置.arc.length+' 个圆弧／'
+     +内置.seg.length+' 个线段端点，出界 '+出界.length+' 个、线段出界 '+点界.length+' 段');
+  const 段码P=段P.replace(/\/\*[\s\S]*?\*\//g,'').replace(/\/\/[^\n]*/g,'');
+  const 判占格=src=>!/PIX_SOLID|STAND_SPOTS|Sim\.ANCHORS|ANCHORS\s*\[/.test(src)
+                   &&!/Math\.random|pickV|\brng\b/.test(src);
+  ok(判占格(段码P),'第 268 单·闸二·不碰占格与站位：段内零 PIX_SOLID／STAND_SPOTS／ANCHORS／rng');
+  {
+    const iCall=srcP.indexOf('plazaPave();'), iSnow=srcP.indexOf('snowGround(state.world.t)');
+    ok(iCall>0 && iSnow>0 && iCall<iSnow,
+       '第 268 单·闸三·画在雪之前：draw() 里 plazaPave() 在 snowGround() 之前（冬日积雪照旧盖上去）');
+  }
+  ok(/function plazaPave\(\)/.test(段P)&&(段P.match(/function plazaPave\(\)/g)||[]).length===1,
+     '第 268 单·结构：plazaPave 一处定义');
+  // ── 闸四 · 反向自查×2 ───────────────────────────────────────────────────
+  {
+    const 病出=段P.replace('ctx.fillRect(X0,Y0,W,H);','ctx.fillRect(X0-60,Y0,W,H);');
+    ok(病出!==段P,'第 268 单·反向自查·合成输入成立（一笔画到广场外）');
+    const 建病=src=>{ const rec={rect:[], seg:[], arc:[]};
+      const ctx={ fillStyle:'', strokeStyle:'', lineWidth:1, beginPath(){}, moveTo(x,y){rec.seg.push([x,y]);},
+        lineTo(x,y){rec.seg.push([x,y]);}, stroke(){}, fill(){}, arc(x,y,r){rec.arc.push([x-r,y-r,x+r,y+r]);},
+        fillRect(x,y,w,h){rec.rect.push([x,y,x+w,y+h]);}, strokeRect(x,y,w,h){rec.rect.push([x,y,x+w,y+h]);} };
+      const S=20, st={view:{s:S}};
+      const M=new Function('ctx','state','sx','sy',
+        [PLAZA_SRC,WAY_SRC,BROWSE_SRC,TALK_SRC,TREE_SRC,src].join('\n')+'\nreturn {plazaPave};')(
+        ctx, st, x=>x*S, y=>y*S);
+      M.plazaPave(); return rec; };
+    const 病rec=建病(病出);
+    const 病出界=[...病rec.rect, ...病rec.arc].filter(r=>!在(r));
+    ok(病出界.length>0,'第 268 单·反向自查·拦得住：一笔画到广场外 ⇒ 闸一当场判红（出界 '+病出界.length+' 个）');
+    const 病占=段P.replace('function plazaPave(){','function plazaPave(){\n  PIX_SOLID.add(\'22,19\');');
+    ok(病占!==段P && !判占格(病占.replace(/\/\*[\s\S]*?\*\//g,'').replace(/\/\/[^\n]*/g,'')),
+       '第 268 单·反向自查·拦得住：往段里塞一句 PIX_SOLID.add(...) ⇒ 闸二当场判红');
+  }
+}
+
 // ═══ 第 266 单·江边漂流瓶（纯渲染＋DOM；零 rng、零世界写入）═══════════════════════════
 /* 被验的是生产源码：`/*BOTTLE-START*\/ … END` 整块抠出来求值（照第 33 单 skyLab／263／264 先例）。
      闸一 · 结构：`瓶日`／`瓶纸`／`画漂流瓶`／`openBottleDialog` 一处定义；绘制队列那条 push 有
@@ -11339,7 +11412,7 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   // 闸三 · 反向自查登记（防整条被删）
   const 登记=['第 48 单','第 49 单','第 51 单','第 52 单','第 53 单','第 54 单','第 56 单','第 57 单',
                '第 58 单','第 59 单','第 62 单','第 63 单','第 64 单','第 65 单','第 67 单','第 70 单','第 71 单','第 72 单','第 73 单','第 74 单','第 75 单','第 76 单','第 77 单','第 79 单','第 80 单','第 81 单','第 84 单','第 85 单','第 87 单','第 88 单','第 90 单','第 91 单','第 92 单','第 93 单','第 94 单','第 95 单','第 96 单','第 97 单','第 98 单','第 99 单','第 100 单','第 102 单','第 103 单','第 106 单','第 107 单','第 109 单','第 110 单','第 111 单','第 112 单','第 113 单','第 115 单','第 116 单','第 117 单','第 118 单','第 119 单','第 120 单','第 121 单','第 123 单','第 124 单','第 125 单','第 126 单','第 129 单','第 131 单','第 135 单','第 136 单','第 139 单','第 142 单','第 143 单','第 144 单','第 145 单','第 148 单','第 149 单','第 150 单','第 151 单','第 152 单','第 156 单','第 157 单','第 158 单','第 204 单','第 205 单','第 161 单','第 163 单','第 164 单','第 165 单','第 166 单','第 167 单','第 168 单','第 169 单','第 170 单','第 171 单','第 172 单','第 174 单','第 175 单','第 177 单','第 179 单','第 180 单','第 183 单','第 184 单','第 185 单','第 186 单','第 188 单','第 189 单','第 190 单','第 192 单','第 198 单','第 199 单','第 201 单','第 202 单','第 206 单','第 207 单','第 208 单','第 210 单','第 211 单','第 212 单','第 213 单','第 214 单','第 215 单','第 216 单','第 217 单','第 220 单','第 221 单','第 224 单','第 225 单','第 227 单','第 229 单','第 232 单','第 233 单','第 240 单',
-              '第 242 单','第 243 单','第 244 单','第 246 单','第 247 单','第 250 单','第 251 单','第 252 单','第 254 单','第 255 单','第 256 单','第 257 单','第 259 单','第 260 单','第 263 单','第 264 单','第 265 单','第 266 单','第 267 单','闸四','闸五','闸十','闸十一','闸十二'];
+              '第 242 单','第 243 单','第 244 单','第 246 单','第 247 单','第 250 单','第 251 单','第 252 单','第 254 单','第 255 单','第 256 单','第 257 单','第 259 单','第 260 单','第 263 单','第 264 单','第 265 单','第 266 单','第 267 单','第 268 单','闸四','闸五','闸十','闸十一','闸十二'];
   const 实有=[...new Set((自源.match(/(第 \d+ 单|闸[一二三四五六七八九十]+)·反向自查/g)||[])
                             .map(x=>x.replace('·反向自查','')))];
   const 缺=登记.filter(x=>实有.indexOf(x)<0);
