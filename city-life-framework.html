@@ -554,7 +554,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v197</span>
+<span class="num dim" id="set-build">v198</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -2265,6 +2265,14 @@ const CAT_MEET={
   trade:['蹲下来看了看猫，叫它「{名}」它也不理。','谁也不欠谁，挺好。'],
   write:['蹲下来看了看猫，看了很久，像在给「{名}」想一个句子。','这种东西，写下来就淡了。'],
 };
+/* 第 257 单·玩家的间接参与（猫）：**今天他见着了猫**，当天回你第一条短信时顺嘴提一句——
+   每人一口吻、每户两条（按日号取，零 rng；与 CAT_MEET 同键挂表；一天至多一次，`catSaid` 记账）。 */
+const CAT_SMS={
+  work: ['对了，今天看见「{名}」了，趴着没动。','「{名}」今天又来了，在我脚边待了一会儿。'],
+  clerk:['今天「{名}」又来啦，蹲了好一会儿，它认得我的声音。','「{名}」今天在门口守着，谁路过都要看一眼。'],
+  trade:['今天遇到「{名}」一次，它没理我。','「{名}」今天来巡了一圈，跟我互不打扰。'],
+  write:['今天「{名}」来了，我看了它很久。','「{名}」今天蹲得笔直，像一句写好的句子。'],
+};
 function catStep(w){
   const mod=PURE.minuteOfDay(w.t);
   if(mod<CAT.on || mod>=CAT.off) return;
@@ -3352,6 +3360,15 @@ function decide(w, ag){
     /* 第 171 单·加急短信的"回话"：这一拍活动还挂在身上（下面才重写），正好用来判"停不停得住"——
        advance10 只对能停的档位拉忙点，所以这里的判据与那处同源（work／sleep／nap＝停不住）。 */
     const 停不住=!!(m.urgent && ['work','sleep','nap'].indexOf(String((ag.activity&&ag.activity.type)||''))>=0);
+    /* 第 257 单·玩家的间接参与（猫）：**今天他见着了猫**，而这条回话是当天第一次谈猫 ⇒ 尾巴补一句
+       （一天至多一次，`catSaid` 记账；只加在 thought 上，不动条目数、类型与"有戏"账）。 */
+    const 今天0=PURE.dayOf(w.t);
+    let 猫话='';
+    if(ag.lastCat && isFinite(ag.lastCat.t) && PURE.dayOf(ag.lastCat.t)===今天0 && ag.catSaid!==今天0){
+      const 池=(CAT_SMS[ag.workKind]||CAT_SMS.work)||[];
+      const 句=池.length?池[(((今天0%池.length)+池.length)%池.length)]:null;   // 按日号取，零 rng
+      if(句){ ag.catSaid=今天0; 猫话='（'+句.replace('{名}',String(ag.lastCat.名||'猫'))+'）'; }
+    }
     pushLog(w,{type:'player',sms:'read',agent:ag.id,name:ag.name,msg:m.id,msgLabel:m.label,
       text:'读到了你的短信「'+m.label+'」',
       /* 第 64 单：同一份心意，**生日当天的分量不一样**（星露谷"生日 ×8"那条口径的本作映射）——
@@ -3362,7 +3379,8 @@ function decide(w, ag){
         : ((relYouGet(ag)>=熟线()&&REACT_NEAR[m.id])?REACT_NEAR[m.id]
            :(REACT[m.id]||REACT.custom)))
         +(等他?'（等了两天，总算等到了。）':'')
-        +(m.urgent?(停不住?'（"急"字看到了，手头这摊停不住，一松手就回你。）':'（你说急，手里的事先撂下了。）'):'')});
+        +(m.urgent?(停不住?'（"急"字看到了，手头这摊停不住，一松手就回你。）':'（你说急，手里的事先撂下了。）'):'')
+        +猫话});
     if(m.id==='late') ag.flags.earlyWork=true;
     if(m.id==='sleep') ag.flags.sleepEarly=true;
     if(m.id==='eat' && ag.hunger>40) ag.flags.wantEat=true;
@@ -4781,6 +4799,7 @@ const Sim={makeWorld, step, sendMessage, sendCustomMessage, decide, MSGS, ANCHOR
   TALK_TOPICS, TALK_TOPICS_RAIN, talkTopicOf,   // 第 71 单·夜谈话题（第 199 单补雨池；门禁按真值读：不摇 rng）
   TALK_OPEN, talkOpenLine, talkTopicOnDay,   // 第 72 单·题面带着台词走（门禁按真值读：占位符一处替换）
   CATS, CAT_SPOTS, CAT, catOfDay, catStep,   // 第 210 单·云港的猫（门禁按真值读：不摇 rng、一周约两天）
+  CAT_SMS,                                   // 第 257 单·猫进短信（回话尾巴那一句；门禁按真值读同一份表）
   MISS, missStep,   // 第 74 单·惦记（门禁按真值读：周日 18:00、一周零来信才留一条）
   MISS_NOTE, missNoteOf,   // 第 76 单·居民的留言池（门禁按真值读：按周号取句、不摇 rng）
   NOTE, NOTE_LINES, NOTE_LINES_NEAR, 贴己池, noteStep,   // 第 77／121 单·别的时候也开口（门禁按真值读：每天 21:00、一天一句；③期按档位换池）
