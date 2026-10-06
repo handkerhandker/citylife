@@ -27,7 +27,7 @@ const raw = BEFORE
 const html = raw.replace(/\}\)\(\);\s*<\/script>/, 'window.__pv={get state(){return state}};\n})();\n</script>');
 if (html === raw) { console.error('注入点没找到'); process.exit(2); }
 
-const PORT = 18961;
+const PORT = 18965;   // 第 270 单批后自查：原 18961 与 ai-gate/client.mjs 撞车 ⇒ 改号
 const srv = http.createServer((q, r) => {
   const u = decodeURIComponent(q.url.split('?')[0]);
   if (u === '/' || u.endsWith('city-life-framework.html')) { r.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }); r.end(html); return; }

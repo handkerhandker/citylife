@@ -13,7 +13,7 @@ import { chromium } from 'playwright';
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const OUT = path.resolve(process.argv[2] || path.join('F:/临时', new Date().toISOString().slice(0, 10), 'scene-sweep'));
-const PORT = 18960;
+const PORT = 18962;   // 第 270 单批后自查：原 18960 与 petal-audit/probe.mjs 撞车 ⇒ 改号
 fs.mkdirSync(OUT, { recursive: true });
 
 const rawHtml = fs.readFileSync(path.join(REPO, 'city-life-framework.html'), 'utf8');

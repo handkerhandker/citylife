@@ -554,7 +554,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v204</span>
+<span class="num dim" id="set-build">v205</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -7751,6 +7751,36 @@ function plazaPave(){
 }
 /*PLAZA-END*/
 
+/*OUTDOOR2-START*/
+/* 第 270 单·室外篇·二期（江边步道＋岸线步道的石板纹样）——接第 268 单"室外篇·一期（广场）"：
+   江边步道（`Sim.ROOMS` 的 `river` 房，列 27–46 × 行 16–22）铺**每格细缝＋每三格粗缝**，
+   中间一条**东西向中线短划**（照街道虚线先例）；岸线步道（第 23 行整条，`SHORE_Y`）铺同族石纹
+   （每格细缝＋每三格一条略亮的长石）。口径与一期完全同源：
+   ① 数值从 `Sim.ROOMS`（river）与 `SHORE_Y` **现读**，不写第二套坐标；
+   ② **只叠纹样、不动亮度**——面层颜色一个字不改（第 268 单首版被夜间体检咬过一次的教训）；
+   ③ 纯渲染：零 `PIX_SOLID`／`ANCHORS`／`STAND_SPOTS`、零 rng；画在 `snowGround()` **之前**（雪照旧盖上去）。 */
+function 石纹(房, 步, 细, 粗){
+  ctx.lineWidth=1;
+  ctx.strokeStyle=细;
+  for(let i=1;i<房.w;i++){ ctx.beginPath(); ctx.moveTo(sx(房.x+i),sy(房.y)); ctx.lineTo(sx(房.x+i),sy(房.y+房.h)); ctx.stroke(); }
+  for(let j=1;j<房.h;j++){ ctx.beginPath(); ctx.moveTo(sx(房.x),sy(房.y+j)); ctx.lineTo(sx(房.x+房.w),sy(房.y+j)); ctx.stroke(); }
+  ctx.strokeStyle=粗;
+  for(let i=步;i<房.w;i+=步){ ctx.beginPath(); ctx.moveTo(sx(房.x+i),sy(房.y)); ctx.lineTo(sx(房.x+i),sy(房.y+房.h)); ctx.stroke(); }
+  for(let j=步;j<房.h;j+=步){ ctx.beginPath(); ctx.moveTo(sx(房.x),sy(房.y+j)); ctx.lineTo(sx(房.x+房.w),sy(房.y+j)); ctx.stroke(); }
+}
+function 江边铺装(){
+  const s=state.view.s;
+  const 江=(Sim.ROOMS||[]).find(r=>r.id==='river');
+  if(江) 石纹(江, 3, 'rgba(255,255,255,.035)', 'rgba(255,255,255,.055)');
+  if(江){                                                        // 东西向中线短划：一段一段，不压人
+    ctx.fillStyle='rgba(201,207,232,.13)';
+    const y0=sy(江.y+江.h/2)-Math.max(1,s*0.05);
+    for(let x=江.x+0.6;x<江.x+江.w-0.4;x+=1.2) ctx.fillRect(sx(x),y0,s*0.42,Math.max(2,s*0.10));
+  }
+  石纹({x:0,y:SHORE_Y,w:Sim.MAPW,h:1}, 3, 'rgba(255,255,255,.035)', 'rgba(255,255,255,.06)');   // 岸线整条
+}
+/*OUTDOOR2-END*/
+
 /* ---------- 楼身分组表与楼内连通（第 16 单）：同楼房间互访走内部路径，不出楼门、不上街 ----------
    归属判定用集中登记的分组表（ROOMS 的 door.via 只有 kitchen 一条且卧室缺位，见总规文档「室内连通」节，
    故取任务书许可的「等价楼身分组表」路线；door.via 字段本身零触碰）。表外房间一律按跨楼处理，照旧经动脉。 */
@@ -9096,6 +9126,7 @@ function draw(now){
     if(TILE_ROOMS.indexOf(r.id)>=0) roomTile(r);   // 第 36 单：店面铺装（只对没被拼合图接管的房间）
     roomFurn(r);                                   // 第 143／144 单：陈设（表外房间自动跳过；家具占格在 PIX_SOLID）
   }
+  江边铺装();                  // 第 270 单·室外篇·二期：江边步道＋岸线步道的石板纹样（在雪之前——冬日积雪照旧盖上去）
   snowGround(state.world.t);   // 第 168 单：冬日积雪——街道/岸线/广场＋雪堆（房间循环之后、摊位与人物之前）
   // 广场常设件（B 案）：街市摊位 ×3 贴排于广场西列（已撤离步行动脉）＋夜谈角＋江畔景观锚；脚底全部 ≥ 行 15，零压主干道
   /* 第 85 单·门洞记号（**零素材**）：此前门洞就是墙上一个"纯地板留口"——尤其被拼合图接管的

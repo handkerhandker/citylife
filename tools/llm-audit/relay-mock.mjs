@@ -27,7 +27,7 @@ fs.mkdirSync(OUT, { recursive: true });
 const raw = fs.readFileSync(path.join(REPO, 'city-life-framework.html'), 'utf8');
 const html = raw.replace(/\}\)\(\);\s*<\/script>/, 'window.__pv={get state(){return state},get Sim(){return Sim}};\n})();\n</script>');
 if (html === raw) { console.error('注入点没找到'); process.exit(2); }
-const PORT = 18950;
+const PORT = 18952;   // 第 270 单批后自查：原 18950 与 live-walkgate/audit.mjs 撞车 ⇒ 改号
 const srv = http.createServer((q, r) => {
   const u = decodeURIComponent(q.url.split('?')[0]);
   if (u === '/' || u.endsWith('city-life-framework.html')) { r.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }); r.end(html); return; }

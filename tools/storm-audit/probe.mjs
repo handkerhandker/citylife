@@ -32,7 +32,7 @@ const html = rawHtml.replace(/\}\)\(\);\s*<\/script>/,
   +'get 雷雨闪光(){try{return (typeof 雷雨闪光===\'function\')?雷雨闪光:null}catch(e){return null}}};\n})();\n</script>');
 if (html === rawHtml) { console.error('注入点没找到'); process.exit(2); }
 
-const PORT = 18974;
+const PORT = 18977;   // 第 270 单批后自查：原 18974 与 call-audit/probe.mjs 撞车 ⇒ 改号
 const srv = http.createServer((q, r) => {
   const u = decodeURIComponent(q.url.split('?')[0]);
   if (u === '/' || u.endsWith('city-life-framework.html')) { r.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }); r.end(html); return; }

@@ -32,7 +32,7 @@ const html = raw.replace(/\}\)\(\);\s*<\/script>/,
   'window.__pv={get state(){return state},get Sim(){return Sim},get PLAZA(){return PLAZA},get STREET_Y(){return STREET_Y},get SHORE_Y(){return SHORE_Y},get RIVER_Y(){return RIVER_Y},get ROOM_FURN(){return ROOM_FURN},get PLAZA_TREE(){return PLAZA_TREE},get 脚印表(){return (typeof 脚印表!==\'undefined\')?脚印表:null},get 脚印(){return (typeof 脚印!==\'undefined\')?脚印:null},get buildingAt(){return (typeof buildingAt!==\'undefined\')?buildingAt:null}};\n})();\n</script>');
 if (html === raw) { console.error('注入点没找到'); process.exit(2); }
 
-const PORT = 18970;
+const PORT = 18973;   // 第 270 单批后自查：原 18970 与 board-post-audit/probe.mjs 撞车 ⇒ 改号
 const srv = http.createServer((q, r) => {
   const u = decodeURIComponent(q.url.split('?')[0]);
   if (u === '/' || u.endsWith('city-life-framework.html')) { r.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }); r.end(html); return; }

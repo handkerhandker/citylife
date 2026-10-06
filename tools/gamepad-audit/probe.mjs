@@ -21,7 +21,7 @@ const rawHtml = fs.readFileSync(path.join(REPO, 'city-life-framework.html'), 'ut
 const html = rawHtml.replace(/\}\)\(\);\s*<\/script>/,
   'window.__pv={get state(){return state},get Focus(){return Focus}};\n})();\n</script>');
 if (html === rawHtml) { console.error('注入点没找到'); process.exit(2); }
-const PORT = 18969;
+const PORT = 18972;   // 第 270 单批后自查：原 18969 与 board-audit/probe.mjs 撞车 ⇒ 改号
 const srv = http.createServer((q, r) => {
   const u = decodeURIComponent(q.url.split('?')[0]);
   if (u === '/' || u.endsWith('city-life-framework.html')) { r.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }); r.end(html); return; }

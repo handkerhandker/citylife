@@ -42,7 +42,7 @@ html = html.replace(/\}\)\(\);\s*<\/script>/,
   'window.__pv={get state(){return state},get chips(){return nameChipBoxes},get vis(){return state.vis},get sx(){return sx},get sy(){return sy},get gap(){return NAME_CHIP_GAP},get lane(){return 名牌道},get laneF(){return 名牌浮道}};\n})();\n</script>');
 
 const SEED = 20261004;                     // 与第 149 单取证同一颗种子：同场景可复核对账
-const PORT = 18945;
+const PORT = 18947;   // 第 270 单批后自查：原 18945 与 fresh-gate/probe.mjs 撞车 ⇒ 改号
 const srv = http.createServer((q, r) => {
   const u = decodeURIComponent(q.url.split('?')[0]);
   if (u === '/' || u.endsWith('city-life-framework.html')) { r.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }); r.end(html); return; }

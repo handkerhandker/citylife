@@ -24,7 +24,7 @@ function 今天() { const d = new Date(); return d.getFullYear() + '-' + String(
 fs.mkdirSync(OUT, { recursive: true });
 
 const rawHtml = fs.readFileSync(path.join(REPO, 'city-life-framework.html'), 'utf8');
-const PORT = 18942;
+const PORT = 18946;   // 第 270 单批后自查：原 18942 与 nameplate-audit/audit.mjs 撞车（冒烟里当场炸）⇒ 改号
 const srv = http.createServer((q, r) => {
   const u = decodeURIComponent(q.url.split('?')[0]);
   if (u === '/' || u.endsWith('city-life-framework.html')) { r.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }); r.end(rawHtml); return; }

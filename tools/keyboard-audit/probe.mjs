@@ -24,7 +24,7 @@ const rawHtml = fs.readFileSync(path.join(REPO, 'city-life-framework.html'), 'ut
 const html = rawHtml.replace(/\}\)\(\);\s*<\/script>/,
   'window.__pv={get state(){return state},get sx(){return sx},get sy(){return sy},get Focus(){return Focus}};\n})();\n</script>');
 if (html === rawHtml) { console.error('注入点没找到'); process.exit(2); }
-const PORT = 18967;
+const PORT = 18971;   // 第 270 单批后自查：原 18967 与 cat-audit/probe.mjs 撞车 ⇒ 改号
 const srv = http.createServer((q, r) => {
   const u = decodeURIComponent(q.url.split('?')[0]);
   if (u === '/' || u.endsWith('city-life-framework.html')) { r.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }); r.end(html); return; }

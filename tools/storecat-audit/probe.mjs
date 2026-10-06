@@ -32,7 +32,7 @@ const html = rawHtml.replace(/\}\)\(\);\s*<\/script>/,
   +'get 猫活态(){try{return (typeof 猫活态===\'function\')?猫活态:null}catch(e){return null}},'
   +'set 猫活态(f){try{猫活态=f}catch(e){}}};\n})();\n</script>');
 if (html === rawHtml) { console.error('注入点没找到'); process.exit(2); }
-const PORT = 18979;
+const PORT = 18980;   // 第 270 单批后自查：原 18979 与 safearea-audit/probe.mjs 撞车 ⇒ 改号
 const srv = http.createServer((q, r) => {
   const u = decodeURIComponent(q.url.split('?')[0]);
   if (u === '/' || u.endsWith('city-life-framework.html')) { r.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }); r.end(html); return; }
