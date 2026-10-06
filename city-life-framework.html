@@ -554,7 +554,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v215</span>
+<span class="num dim" id="set-build">v216</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -8130,6 +8130,59 @@ function 画蜻蜓(){
   }
 }
 /*DRAGONFLY-END*/
+/*SNOWMAN-START*/
+/* 第 291 单·路边的小雪人（积雪期才有）——**把冬日独白里点名的那句画出来**：
+   独白池 `SNOW_STROLL_THOUGHTS` 原文「**有人在路边堆了个小雪人，鼻子是根胡萝卜**」，
+   此前只有文字、画面里从来没有。出处（同类游戏）：Nookipedia·Snowboy
+   「Snowboys (known as **snowmen** prior to New Leaf) are snowfolk in the … series」。
+   口径：**只在积雪期画**（与 `snowGround`／`雪缝` **同一条 gate** `冬积雪()`，入冬第 11 天以后）；
+   两处候选点按**日号哈希**取一处（今天在这、明天在那，像真有人随手堆的；**零 rng**）；
+   纯渲染：位置与造型只认世界时间与日号 ⇒ `speed=0` 冻结、不占格、不进让位账、不碰存档。 */
+const 雪人点=[
+  /* ★选址（第 291 单目验踩过）：第一版把广场那处放在 (18.6,21.6)——正好压在摊位的**招牌牌**底下，
+     雪人只露出底座（放大图实证）。挪到**驻足带南端、广场南沿** (20.6,21.7) 后整只可见。 */
+  {x:20.6, y:21.7, 名:'广场南沿·摊位牌子东侧路边'},
+  {x:23.5, y:14.6, 名:'广场北沿·贴着街的路边'},       // 公告栏在 (23.4,16.8)、净道列 21–23——本点在它北边两格，两处都不压
+];
+function 雪人今天(){
+  const w=state.world; if(!w) return null;
+  const d=Math.floor(PURE.dayOf(w.t)-1);
+  return 雪人点[((d%雪人点.length)+雪人点.length)%雪人点.length];
+}
+function 画雪人(){
+  const w=state.world; if(!w) return;
+  if(!冬积雪(w.t)) return;                                   // 与积雪／雪缝同一条 gate
+  const p=雪人今天(); if(!p) return;
+  const s=state.view.s, cx=sx(p.x), cy=sy(p.y);
+  if(cx<-s*2||cx>state.cvW+s*2||cy<-s*2||cy>state.cvH+s*2) return;   // 出屏不画
+  const 白='#eef3fb', 影='#cfdcee', 深='#2b2f3a', 胡萝卜='#e07a2f', 枝='#7a5a3a', 帽='#49536b';
+  ctx.save();
+  // 底座（雪堆）＋影子
+  ctx.fillStyle='rgba(20,26,38,0.18)';
+  ctx.beginPath(); ctx.ellipse(cx, cy+1, s*0.26, s*0.08, 0, 0, 7); ctx.fill();
+  ctx.fillStyle=白;
+  ctx.beginPath(); ctx.ellipse(cx, cy-s*0.20, s*0.24, s*0.20, 0, 0, 7); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(cx, cy-s*0.50, s*0.19, s*0.16, 0, 0, 7); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(cx, cy-s*0.74, s*0.13, s*0.12, 0, 0, 7); ctx.fill();
+  ctx.fillStyle=影;                                          // 底圈一道淡影（别糊成一坨白）
+  ctx.beginPath(); ctx.ellipse(cx, cy-s*0.36, s*0.19, s*0.05, 0, 0, 7); ctx.fill();
+  // 树枝手臂（左右各一）
+  ctx.strokeStyle=枝; ctx.lineWidth=Math.max(1, s*0.035); ctx.lineCap='round';
+  ctx.beginPath(); ctx.moveTo(cx-s*0.17, cy-s*0.52); ctx.lineTo(cx-s*0.38, cy-s*0.62); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx+s*0.17, cy-s*0.52); ctx.lineTo(cx+s*0.38, cy-s*0.60); ctx.stroke();
+  // 头：两只眼＋胡萝卜鼻（朝下＝朝着看的人）＋小帽
+  ctx.fillStyle=深;
+  ctx.beginPath(); ctx.arc(cx-s*0.045, cy-s*0.77, Math.max(1, s*0.017), 0, 7); ctx.fill();
+  ctx.beginPath(); ctx.arc(cx+s*0.045, cy-s*0.77, Math.max(1, s*0.017), 0, 7); ctx.fill();
+  ctx.fillStyle=胡萝卜;
+  ctx.beginPath(); ctx.moveTo(cx-s*0.028, cy-s*0.735); ctx.lineTo(cx+s*0.028, cy-s*0.735);
+  ctx.lineTo(cx, cy-s*0.665); ctx.closePath(); ctx.fill();
+  ctx.fillStyle=帽;
+  ctx.fillRect(cx-s*0.15, cy-s*0.885, s*0.30, s*0.035);       // 帽檐
+  ctx.fillRect(cx-s*0.095, cy-s*0.985, s*0.19, s*0.105);      // 帽筒
+  ctx.restore();
+}
+/*SNOWMAN-END*/
 
 /* ---------- 楼身分组表与楼内连通（第 16 单）：同楼房间互访走内部路径，不出楼门、不上街 ----------
    归属判定用集中登记的分组表（ROOMS 的 door.via 只有 kitchen 一条且卧室缺位，见总规文档「室内连通」节，
@@ -9485,6 +9538,7 @@ function draw(now){
   画蜻蜓();                    // 第 288 单·秋天的蜻蜓（水边；非秋不来、不下雨、08:00–19:00）
   snowGround(state.world.t);   // 第 168 单：冬日积雪——街道/岸线/广场＋雪堆（房间循环之后、摊位与人物之前）
   雪缝();                      // 第 279 单·室外篇·五期：雪天缝里留雪（雪先铺满、缝雪再亮上去；摊位与人物之前）
+  画雪人();                    // 第 291 单·路边的小雪人（积雪期才有；画在雪层之上、摊位与人物之前）
   // 广场常设件（B 案）：街市摊位 ×3 贴排于广场西列（已撤离步行动脉）＋夜谈角＋江畔景观锚；脚底全部 ≥ 行 15，零压主干道
   /* 第 85 单·门洞记号（**零素材**）：此前门洞就是墙上一个"纯地板留口"——尤其被拼合图接管的
      公寓三间（两格门洞），一眼看过去像断墙。本单给**每个有 door 的房间**补两样记号：

@@ -40,6 +40,8 @@ const html = rawHtml.replace(/\}\)\(\);\s*<\/script>/, 'window.__pv={get state()
   + 'get sx(){return sx},get sy(){return sy},'
   /* 第 289 单：冬季降水的判据桩（桩成恒 false ⇒ 冬季雨天退回"雨"：水洼／蜗牛／雨丝都回来） */
   + 'get 冬降水(){try{return 冬降水}catch(e){return null}},set 冬降水(f){try{冬降水=f}catch(e){}},'
+  /* 第 291 单：小雪人的 A/B 桩（关掉它＝数出"雪人自己的像素"） */
+  + 'get 画雪人(){try{return 画雪人}catch(e){return null}},set 画雪人(f){try{画雪人=f}catch(e){}},'
   + 'get 画蜻蜓(){try{return 画蜻蜓}catch(e){return null}},set 画蜻蜓(f){try{画蜻蜓=f}catch(e){}}};\n})();\n</script>');
 if (html === rawHtml) { console.error('注入点没找到'); process.exit(2); }
 const PORT = 18991;
@@ -296,6 +298,48 @@ const 冬蜗假 = await 数蜗宽();
 const 冬洼假 = await 数洼(23.2, 18.6);
 await page.evaluate(() => { __pv.冬降水 = window.__冬原; });
 
+/* ── 第 291 单·路边的小雪人：A/B 差集读数（关掉画雪人 ⇒ 差集＝雪人自己的像素）────────────
+   量的是**头那一小块**里的"深色像素"（帽子＋两只眼；胡萝卜鼻太小只有 3~4 px，不当主判据），
+   静态景物两次都在、自动抵消。两处候选点同一机位都能进画：相机对 (22,18)。 */
+{
+  await page.evaluate(() => { window.__雪原 = __pv.画雪人; });
+  const 数雪S = () => page.evaluate(() => {
+    const st = __pv.state, cv = document.querySelector('#cv'), g = cv.getContext('2d'), dpr = cv.width / cv.clientWidth;
+    const d = g.getImageData(0, 0, cv.width, cv.height).data;
+    let 深 = 0;
+    for (const p of [[20.6, 21.7], [23.5, 14.6]]) {
+      const cx = __pv.sx(p[0]) * dpr, cy = __pv.sy(p[1] - 0.80) * dpr;
+      const 半 = Math.round(0.75 * st.view.s * dpr), 纵 = Math.round(0.85 * st.view.s * dpr);
+      for (let y = Math.max(0, Math.round(cy) - 纵); y < Math.min(cv.height, Math.round(cy) + 纵); y++)
+        for (let x = Math.max(0, Math.round(cx) - 半); x < Math.min(cv.width, Math.round(cx) + 半); x++) {
+          const i = (y * cv.width + x) * 4, r = d[i], gg = d[i + 1], b = d[i + 2];
+          if (r < 130 && gg < 140 && b < 160) 深++;
+        }
+    }
+    return 深;
+  });
+  const 雪人测 = async (天) => {
+    await page.evaluate(([天]) => {
+      const st = __pv.state;
+      st.llm.on = false; st.world.speed = 0; st.world.t = (天 - 1) * 1440 + 12 * 60;
+      st.world.weather = { rain: false, until: 0 };
+      st.selected = 'a1'; st.cam.manual = true; st.cam.fx = 22; st.cam.fy = 18;
+      __pv.画雪人 = window.__雪原;
+    }, [天]);
+    await page.waitForTimeout(500);
+    const 开 = await 数雪S();
+    await page.evaluate(() => { __pv.画雪人 = () => {}; });
+    await page.waitForTimeout(300);
+    const 关 = await 数雪S();
+    await page.evaluate(() => { __pv.画雪人 = window.__雪原; });
+    return { 天, 开, 关, 差: 开 - 关 };
+  };
+  var 雪D281 = await 雪人测(281);
+  var 雪D282 = await 雪人测(282);
+  var 雪D275 = await 雪人测(275);
+  var 雪D200 = await 雪人测(200);
+}
+
 /* 第 288 单·秋天的蜻蜓（水边）：**A/B 差集读数**——同场景"开着蜻蜓"与"关掉蜻蜓
    （`__pv.画蜻蜓=()=>{}`）"各数一次**5 个锚点小盒里的偏红像素**，差值＝蜻蜓自己的像素
    （静态景物、季节罩、雨幕、落花都两次都在 ⇒ 自动抵消；照 cat-identity 的 A−B 家法）。 */
@@ -413,6 +457,13 @@ const 判 = (n, ok, 读数_) => { 断言.push({ n, ok, 读数_ }); console.log((
      （26 条长线 ≫ 34 个点，方向还反了：真 27330 vs 假 28193）；试过"连通块形状"，静态亮块
      两边都在、数不出干净差值。⇒ 落雪那一条由 **harness 闸三（源码侧：这一支画的是 `arc` 圆点、
      `moveTo` 雨丝被挪进 else）＋ 目验图**背书，像素级判据只落在能精确计数的水洼／蜗牛上。 */
+  判('㊱ 路边的小雪人：入冬第 11 天（D281）A−B 差集 ≥ 60（候选①；出处：冬日独白「有人在路边堆了个小雪人，鼻子是根胡萝卜」）',
+    雪D281.差 >= 60, 雪D281);
+  判('㊲ 第二天换地方（D282，按日号轮换到候选②）：差集 ≥ 60',
+    雪D282.差 >= 60, 雪D282);
+  判('㊳ 入冬第 5 天还没落定：差集 ≤ 8（与积雪／雪缝同一条 gate；留 8 的容差给"人物正走在盒子里"）',
+    Math.abs(雪D275.差) <= 8, 雪D275);
+  判('㊴ 非冬季不画（秋 D200）：差集 ≤ 8', Math.abs(雪D200.差) <= 8, 雪D200);
 }
 
 const 结论 = { 版本: BEFORE || '（工作区当前版本）', 读数: 甲, 第二次: 乙, 江边: 江甲, 江边第二次: 江乙,
