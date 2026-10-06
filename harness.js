@@ -11100,8 +11100,10 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   const 位冬W=srcW.indexOf('if(冬降水(state.world) && !state.reduceMotion)');
   const 位丝W=srcW.indexOf('} else if(state.world.weather.rain && !state.reduceMotion){');
   const 段雪W=位冬W>=0&&位丝W>位冬W ? srcW.slice(位冬W, 位丝W) : '';
-  ok(!!段雪W && /arc\(/.test(段雪W) && !/moveTo/.test(段雪W),
-     '第 289 单·闸三·雪分支：冬降水 那一支画的是圆点（arc）、不是雨丝（moveTo）——原雨丝挪进 else 分支');
+  ok(!!段雪W && /arc\(/.test(段雪W) && !/moveTo/.test(段雪W) && !/fillRect/.test(段雪W),
+     '第 289 单·闸三·雪分支：冬降水 那一支画的是圆点（arc）、不是雨丝（moveTo）、**也不压暗**（无 fillRect）'
+     + '——原雨丝挪进 else 分支；★后两条是第 290 单批后审计补的：本单第一版只钉了"圆点不是线"，'
+     + '往雪分支里塞一句整屏压暗（fillRect）当时**全闸照绿**（假绿）');
   // ── 闸四 · 反向自查×2 ─────────────────────────────────────────────────
   {
     const 病季=段冬.replace('seasonIdx(w)===SEASON_OUT.length-1','true');
