@@ -229,6 +229,34 @@ const 缝冬江 = await 数雪线(285, 36.5, 20.2, '江边');
 const 缝冬园 = await 数雪线(285, 9.6, 18.8, '公园');
 const 缝夏广 = await 数雪线(200, 23.2, 18.6, '广场');      // 无雪对照（同一机位、同一颜色窗）
 const 缝冬初广 = await 数雪线(275, 23.2, 18.6, '广场');    // 入冬第 5 天：雪在下、**还没落定**（出处那句的边界）
+// ── 第 285 单·白天蝴蝶：春正午在／夜·雨·冬都不来／重复稳定 ────────────────────────
+const 数蝶 = (day, hh, rain) => page.evaluate(([d, h, r]) => {
+  const st = __pv.state, w = st.world;
+  w.t = (d - 1) * 1440 + h * 60; w.weather = { rain: !!r, until: r ? w.t + 600 : 0 };
+  st.cam.manual = true; st.cam.fx = 9; st.cam.fy = 19.5;
+}, [day, hh, rain]).then(() => page.waitForTimeout(450)).then(() => page.evaluate(() => {
+  const st = __pv.state, S = __pv.Sim;
+  const s = st.view.s, cv = document.querySelector('#cv'), g = cv.getContext('2d');
+  const dpr = cv.width / cv.clientWidth;
+  const 园 = (S.ROOMS || []).find(r => r.id === 'park') || { x: 1, y: 16, w: 17, h: 7 };
+  const x0 = Math.max(0, Math.round((st.view.ox + 园.x * s) * dpr)), y0 = Math.max(0, Math.round((st.view.oy + 园.y * s) * dpr));
+  const x1 = Math.min(cv.width, Math.round((st.view.ox + (园.x + 园.w) * s) * dpr));
+  const y1 = Math.min(cv.height, Math.round((st.view.oy + (园.y + 园.h) * s) * dpr));
+  const dd = g.getImageData(x0, y0, Math.max(1, x1 - x0), Math.max(1, y1 - y0)).data;
+  const 白蝶 = [246, 248, 251], 黄蝶 = [245, 216, 120];
+  const 近 = (r, gg, b, p) => Math.abs(r - p[0]) <= 3 && Math.abs(gg - p[1]) <= 3 && Math.abs(b - p[2]) <= 3;
+  let 白斑 = 0, 黄斑 = 0;
+  for (let i = 0; i < dd.length; i += 4) {
+    const r = dd[i], gg = dd[i + 1], b = dd[i + 2];
+    if (近(r, gg, b, 白蝶)) 白斑++; else if (近(r, gg, b, 黄蝶)) 黄斑++;
+  }
+  return { 白斑, 黄斑, box: [x0, y0, x1 - x0, y1 - y0], s: +s.toFixed(2) };
+}));
+const 蝶春 = await 数蝶(60, 12, false);
+const 蝶春2 = await 数蝶(60, 12, false);
+const 蝶夜 = await 数蝶(60, 22, false);
+const 蝶雨 = await 数蝶(60, 12, true);
+const 蝶冬 = await 数蝶(285, 12, false);
 await page.screenshot({ path: path.join(OUT, BEFORE ? '雪缝-改前.png' : '雪缝.png') });
 await browser.close(); srv.close();
 
@@ -267,6 +295,17 @@ const 判 = (n, ok, 读数_) => { 断言.push({ n, ok, 读数_ }); console.log((
   缝夏广.线 <= 60 && 缝冬初广.线 <= 60, { 无雪_D200: 缝夏广, 入冬第5天_D275: 缝冬初广 });
 判('⑲ 雪缝·重复稳定（静态景物、speed=0 ⇒ 两次差 ≤ 30）',
   Math.abs(缝冬广2.线 - 缝冬广.线) <= 30, { 一: 缝冬广.线, 二: 缝冬广2.线 });
+判('⑳ 白天蝴蝶：春·正午在（白／黄两色各 ≥30；出处 Nookipedia·Common butterfly「Flying near flowers」）',
+  蝶春.白斑 >= 30 && 蝶春.黄斑 >= 30, { 白: 蝶春.白斑, 黄: 蝶春.黄斑, box: 蝶春.box });
+判('㉑ 夜里不来：同机位 22:00 两色 ≤ 4（照「Time of day … 8 AM – 5 PM」）',
+  蝶夜.白斑 <= 4 && 蝶夜.黄斑 <= 4, 蝶夜);
+判('㉒ 雨天不来：两色 ≤ 4（出处「Weather: Any except rain」）',
+  蝶雨.白斑 <= 4 && 蝶雨.黄斑 <= 4, 蝶雨);
+判('㉓ 冬天不来：D285 正午两色 ≤ 4（照「Time of year Mar – Oct」）',
+  蝶冬.白斑 <= 4 && 蝶冬.黄斑 <= 4, 蝶冬);
+判('㉔ 蝴蝶重复稳定（游移相位只认世界时间、speed=0 冻结 ⇒ 差 ≤ 20）',
+  Math.abs(蝶春2.白斑 - 蝶春.白斑) <= 20 && Math.abs(蝶春2.黄斑 - 蝶春.黄斑) <= 20,
+  { 一: [蝶春.白斑, 蝶春.黄斑], 二: [蝶春2.白斑, 蝶春2.黄斑] });
 const 结论 = { 版本: BEFORE || '（工作区当前版本）', 读数: 甲, 第二次: 乙, 江边: 江甲, 江边第二次: 江乙,
   公园: 园甲, 公园第二次: 园乙, 蜗牛: 蜗雨, 蜗牛雨停: 蜗晴,
   断言, 页面错误: 错, 通过: 断言.every(x => x.ok) };

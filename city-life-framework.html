@@ -554,7 +554,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v211</span>
+<span class="num dim" id="set-build">v212</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -7982,6 +7982,53 @@ function 雪缝(){
 }
 /*SNOWSEAM-END*/
 
+/* 第 285 单·白天的蝴蝶（花丛边）——出处（2026-10-06 实取 HTTP 200，逐字见
+   docs/规划/借鉴调研-2026-10-06-白天蝴蝶.md）：Nookipedia·Common butterfly——
+   「Location: **Flying**」「Weather: **Any except rain**」「In Animal Crossing: Wild World, Animal
+   Crossing: City Folk, and Animal Crossing: New Leaf, it can only **spawn near flowers**」，
+   季节/时段栏「Time of year Mar – Oct」「Time of day … 8 AM – 5 PM」。
+   落成＝**非冬季的白天（08:00–17:00）、不下雨才有**；每只蝶**锚在公园的真实花点上**（与第 271 单同一套
+   格哈希 `h%17===3` 现读，不写第二套坐标）；位置＝锚点＋正弦游移、翅膀张合＝相位函数，**都只认世界时间**
+   （零 rng、逐帧确定、speed=0 时冻结 ⇒ 探针可复现）；纯渲染：不占格、不进"房间名让位"账、不入档 ⇒
+   三指纹原样；画在 `snowGround()` 之前、人物之前。 */
+/*BUTTERFLY-START*/
+const 蝶点=(()=>{                                  // 从公园的花点上现读（h%17===3 与 草簇() 同一判据）
+  const 房=(Sim.ROOMS||[]).find(r=>r.id==='park'); if(!房) return [];
+  const out=[];
+  for(let y=房.y;y<房.y+房.h;y++) for(let x=房.x;x<房.x+房.w;x++){
+    const h=格哈希(x,y);
+    if(h%17!==3) continue;
+    out.push({x:x+0.3+((h>>>5)%40)/100, y:y+0.35+((h>>>11)%40)/100});
+    if(out.length>=3) return out;
+  }
+  return out;
+})();
+function 画蝶(){
+  const w=state.world; if(!w || !蝶点.length) return;
+  if(w.weather && w.weather.rain) return;                      // "Any except rain"
+  if(seasonTint(PURE.dayOf(w.t)-1).key==='冬') return;         // 冬不来（照"Time of year Mar–Oct"）
+  const 分钟=PURE.minuteOfDay(w.t); if(分钟<8*60 || 分钟>=17*60) return;   // 白天（照 ACNH 08:00–17:00 档）
+  const s=state.view.s, t=w.t;
+  for(let i=0;i<蝶点.length;i++){
+    const p=蝶点[i], 黄=(i%2===1);
+    const ph=((t/3+i*0.37)%1+1)%1, ang=ph*Math.PI*2;
+    const cx=sx(p.x+Math.cos(ang)*0.30), cy=sy(p.y-0.22+Math.sin(ang)*0.22);
+    const 扑=Math.abs(Math.sin(t*1.7+i*1.1));                  // 翅膀张合（相位只认世界时间）
+    ctx.save();
+    ctx.translate(cx,cy);
+    ctx.fillStyle=黄?'#f5d878':'#f6f8fb';                      // 白蝶／黄蝶（照"白蝶与黄蝶同貌异色"）
+    for(const d of [-1,1]){
+      ctx.beginPath();
+      ctx.ellipse(d*s*0.11, 0, s*0.10*(0.4+0.6*扑), s*0.085, 0, 0, 7);
+      ctx.fill();
+    }
+    ctx.fillStyle='#3a3a44';                                   // 身子（已 translate 到蝶心，坐标是相对的）
+    ctx.fillRect(-s*0.02, -s*0.06, s*0.04, s*0.12);
+    ctx.restore();
+  }
+}
+/*BUTTERFLY-END*/
+
 /* ---------- 楼身分组表与楼内连通（第 16 单）：同楼房间互访走内部路径，不出楼门、不上街 ----------
    归属判定用集中登记的分组表（ROOMS 的 door.via 只有 kitchen 一条且卧室缺位，见总规文档「室内连通」节，
    故取任务书许可的「等价楼身分组表」路线；door.via 字段本身零触碰）。表外房间一律按跨楼处理，照旧经动脉。 */
@@ -9332,6 +9379,7 @@ function draw(now){
   碎石点();                    // 第 271 单·室外篇·三期：碎石路上的小石子（画在路之后、雪之前）
   画蜗牛();                    // 第 272 单：雨天才出来的小蜗牛（公园灌木南沿／广场树池东沿；在雪之前）
   雨天湿地();                  // 第 278 单·室外篇·四期：雨天水洼＋雨点涟漪（纯画面件；在雪之前——积雪照旧盖上去）
+  画蝶();                      // 第 285 单·白天的蝴蝶（非冬、不下雨、08:00–17:00；锚在公园真花点上）
   snowGround(state.world.t);   // 第 168 单：冬日积雪——街道/岸线/广场＋雪堆（房间循环之后、摊位与人物之前）
   雪缝();                      // 第 279 单·室外篇·五期：雪天缝里留雪（雪先铺满、缝雪再亮上去；摊位与人物之前）
   // 广场常设件（B 案）：街市摊位 ×3 贴排于广场西列（已撤离步行动脉）＋夜谈角＋江畔景观锚；脚底全部 ≥ 行 15，零压主干道

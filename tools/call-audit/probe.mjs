@@ -68,14 +68,32 @@ const 弹窗文 = () => page.evaluate(() => {
   return r.classList.contains('open') ? r.textContent.replace(/\s+/g, ' ').trim() : '';
 });
 const 关弹窗 = async () => {
-  if (await 弹窗开()) { await page.click('#dialog-root [data-close]'); await page.waitForTimeout(180); }
+  /* 第 285 单·冒烟偶发修复：原先"点关闭＋固定 180ms"——机器忙时这 180ms 可能不够，
+     下一个 click 会被还没收起来的弹窗盖住 ⇒ Playwright 一路重试到 30s 超时、探针中途死掉
+     （2026-10-06 23:31 冒烟实测：目录里只剩三张截图、没有 report.json＝中途异常退出）。
+     改成"等条件不等钟"：等它**真的关上**（5s 上限），再往下走。 */
+  if (await 弹窗开()) {
+    await page.click('#dialog-root [data-close]');
+    await page.waitForFunction(() => !document.querySelector('#dialog-root').classList.contains('open'),
+      null, { timeout: 5000 }).catch(() => {});
+  }
+};
+/* 同一个病根的另一处：点「📞 打电话」之前先等"没有弹窗挡着、入口也没禁用"。 */
+const 点打电话 = async () => {
+  await page.waitForFunction(() => {
+    const r = document.querySelector('#dialog-root');
+    const b = document.querySelector('#ph-call');
+    return !!b && !b.disabled && !(r && r.classList.contains('open'));
+  }, null, { timeout: 10000 }).catch(() => {});
+  await page.click('#ph-call');
 };
 const TA句 = () => page.evaluate(() => {
   const a = document.querySelectorAll('#dialog-root .call-flow>.ta');
   return Array.from(a).map(x => x.textContent.trim());
 });
 const 走完一通 = async () => {           // 两轮（生疏档）＋挂断；返回 TA 的全部句子
-  await page.click('#ph-call'); await page.waitForTimeout(250);
+  await 点打电话(); await page.waitForTimeout(250);
+  await page.waitForSelector('#dialog-root [data-opt="day"]', { state: 'visible', timeout: 10000 }).catch(() => {});
   const 开 = await 弹窗文();
   await page.click('#dialog-root [data-opt="day"]'); await page.waitForTimeout(200);
   await page.click('#dialog-root [data-opt="dinner"]'); await page.waitForTimeout(200);
@@ -126,7 +144,7 @@ const 乙 = await 走完一通();
 await 关弹窗();
 await 设状态('work', 100, 0, 3);
 const b0 = await 读数();
-await page.click('#ph-call'); await page.waitForTimeout(250);
+await 点打电话(); await page.waitForTimeout(250);
 const 忙文 = await 弹窗文();
 await page.screenshot({ path: path.join(OUT, '电话-打不通.png') });
 const b1 = await 读数();
@@ -137,7 +155,7 @@ const b1 = await 读数();
 await 关弹窗();
 await 设状态('idle', 1, 0, 3);
 const c0 = await 读数();
-await page.click('#ph-call'); await page.waitForTimeout(250);
+await 点打电话(); await page.waitForTimeout(250);
 const 拒文 = await 弹窗文();
 await page.screenshot({ path: path.join(OUT, '电话-被拒.png') });
 const c1 = await 读数();
@@ -155,7 +173,7 @@ const 拒史 = await page.evaluate(() => document.querySelector('#ph-history').t
 await 关弹窗();
 await 设状态('idle', 100, 0, 3);
 const e0 = await 读数();
-await page.click('#ph-call'); await page.waitForTimeout(250);
+await 点打电话(); await page.waitForTimeout(250);
 await page.click('#dialog-root [data-close]'); await page.waitForTimeout(200);
 const e1 = await 读数();
 记(e1.credits === e0.credits && e1.关系 === e0.关系 && e1.日志数 === e0.日志数,
