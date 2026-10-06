@@ -554,7 +554,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v199</span>
+<span class="num dim" id="set-build">v200</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -8771,7 +8771,7 @@ function 画布告板(){
 /* 第 213 单·让猫看得见（纯渲染层；读 `catOfDay` 与时间窗，零世界改动）：
    蹲坐小猫，约半格宽×四分之三格高，三档花色都手绘（照家具/精灵先例全是 canvas 图元）。
    画进 `ents` 的"按脚底 y 排序"队列（有人站在同一点时猫先画、人在前），盒子进"房间名让位"账。 */
-function 画猫(猫, ax, ay){
+function 画猫(猫, ax, ay, 活){
   const s=state.view.s, A=Sim.ANCHORS[猫.spot];
   const X=(ax!==undefined)?ax:(A?A.x:undefined), Y=(ay!==undefined)?ay:(A?A.y:undefined);
   if(X===undefined||Y===undefined) return;
@@ -8782,43 +8782,63 @@ function 画猫(猫, ax, ay){
     灰:  {底:'#8d939e', 深:'#5f6874', 斑:'#c9ccd4'},   // 第 260 单·店猫「灰灰」
   }[猫.花色]||{底:'#ece5d8',深:'#3b3b40',斑:'#d98f5a'};
   const u=s/2, bx=sx(X), by=sy(Y)+s*0.16;
+  /* 第 263 单：店猫的活态（打盹／端坐／舔爪＋朝店员看）。缺省（访客猫走这条）＝老样子，
+     逐像素与旧版相同（端点位置全部由 hx/hy 递推，端坐不看的参数与旧常量逐字一致）。 */
+  const 势=(活&&活.势)||'端坐', 看=(活&&活.看)||0;
+  const 睡=(势==='打盹'), 洗=(势==='舔爪');
+  const hx=bx+看*u*0.08-(洗?u*0.06:0), hy=by-u*(睡?0.48:(洗?0.54:0.62));
   ctx.save();
   // 影子
   ctx.fillStyle='rgba(0,0,0,.28)';
   ctx.beginPath(); ctx.ellipse(bx,by+u*0.42,u*0.62,u*0.18,0,0,7); ctx.fill();
-  // 尾巴（先画、垫在身后）
+  // 尾巴（先画、垫在身后）：端坐＝翘在左后；打盹＝绕到身前那一圈
   ctx.strokeStyle=C.深; ctx.lineWidth=Math.max(1.5,u*0.18); ctx.lineCap='round';
-  ctx.beginPath(); ctx.moveTo(bx-u*0.5,by+u*0.2); ctx.quadraticCurveTo(bx-u*1.0,by+u*0.05,bx-u*0.78,by-u*0.42); ctx.stroke();
-  // 身体（坐姿：上面窄、下面宽）
+  ctx.beginPath();
+  if(睡){ ctx.moveTo(bx-u*0.5,by+u*0.2); ctx.quadraticCurveTo(bx-u*1.02,by+u*0.36,bx-u*0.24,by+u*0.46); }
+  else  { ctx.moveTo(bx-u*0.5,by+u*0.2); ctx.quadraticCurveTo(bx-u*1.0,by+u*0.05,bx-u*0.78,by-u*0.42); }
+  ctx.stroke();
+  // 身体（坐姿：上面窄、下面宽；打盹＝压低压平，像"面包猫"）
+  const 体顶=睡?-0.20:-0.34, 体控=睡?-0.10:-0.20;
   ctx.fillStyle=C.底;
   ctx.beginPath();
   ctx.moveTo(bx-u*0.46,by+u*0.4);
   ctx.quadraticCurveTo(bx,by+u*0.6,bx+u*0.46,by+u*0.4);
-  ctx.quadraticCurveTo(bx+u*0.4,by-u*0.2,bx+u*0.26,by-u*0.34);
-  ctx.lineTo(bx-u*0.26,by-u*0.34);
-  ctx.quadraticCurveTo(bx-u*0.4,by-u*0.2,bx-u*0.46,by+u*0.4);
+  ctx.quadraticCurveTo(bx+u*0.4,by+u*体控,bx+u*0.26,by+u*体顶);
+  ctx.lineTo(bx-u*0.26,by+u*体顶);
+  ctx.quadraticCurveTo(bx-u*0.4,by+u*体控,bx-u*0.46,by+u*0.4);
   ctx.closePath(); ctx.fill();
-  // 前爪（两只小方块，颜色略深）
+  // 前爪（两只小方块，颜色略深）：打盹时收在身下不画；舔爪时左爪抬到脸边
   ctx.fillStyle=C.深;
-  ctx.fillRect(bx-u*0.3,by+u*0.24,u*0.2,u*0.18);
-  ctx.fillRect(bx+u*0.1,by+u*0.24,u*0.2,u*0.18);
+  if(!睡){
+    ctx.fillRect(bx-u*0.3,by+u*0.24,u*0.2,u*0.18);
+    ctx.fillRect(bx+u*0.1,by+u*0.24,u*0.2,u*0.18);
+  }
+  if(洗) ctx.fillRect(hx-u*0.36,hy+u*0.06,u*0.2,u*0.18);
   // 头
   ctx.fillStyle=C.底;
-  ctx.beginPath(); ctx.arc(bx,by-u*0.62,u*0.4,0,7); ctx.fill();
-  // 耳朵（两个三角）
-  ctx.beginPath(); ctx.moveTo(bx-u*0.34,by-u*0.86); ctx.lineTo(bx-u*0.2,by-u*1.18); ctx.lineTo(bx-u*0.02,by-u*0.94); ctx.closePath(); ctx.fill();
-  ctx.beginPath(); ctx.moveTo(bx+u*0.34,by-u*0.86); ctx.lineTo(bx+u*0.2,by-u*1.18); ctx.lineTo(bx+u*0.02,by-u*0.94); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.arc(hx,hy,u*0.4,0,7); ctx.fill();
+  // 耳朵（两个三角；打盹压平一点）
+  const 耳尖=睡?-0.44:-0.56;
+  ctx.beginPath(); ctx.moveTo(hx-u*0.34,hy-u*0.24); ctx.lineTo(hx-u*0.2,hy+u*耳尖); ctx.lineTo(hx-u*0.02,hy-u*0.32); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(hx+u*0.34,hy-u*0.24); ctx.lineTo(hx+u*0.2,hy+u*耳尖); ctx.lineTo(hx+u*0.02,hy-u*0.32); ctx.closePath(); ctx.fill();
   // 花色点缀（照猫的三档：额头/身侧的斑、深色尾巴尖）
   if(猫.花色==='三花'){ ctx.fillStyle=C.斑;
-    ctx.beginPath(); ctx.arc(bx-u*0.22,by-u*0.92,u*0.14,0,7); ctx.fill();
+    ctx.beginPath(); ctx.arc(hx-u*0.22,hy-u*0.30,u*0.14,0,7); ctx.fill();
     ctx.fillStyle='#3b3b40'; ctx.beginPath(); ctx.arc(bx+u*0.3,by+u*0.05,u*0.15,0,7); ctx.fill(); }
   if(猫.花色==='橘'){ ctx.fillStyle=C.深;
-    ctx.beginPath(); ctx.arc(bx-u*0.78,by-u*0.42,Math.max(1.2,u*0.14),0,7); ctx.fill(); }
-  // 眼睛（够大才画：黑猫给黄眼，其它给深色点）
+    ctx.beginPath(); ctx.arc(睡?bx-u*0.92:bx-u*0.78,睡?by+u*0.30:by-u*0.42,Math.max(1.2,u*0.14),0,7); ctx.fill(); }
+  // 眼睛（够大才画：黑猫给黄眼，其它给深色点；打盹／舔爪＝闭眼两道弧）
   if(s>=12){
-    ctx.fillStyle=(猫.花色==='黑')?'#e8c65a':'#2a2a2e';
-    ctx.beginPath(); ctx.arc(bx-u*0.14,by-u*0.66,Math.max(0.9,u*0.07),0,7); ctx.fill();
-    ctx.beginPath(); ctx.arc(bx+u*0.14,by-u*0.66,Math.max(0.9,u*0.07),0,7); ctx.fill();
+    if(睡||洗){
+      ctx.strokeStyle=(猫.花色==='黑')?'#c9a24a':'#2a2a2e';
+      ctx.lineWidth=Math.max(1,u*0.05); ctx.lineCap='round';
+      ctx.beginPath(); ctx.moveTo(hx-u*0.21,hy-u*0.02); ctx.quadraticCurveTo(hx-u*0.14,hy+u*0.05,hx-u*0.07,hy-u*0.02); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(hx+u*0.07,hy-u*0.02); ctx.quadraticCurveTo(hx+u*0.14,hy+u*0.05,hx+u*0.21,hy-u*0.02); ctx.stroke();
+    } else {
+      ctx.fillStyle=(猫.花色==='黑')?'#e8c65a':'#2a2a2e';
+      ctx.beginPath(); ctx.arc(hx-u*0.14,hy-u*0.04,Math.max(0.9,u*0.07),0,7); ctx.fill();
+      ctx.beginPath(); ctx.arc(hx+u*0.14,hy-u*0.04,Math.max(0.9,u*0.07),0,7); ctx.fill();
+    }
   }
   ctx.restore();
   labelBlockBoxes.push({l:bx-u*1.1, r:bx+u*0.5, t:by-u*1.2, b:by+u*0.5});   // 房间名给猫让位（照第 42 单先例）
@@ -8841,6 +8861,40 @@ function 画猫垫(x,y){
   ctx.beginPath(); ctx.ellipse(bx,by-s*0.03,s*0.42,s*0.12,0,0,7); ctx.fill();
   ctx.restore();
 }
+/* ---------- 第 263 单·店猫「灰灰」的活态（姿势轮换＋店员在柜台时看她）------------------------
+   出处（2026-10-06 实取，均 HTTP 200；逐字见 docs/规划/借鉴调研-2026-10-06-店猫二期.md）：
+     · Wikipedia·Cat behavior：「Cats are **crepuscular**, which means they are most active at dawn
+       and dusk」「More than half of cats **sleep between 12 and 18 hours a day**」
+       「they spend about **8% of resting time grooming** themselves」
+       「Cat in the **'loaf' position**, with its feet tucked under its belly」
+     · Stardew Valley Wiki·Animals：「Click on the pet once each day to pet it, and they express love
+       for you」——"玩家摸一摸"那半条**不在本单**（登记候选）。
+   三条落成：① 三姿势＝打盹（loaf）／端坐张望／舔爪洗脸；② 作息照上面两条实据——**晨昏偏醒、
+      白天半睡、深夜大睡**（3 游戏小时一档＝1× 下约 18 真秒，权重表按段取）；③ 醒着且店员
+      （a2 沈小满）在收银台一带时，转头看她（睡着的猫不看——照"睡 12–18 小时／天"那条）。
+   纯渲染层：只读 `state.world.t` 与 `state.vis`（显示位），零 rng、零新字段 ⇒ 三指纹原样、
+   rel-audit 逐拍全同（本段不写世界）。 */
+/*CATLIFE-START*/
+const 店猫姿势池={
+  晨昏:['端坐','舔爪','端坐'],            // 06–09／18–21 两档：多半醒着（crepuscular）
+  白天:['打盹','打盹','端坐','舔爪'],     // 09–18 三档：一半时间打盹，洗脸是少数（那 8%）
+  深夜:['打盹','打盹','打盹','端坐'],     // 21–06 三档：大睡
+};
+function 店猫档(m){ return Math.floor((((m%1440)+1440)%1440)/180); }          // 0..7（每天八档）
+function 店猫段(档){ return (档===2||档===6)?'晨昏':((档>=3&&档<=5)?'白天':'深夜'); }
+function 店猫哈希(n){ let h=(Math.imul(n,374761393)+668265263)|0; h=Math.imul(h^(h>>>13),1274126177); return (h^(h>>>16))>>>0; }
+function 店猫活态(){
+  const t=(state.world&&state.world.t)||0, 日=PURE.dayOf(t), 档=店猫档(PURE.minuteOfDay(t));
+  const 池=店猫姿势池[店猫段(档)];
+  const 势=池[店猫哈希(日*8+档)%池.length];
+  let 看=0;
+  if(势!=='打盹'){
+    const v=state.vis&&state.vis.a2, A=Sim.ANCHORS&&Sim.ANCHORS.store_counter;
+    if(v&&A&&Math.abs(v.dspX-A.x)<=3.5&&Math.abs(v.dspY-A.y)<=2.5) 看=(v.dspX<店猫席.x-0.6)?-1:1;
+  }
+  return {势,看};
+}
+/*CATLIFE-END*/
 function draw(now){
   const {s,ox,oy}=state.view;
   ctx.setTransform(state.dpr,0,0,state.dpr,0,0);
@@ -8958,7 +9012,7 @@ function draw(now){
   /* 第 213 单·让猫看得见：在来访窗口（15:00–17:00）且有猫的日子，把小猫塞进排序队列 */
   const 猫今=(()=>{ const mod=PURE.minuteOfDay(state.world.t); if(mod<Sim.CAT.on||mod>=Sim.CAT.off) return null; return Sim.catOfDay(state.world); })();
   if(猫今 && Sim.ANCHORS[猫今.spot]) ents.push({kind:'c', 猫:猫今, fy:Sim.ANCHORS[猫今.spot].y+0.4});
-  ents.push({kind:'c', 猫:店猫, x:店猫席.x, y:店猫席.y, fy:店猫席.y+0.4});   // 第 260 单·店猫（常住；纯渲染、零 rng）
+  ents.push({kind:'c', 猫:店猫, x:店猫席.x, y:店猫席.y, 活:true, fy:店猫席.y+0.4});   // 第 260 单·店猫（常住）＋第 263 单·活态（换姿势／看店员；纯渲染、零 rng）
   if(Sim.ANCHORS.board) ents.push({kind:'b', fy:Sim.ANCHORS.board.y+0.5});   // 第 216 单·公告栏（固定一处、按脚底排序）
   ents.sort((a,b)=>a.fy-b.fy);
   const 本帧道=分名牌道(Object.fromEntries(state.world.agents.map(a=>[a.id, sx(dispPos[a.id].x)])),
@@ -8969,7 +9023,7 @@ function draw(now){
       ctx.drawImage(pix.apt, fr[0],fr[1],fr[2],fr[3], sx(APT.x+fr[0]/48), sy(APT.y+fr[1]/48), fr[2]/48*s, fr[3]/48*s);
       continue;
     }
-    if(en.kind==='c'){ if(en.x!==undefined) 画猫垫(en.x,en.y); 画猫(en.猫,en.x,en.y); continue; }
+    if(en.kind==='c'){ if(en.x!==undefined) 画猫垫(en.x,en.y); 画猫(en.猫,en.x,en.y, en.活?店猫活态():null); continue; }
     if(en.kind==='b'){ const bb=画布告板(); if(bb) labelBlockBoxes.push(bb); continue; }
     const ag=en.ag;
     const v=state.vis[ag.id];
