@@ -554,7 +554,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v200</span>
+<span class="num dim" id="set-build">v201</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -8784,7 +8784,7 @@ function 画猫(猫, ax, ay, 活){
   const u=s/2, bx=sx(X), by=sy(Y)+s*0.16;
   /* 第 263 单：店猫的活态（打盹／端坐／舔爪＋朝店员看）。缺省（访客猫走这条）＝老样子，
      逐像素与旧版相同（端点位置全部由 hx/hy 递推，端坐不看的参数与旧常量逐字一致）。 */
-  const 势=(活&&活.势)||'端坐', 看=(活&&活.看)||0;
+  const 势=(活&&活.势)||'端坐', 看=(活&&活.看)||0, 戳=(活&&活.戳)||false;
   const 睡=(势==='打盹'), 洗=(势==='舔爪');
   const hx=bx+看*u*0.08-(洗?u*0.06:0), hy=by-u*(睡?0.48:(洗?0.54:0.62));
   ctx.save();
@@ -8817,8 +8817,8 @@ function 画猫(猫, ax, ay, 活){
   // 头
   ctx.fillStyle=C.底;
   ctx.beginPath(); ctx.arc(hx,hy,u*0.4,0,7); ctx.fill();
-  // 耳朵（两个三角；打盹压平一点）
-  const 耳尖=睡?-0.44:-0.56;
+  // 耳朵（两个三角；打盹压平一点；被戳一下＝立起来）
+  const 耳尖=戳?-0.66:(睡?-0.44:-0.56);
   ctx.beginPath(); ctx.moveTo(hx-u*0.34,hy-u*0.24); ctx.lineTo(hx-u*0.2,hy+u*耳尖); ctx.lineTo(hx-u*0.02,hy-u*0.32); ctx.closePath(); ctx.fill();
   ctx.beginPath(); ctx.moveTo(hx+u*0.34,hy-u*0.24); ctx.lineTo(hx+u*0.2,hy+u*耳尖); ctx.lineTo(hx+u*0.02,hy-u*0.32); ctx.closePath(); ctx.fill();
   // 花色点缀（照猫的三档：额头/身侧的斑、深色尾巴尖）
@@ -8829,7 +8829,12 @@ function 画猫(猫, ax, ay, 活){
     ctx.beginPath(); ctx.arc(睡?bx-u*0.92:bx-u*0.78,睡?by+u*0.30:by-u*0.42,Math.max(1.2,u*0.14),0,7); ctx.fill(); }
   // 眼睛（够大才画：黑猫给黄眼，其它给深色点；打盹／舔爪＝闭眼两道弧）
   if(s>=12){
-    if(睡||洗){
+    if(戳){
+      // 第 264 单·被摸一下：睁大眼睛（稍大一号的瞳子）
+      ctx.fillStyle=(猫.花色==='黑')?'#f2d071':'#1f1f24';
+      ctx.beginPath(); ctx.arc(hx-u*0.14,hy-u*0.04,Math.max(1.3,u*0.105),0,7); ctx.fill();
+      ctx.beginPath(); ctx.arc(hx+u*0.14,hy-u*0.04,Math.max(1.3,u*0.105),0,7); ctx.fill();
+    } else if(睡||洗){
       ctx.strokeStyle=(猫.花色==='黑')?'#c9a24a':'#2a2a2e';
       ctx.lineWidth=Math.max(1,u*0.05); ctx.lineCap='round';
       ctx.beginPath(); ctx.moveTo(hx-u*0.21,hy-u*0.02); ctx.quadraticCurveTo(hx-u*0.14,hy+u*0.05,hx-u*0.07,hy-u*0.02); ctx.stroke();
@@ -8841,7 +8846,11 @@ function 画猫(猫, ax, ay, 活){
     }
   }
   ctx.restore();
-  labelBlockBoxes.push({l:bx-u*1.1, r:bx+u*0.5, t:by-u*1.2, b:by+u*0.5});   // 房间名给猫让位（照第 42 单先例）
+  /* 房间名给猫让位（照第 42 单先例）；第 264 单起这张盒子**一处两用**——店猫那张同时记给
+     "点她一下"的命中判定（`店猫当前盒`），不再写第二套数字。 */
+  const 盒={l:bx-u*1.1, r:bx+u*0.5, t:by-u*1.2, b:by+u*0.5};
+  labelBlockBoxes.push(盒);
+  if(活) 店猫当前盒={l:盒.l, r:盒.r, t:盒.t, b:盒.b, cx:bx, cy:by};
 }
 /* ---------- 第 260 单·便利店·店猫「灰灰」（常住的窝）----------------------------------------
    来历：第 210 单的猫事调研把"常住猫的窝"留在"留给以后"；本单兑现——**纯渲染层**（零 rng、零 SIM）。
@@ -8868,7 +8877,7 @@ function 画猫垫(x,y){
        「they spend about **8% of resting time grooming** themselves」
        「Cat in the **'loaf' position**, with its feet tucked under its belly」
      · Stardew Valley Wiki·Animals：「Click on the pet once each day to pet it, and they express love
-       for you」——"玩家摸一摸"那半条**不在本单**（登记候选）。
+       for you」——"玩家摸一摸"那半条**第 264 单已兑现**（点她一下，见下）。
    三条落成：① 三姿势＝打盹（loaf）／端坐张望／舔爪洗脸；② 作息照上面两条实据——**晨昏偏醒、
       白天半睡、深夜大睡**（3 游戏小时一档＝1× 下约 18 真秒，权重表按段取）；③ 醒着且店员
       （a2 沈小满）在收银台一带时，转头看她（睡着的猫不看——照"睡 12–18 小时／天"那条）。
@@ -8883,7 +8892,19 @@ const 店猫姿势池={
 function 店猫档(m){ return Math.floor((((m%1440)+1440)%1440)/180); }          // 0..7（每天八档）
 function 店猫段(档){ return (档===2||档===6)?'晨昏':((档>=3&&档<=5)?'白天':'深夜'); }
 function 店猫哈希(n){ let h=(Math.imul(n,374761393)+668265263)|0; h=Math.imul(h^(h>>>13),1274126177); return (h^(h>>>16))>>>0; }
-function 店猫活态(){
+/* 第 264 单·玩家的手：点她一下 ⇒ 醒来＋耳朵立起＋睁大眼＋头朝你偏，1.5 真秒后自动回作息。
+   出处：Stardew Valley Wiki·Animals「Click on the pet once each day to pet it, and they express
+   love for you」（2026-10-06 HTTP 200；逐字见 docs/规划/借鉴调研-2026-10-06-店猫二期.md §出处二）。
+   纯渲染：反应表只在内存（不入档、不写世界、零 rng）；`现在` 可注入 ⇒ 闸里可判"到点回落"。 */
+let 店猫戳表=null;                                  // {x,y,到}：x,y＝世界格坐标（戳点），到＝performance.now() 刻度
+const 店猫反应毫秒=1500;
+let 店猫当前盒=null;                                // 画猫时按帧登记（供点选命中；与"房间名让位"同一张盒子）
+function 戳店猫(x,y,到){ 店猫戳表={x,y,到}; }        // 唯一入口（画布点选处调用）
+function 店猫活态(现在){
+  const 现=(现在===undefined)?performance.now():现在;
+  if(店猫戳表 && 现<店猫戳表.到){
+    return {势:'端坐', 看:(店猫戳表.x<店猫席.x-0.3)?-1:1, 戳:true};
+  }
   const t=(state.world&&state.world.t)||0, 日=PURE.dayOf(t), 档=店猫档(PURE.minuteOfDay(t));
   const 池=店猫姿势池[店猫段(档)];
   const 势=池[店猫哈希(日*8+档)%池.length];
@@ -9169,6 +9190,13 @@ cv.addEventListener('pointerup',e=>{
     renderTopbar(); openAgentDialog(best.id);
     if(e.pointerType==='touch') 吞点击=performance.now();   // 第 145 单：吞掉紧随而来的合成 click
   } else {
+    /* 第 264 单·玩家的手：点店猫一下 ⇒ 她抬头看你一眼（纯渲染；放在公告栏之前——猫在店里、板子在广场，不重叠） */
+    const cb=店猫当前盒;
+    if(cb && cxp>=cb.l-6 && cxp<=cb.r+6 && cyp>=cb.t-6 && cyp<=cb.b+6){
+      const W=state.view;
+      戳店猫((cxp-W.ox)/W.s, (cyp-W.oy)/W.s, performance.now()+店猫反应毫秒);
+      return;
+    }
     /* 第 216 单·公告栏：点板子开"云港公告栏"（agents 优先；板子在广场固定一处、命中小一号） */
     const A=Sim.ANCHORS.board;
     if(A){

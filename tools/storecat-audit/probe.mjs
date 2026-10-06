@@ -101,7 +101,7 @@ const 差 = (a, b) => { let n = 0;
   return n; };
 const 置势 = (势, 看) => page.evaluate(([势, 看]) => { window.__pv.店猫活态 = () => ({ 势, 看 }); }, [势, 看]);
 const 有活态 = await page.evaluate(() => { try { return typeof window.__pv.店猫活态 === 'function'; } catch (e) { return false; } });
-let 图端 = null, 图睡 = null, 图洗 = null, 图看 = null, 差端睡 = -1, 差端洗 = -1, 差睡洗 = -1, 差看 = -1, 活态读数 = null;
+let 图端 = null, 图睡 = null, 图洗 = null, 图看 = null, 差端睡 = -1, 差端洗 = -1, 差睡洗 = -1, 差看 = -1, 活态读数 = null, 戳读数 = null;
 if (有活态) {
   await page.evaluate(() => { window.__原活态 = window.__pv.店猫活态; });
   await 置势('端坐', 0); await page.waitForTimeout(300); 图端 = await 取盒();
@@ -129,6 +129,31 @@ if (有活态) {
     return 结;
   });
   await page.evaluate(() => { try { window.__pv.店猫活态 = window.__原活态; } catch (e) {} });
+  // ⑧ 第 264 单·玩家的手：点她一下 ⇒ 抬头看你一眼（1.5 秒后回作息）；点空处不触发
+  {
+    /* ⑦ 的读数扫描把世界时间留在了某个夜里——夜里店内点灯、星光按真时刻动，整块盒子每帧都在变。
+       先把时间拨回 D1 正午（与全探针同一口径：白天没有罩层与灯光动画，像素判据才干净），再取基准。 */
+    await page.evaluate(() => { const st = __pv.state; st.world.t = 12 * 60; st.vis.a2 = { dspX: 26, dspY: 5 }; });
+    await page.waitForTimeout(1200);
+    const 基准 = await 取盒();
+    const dpr = await page.evaluate(() => { const cv = document.querySelector('#cv'); return cv.width / cv.clientWidth; });
+    const cx = (基准.x0 + 基准.wp / 2) / dpr, cy = (基准.y0 + 基准.hp / 2) / dpr;
+    await page.mouse.click(cx, cy);
+    await page.waitForTimeout(250);
+    const 反应 = await 取盒();
+    await page.locator('#cv').screenshot({ path: path.join(OUT, '店猫-戳一下.png') }).catch(() => {});
+    await page.waitForTimeout(1900);
+    const 回落 = await 取盒();
+    const 步 = (基准.wp / dpr) / 2.6;                       // 一格＝多少 CSS 像素
+    await page.mouse.click(cx + 3 * 步, cy);                 // 离她三格的空地
+    await page.waitForTimeout(250);
+    const 空点 = await 取盒();
+    戳读数 = { 差戳: 差(基准, 反应), 差回落: 差(基准, 回落), 差空点: 差(基准, 空点),
+      点: [Math.round(cx), Math.round(cy)] };
+  }
+}
+else {
+  戳读数 = { 差戳: -1, 差回落: -1, 差空点: -1, 说明: '旧版没有活态函数 ⇒ 点她也不会动' };
 }
 await browser.close(); srv.close();
 
@@ -147,8 +172,10 @@ const 判 = (n, ok, 读数_) => { 断言.push({ n, ok, 读数_ }); console.log((
    有活态 && 差看 >= 30 && !!活态读数 && !!活态读数.醒 && !!活态读数.睡
    && 活态读数.醒.看 === -1 && !!活态读数.醒远 && 活态读数.醒远.看 === 0 && 活态读数.睡.看 === 0,
    { 差看, 活态读数 });
+判('⑧ 点她一下：反应帧与基准差 ≥ 40、1.8 秒后回到基准（≤ 2）、点三格外的空地不触发（≤ 2）',
+   有活态 && !!戳读数 && 戳读数.差戳 >= 40 && 戳读数.差回落 <= 2 && 戳读数.差空点 <= 2, 戳读数);
 const 结论 = { 版本: BEFORE || '（工作区当前版本）', 席, 读数: 甲, 第二次: 乙,
-  活态: { 有活态, 差: { 端睡: 差端睡, 端洗: 差端洗, 睡洗: 差睡洗, 看: 差看 }, 读数: 活态读数 },
+  活态: { 有活态, 差: { 端睡: 差端睡, 端洗: 差端洗, 睡洗: 差睡洗, 看: 差看 }, 读数: 活态读数, 戳: 戳读数 },
   断言, 页面错误: 错, 通过: 断言.every(x => x.ok) };
 fs.writeFileSync(path.join(OUT, 'report.json'), JSON.stringify(结论, null, 2), 'utf8');
 const 红 = 断言.filter(x => !x.ok).length;
