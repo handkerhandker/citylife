@@ -554,7 +554,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v213</span>
+<span class="num dim" id="set-build">v214</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -8069,6 +8069,47 @@ function 画蝶(){
   }
 }
 /*BUTTERFLY-END*/
+/*DRAGONFLY-START*/
+/* 第 288 单·秋天的蜻蜓（水边）——出处（2026-10-07 实取 HTTP 200，逐字抄）：
+   Nookipedia·Red dragonfly「Time of year North: **Sep – Oct**」「Time of day **8 AM – 7 PM**」
+   「Location **Flying near water**」「Weather **Any except rain**」。
+   与第 285 单的蝴蝶**刻意分工**：蝶管公园花丛（春／夏，08:00–17:00），蜓管江面水边（秋，08:00–19:00）。
+   纯渲染：位置与扑翅**只认世界时间**（零 rng、speed=0 冻结、不占格、不进让位账、不碰存档）。 */
+const 蜓点=(()=>{                                    // 贴岸线步道（第 SHORE_Y 行）东段横向铺 5 处
+  /* 选址两条（第 288 单目验踩过）：① 别选江面——铺满模式下江面（第 24–27 行）正是屏幕最下沿，
+     横屏几乎出画、竖屏压在底栏后面；② 别选西段岸线——日志浮层在竖屏盖住列 8.4–17.5、
+     横屏盖住列 0.6–20.1。岸线步道（第 23 行，贯通东西）**列 21.5 往东**两种朝向都干净，
+     且紧贴江面、仍是"水边"。 */
+  const xs=[21.5,27,33,39,44.5], out=[];
+  for(let i=0;i<xs.length;i++) out.push({x:xs[i], y:SHORE_Y+0.20+((i*3)%4)*0.15});
+  return out;
+})();
+function 画蜻蜓(){
+  const w=state.world; if(!w || !蜓点.length) return;
+  if(w.weather && w.weather.rain) return;                        // "Any except rain"
+  if(seasonTint(PURE.dayOf(w.t)-1).key!=='秋') return;            // "Time of year Sep – Oct"（本作秋季＝入秋到入冬）
+  const 分钟=PURE.minuteOfDay(w.t); if(分钟<8*60 || 分钟>=19*60) return;   // "8 AM – 7 PM"
+  const s=state.view.s, t=w.t;
+  for(let i=0;i<蜓点.length;i++){
+    const p=蜓点[i];
+    const ph=((t/2.2+i*0.31)%1+1)%1, ang=ph*Math.PI*2;            // 悬停小圈（相位只认世界时间）
+    const cx=sx(p.x+Math.cos(ang)*0.55), cy=sy(p.y+Math.sin(ang*2)*0.10-0.10);   // 沿江岸来回、微微压低
+    const 抖=Math.abs(Math.sin(t*6.2+i*1.7));                     // 翅抖比蝶快一倍多（蜻蜓悬停的观感）
+    ctx.save();
+    ctx.translate(cx,cy);
+    ctx.fillStyle='rgba(224,234,248,0.40)';                       // 两对翅（俯视看是四片半透明）
+    for(const d of [-1,1]){
+      ctx.beginPath(); ctx.ellipse(d*s*0.13,-s*0.035,s*0.125*(0.45+0.55*抖),s*0.032,d*0.20,0,7); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(d*s*0.105,s*0.045,s*0.10*(0.45+0.55*抖),s*0.028,-d*0.16,0,7); ctx.fill();
+    }
+    ctx.fillStyle='#c0503a';                                      // 身子：细长（赤蜻，与秋色一档）
+    ctx.fillRect(-s*0.105,-s*0.020,s*0.19,s*0.040);
+    ctx.fillStyle='#8c3a2a';                                      // 头
+    ctx.fillRect(s*0.075,-s*0.024,s*0.045,s*0.048);
+    ctx.restore();
+  }
+}
+/*DRAGONFLY-END*/
 
 /* ---------- 楼身分组表与楼内连通（第 16 单）：同楼房间互访走内部路径，不出楼门、不上街 ----------
    归属判定用集中登记的分组表（ROOMS 的 door.via 只有 kitchen 一条且卧室缺位，见总规文档「室内连通」节，
@@ -9421,6 +9462,7 @@ function draw(now){
   画蜗牛();                    // 第 272 单：雨天才出来的小蜗牛（公园灌木南沿／广场树池东沿；在雪之前）
   雨天湿地();                  // 第 278 单·室外篇·四期：雨天水洼＋雨点涟漪（纯画面件；在雪之前——积雪照旧盖上去）
   画蝶();                      // 第 285 单·白天的蝴蝶（非冬、不下雨、08:00–17:00；锚在公园真花点上）
+  画蜻蜓();                    // 第 288 单·秋天的蜻蜓（水边；非秋不来、不下雨、08:00–19:00）
   snowGround(state.world.t);   // 第 168 单：冬日积雪——街道/岸线/广场＋雪堆（房间循环之后、摊位与人物之前）
   雪缝();                      // 第 279 单·室外篇·五期：雪天缝里留雪（雪先铺满、缝雪再亮上去；摊位与人物之前）
   // 广场常设件（B 案）：街市摊位 ×3 贴排于广场西列（已撤离步行动脉）＋夜谈角＋江畔景观锚；脚底全部 ≥ 行 15，零压主干道

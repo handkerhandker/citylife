@@ -35,7 +35,10 @@ const rawHtml = BEFORE
   ? execFileSync('git', ['show', `${BEFORE}:city-life-framework.html`], { cwd: REPO, maxBuffer: 1 << 28, encoding: 'utf8' })
   : fs.readFileSync(path.join(REPO, 'city-life-framework.html'), 'utf8');
 const html = rawHtml.replace(/\}\)\(\);\s*<\/script>/, 'window.__pv={get state(){return state},get Sim(){return Sim},'
-  + 'get 水洼点(){try{return (typeof 水洼点!==\'undefined\')?水洼点:null}catch(e){return null}}};\n})();\n</script>');
+  + 'get 水洼点(){try{return (typeof 水洼点!==\'undefined\')?水洼点:null}catch(e){return null}},'
+  /* 第 288 单：蜻蜓的 A/B 桩（关掉它＝数出"蜻蜓自己的像素"，照 cat-identity 家法）＋ 坐标换算 */
+  + 'get sx(){return sx},get sy(){return sy},'
+  + 'get 画蜻蜓(){try{return 画蜻蜓}catch(e){return null}},set 画蜻蜓(f){try{画蜻蜓=f}catch(e){}}};\n})();\n</script>');
 if (html === rawHtml) { console.error('注入点没找到'); process.exit(2); }
 const PORT = 18991;
 const srv = http.createServer((q, r) => {
@@ -257,6 +260,48 @@ const 蝶春2 = await 数蝶(60, 12, false);
 const 蝶夜 = await 数蝶(60, 22, false);
 const 蝶雨 = await 数蝶(60, 12, true);
 const 蝶冬 = await 数蝶(285, 12, false);
+/* 第 288 单·秋天的蜻蜓（水边）：**A/B 差集读数**——同场景"开着蜻蜓"与"关掉蜻蜓
+   （`__pv.画蜻蜓=()=>{}`）"各数一次**5 个锚点小盒里的偏红像素**，差值＝蜻蜓自己的像素
+   （静态景物、季节罩、雨幕、落花都两次都在 ⇒ 自动抵消；照 cat-identity 的 A−B 家法）。 */
+const 数蜓 = () => page.evaluate(() => {
+  const cv = document.querySelector('#cv'), st = __pv.state, dpr = cv.width / cv.clientWidth;
+  const d = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data;
+  let n = 0;
+  for (const p of [21.5, 27, 33, 39, 44.5]) {
+    const cx = __pv.sx(p) * dpr, cy = __pv.sy(23.2) * dpr;
+    const 半 = Math.round(1.5 * st.view.s * dpr), 纵 = Math.round(1.1 * st.view.s * dpr);
+    for (let y = Math.max(0, Math.round(cy) - 纵); y < Math.min(cv.height, Math.round(cy) + 纵); y++)
+      for (let x = Math.max(0, Math.round(cx) - 半); x < Math.min(cv.width, Math.round(cx) + 半); x++) {
+        const i = (y * cv.width + x) * 4, r = d[i], g = d[i + 1], b = d[i + 2];
+        if (r > 90 && r > g + 30 && r > b + 30) n++;
+      }
+  }
+  return n;
+});
+await page.evaluate(() => { window.__蜓原 = __pv.画蜻蜓; });
+const 差集 = async (名, 天, 分钟, 有雨) => {
+  await page.evaluate(([天, 分, 雨]) => {
+    const st = __pv.state;
+    st.llm.on = false; st.world.speed = 0; st.world.t = 天 * 1440 + 分;
+    st.world.weather = { rain: 雨, until: 雨 ? 1e9 : 0 };
+    st.selected = 'a1'; st.cam.manual = true; st.cam.fx = 33; st.cam.fy = 22;
+    __pv.画蜻蜓 = window.__蜓原;
+  }, [天, 分钟, 有雨]);
+  await page.waitForTimeout(420);
+  const 开 = await 数蜓();
+  await page.evaluate(() => { __pv.画蜻蜓 = () => {}; });
+  await page.waitForTimeout(220);
+  const 关 = await 数蜓();
+  await page.evaluate(() => { __pv.画蜻蜓 = window.__蜓原; });
+  return { 名, 开, 关, 差: 开 - 关 };
+};
+const 蜓秋午 = await 差集('秋·正午', 200, 720, false);
+const 蜓秋午2 = await 差集('秋·正午·第二次', 200, 720, false);
+const 蜓秋昏 = await 差集('秋·黄昏', 200, 1110, false);
+const 蜓秋夜 = await 差集('秋·夜', 200, 60, false);
+const 蜓秋雨 = await 差集('秋·雨', 200, 720, true);
+const 蜓夏午 = await 差集('夏·正午', 120, 720, false);
+const 蜓冬午 = await 差集('冬·正午', 300, 720, false);
 await page.screenshot({ path: path.join(OUT, BEFORE ? '雪缝-改前.png' : '雪缝.png') });
 await browser.close(); srv.close();
 
@@ -306,6 +351,24 @@ const 判 = (n, ok, 读数_) => { 断言.push({ n, ok, 读数_ }); console.log((
 判('㉔ 蝴蝶重复稳定（游移相位只认世界时间、speed=0 冻结 ⇒ 差 ≤ 20）',
   Math.abs(蝶春2.白斑 - 蝶春.白斑) <= 20 && Math.abs(蝶春2.黄斑 - 蝶春.黄斑) <= 20,
   { 一: [蝶春.白斑, 蝶春.黄斑], 二: [蝶春2.白斑, 蝶春2.黄斑] });
+/* ㉕–㉛ 第 288 单·秋天的蜻蜓（水边）：**A/B 差集法**——同场景"开着蜻蜓"与"关掉蜻蜓
+   （`__pv.画蜻蜓=()=>{}`）"各数一次**5 个锚点小盒里的偏红像素**，差值＝蜻蜓自己的像素
+   （静态景物、季节罩、雨幕、落花都会两次都在 ⇒ 自动抵消；照 cat-identity 的 A−B 家法）。
+   出处（2026-10-07 实取 HTTP 200）：Nookipedia·Red dragonfly「Time of year North: **Sep – Oct**」
+   「Time of day **8 AM – 7 PM**」「Location **Flying near water**」「Weather **Any except rain**」。
+   阈值按 F:\临时\2026-10-08\dragonfly288\ab.mjs 实测定：秋正午 63／58、秋黄昏 92、夜 0／雨 0／夏 0／冬 0
+   ⇒ 有蜓 ≥35、无蜓 ≤8、重复差 ≤12（三档分得开）。 */
+{
+  判('㉕ 秋天水边蜻蜓：秋·正午 A−B 差集 ≥ 35（探针实测 89，标定脚本实测 63；出处「Flying near water」）', 蜓秋午.差 >= 35, 蜓秋午);
+  判('㉖ 秋·黄昏照旧在（出处「Time of day 8 AM – 7 PM」：17:00 之后仍飞；实测 113）', 蜓秋昏.差 >= 35, 蜓秋昏);
+  判('㉗ 夜里不来：22:00 差集 ≤ 8（实测 0）', 蜓秋夜.差 <= 8, 蜓秋夜);
+  判('㉘ 雨天不来：差集 ≤ 8（出处「Weather: Any except rain」；实测 0）', 蜓秋雨.差 <= 8, 蜓秋雨);
+  判('㉙ 夏天不来：差集 ≤ 8（出处「Time of year Sep – Oct」；实测 0）', 蜓夏午.差 <= 8, 蜓夏午);
+  判('㉚ 冬天不来：差集 ≤ 8（实测 0）', 蜓冬午.差 <= 8, 蜓冬午);
+  判('㉛ 蜻蜓重复稳定（游移只认世界时间、speed=0 冻结；两次差集差 ≤ 12，标定脚本实测 63／58）',
+    Math.abs(蜓秋午2.差 - 蜓秋午.差) <= 12, { 一: 蜓秋午.差, 二: 蜓秋午2.差 });
+}
+
 const 结论 = { 版本: BEFORE || '（工作区当前版本）', 读数: 甲, 第二次: 乙, 江边: 江甲, 江边第二次: 江乙,
   公园: 园甲, 公园第二次: 园乙, 蜗牛: 蜗雨, 蜗牛雨停: 蜗晴,
   断言, 页面错误: 错, 通过: 断言.every(x => x.ok) };
