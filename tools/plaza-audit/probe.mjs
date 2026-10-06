@@ -38,6 +38,8 @@ const html = rawHtml.replace(/\}\)\(\);\s*<\/script>/, 'window.__pv={get state()
   + 'get 水洼点(){try{return (typeof 水洼点!==\'undefined\')?水洼点:null}catch(e){return null}},'
   /* 第 288 单：蜻蜓的 A/B 桩（关掉它＝数出"蜻蜓自己的像素"，照 cat-identity 家法）＋ 坐标换算 */
   + 'get sx(){return sx},get sy(){return sy},'
+  /* 第 289 单：冬季降水的判据桩（桩成恒 false ⇒ 冬季雨天退回"雨"：水洼／蜗牛／雨丝都回来） */
+  + 'get 冬降水(){try{return 冬降水}catch(e){return null}},set 冬降水(f){try{冬降水=f}catch(e){}},'
   + 'get 画蜻蜓(){try{return 画蜻蜓}catch(e){return null}},set 画蜻蜓(f){try{画蜻蜓=f}catch(e){}}};\n})();\n</script>');
 if (html === rawHtml) { console.error('注入点没找到'); process.exit(2); }
 const PORT = 18991;
@@ -260,6 +262,40 @@ const 蝶春2 = await 数蝶(60, 12, false);
 const 蝶夜 = await 数蝶(60, 22, false);
 const 蝶雨 = await 数蝶(60, 12, true);
 const 蝶冬 = await 数蝶(285, 12, false);
+/* ── 第 289 单·冬季的降水按"雪"算：冬季雨天下不积水洼、不出蜗牛；把判据桩成恒 false ⇒ 都回来 ── */
+const 设冬雨 = (fx, fy) => page.evaluate(([x, y]) => {
+  const st = __pv.state;
+  /* ★D275＝入冬第 5 天（雪还没落定，第 168 单口径见第 279 单探针）；**不能用 D300**——
+     那时雪已铺满，`snowGround` 会把画在它之前的水洼／蜗牛整个盖掉，两边都是 0 ⇒ 判据变恒绿
+     （本单第一版正是如此：㉜㉝ 全绿但把判据桩掉也全绿）。 */
+  st.world.t = (275 - 1) * 1440 + 12 * 60;
+  st.world.weather = { rain: true, until: st.world.t + 600 };
+  st.cam.manual = true; st.cam.fx = x; st.cam.fy = y;
+}, [fx, fy]).then(() => page.waitForTimeout(450));
+await 设冬雨(4.6, 18.6);
+/* 冬季要放宽容差：季节罩（第 112 单）会给所有颜色叠一层 (176,200,224,0.075)——
+   壳色 (201,154,91) 叠完约 (199,157,101)，±2 的精确窗抓不到（本单第一版就栽在这）。 */
+const 数蜗宽 = () => page.evaluate(() => {
+  const st = __pv.state, s = st.view.s, cv = document.querySelector('#cv'), g = cv.getContext('2d');
+  const dpr = cv.width / cv.clientWidth;
+  const p = { x: 4.6, y: 17.92 };
+  const cx = st.view.ox + p.x * s, cy = st.view.oy + p.y * s;
+  const x0 = Math.max(0, Math.round((cx - s * 0.6) * dpr)), y0 = Math.max(0, Math.round((cy - s * 0.6) * dpr));
+  const wp = Math.max(1, Math.min(Math.round(s * 1.2 * dpr), cv.width - x0)), hp = Math.max(1, Math.round(s * 1.2 * dpr));
+  const dd = g.getImageData(x0, y0, wp, hp).data;
+  const 近 = (o, q, t) => Math.abs(o[0] - q[0]) <= t && Math.abs(o[1] - q[1]) <= t && Math.abs(o[2] - q[2]) <= t;
+  let 壳 = 0;
+  for (let i = 0; i < dd.length; i += 4) if (近([dd[i], dd[i + 1], dd[i + 2]], [199, 157, 101], 8)) 壳++;
+  return { 壳色: 壳, box: [x0, y0, wp, hp] };
+});
+const 冬蜗 = await 数蜗宽();
+const 冬洼 = await 数洼(23.2, 18.6);
+await page.evaluate(() => { window.__冬原 = __pv.冬降水; __pv.冬降水 = () => false; });
+await 设冬雨(4.6, 18.6);
+const 冬蜗假 = await 数蜗宽();
+const 冬洼假 = await 数洼(23.2, 18.6);
+await page.evaluate(() => { __pv.冬降水 = window.__冬原; });
+
 /* 第 288 单·秋天的蜻蜓（水边）：**A/B 差集读数**——同场景"开着蜻蜓"与"关掉蜻蜓
    （`__pv.画蜻蜓=()=>{}`）"各数一次**5 个锚点小盒里的偏红像素**，差值＝蜻蜓自己的像素
    （静态景物、季节罩、雨幕、落花都两次都在 ⇒ 自动抵消；照 cat-identity 的 A−B 家法）。 */
@@ -367,6 +403,16 @@ const 判 = (n, ok, 读数_) => { 断言.push({ n, ok, 读数_ }); console.log((
   判('㉚ 冬天不来：差集 ≤ 8（实测 0）', 蜓冬午.差 <= 8, 蜓冬午);
   判('㉛ 蜻蜓重复稳定（游移只认世界时间、speed=0 冻结；两次差集差 ≤ 12，标定脚本实测 63／58）',
     Math.abs(蜓秋午2.差 - 蜓秋午.差) <= 12, { 一: 蜓秋午.差, 二: 蜓秋午2.差 });
+  判('㉜ 冬季雨天·不积水洼：入冬第 5 天（D275，雪未落定）雨天同机位水洼色 ≤ 4（对照：春季雨天 ⑭ 广场 ≥60）',
+    冬洼.洼 <= 4, 冬洼);
+  判('㉝ 冬季雨天·不出蜗牛：壳色 ≤ 4（对照：⑫ 春季雨天 ≥60；出处 Nookipedia·Winter「Snow will fall…」——冬降的是雪）',
+    冬蜗.壳色 <= 4, { 壳色: 冬蜗.壳色, box: 冬蜗.box });
+  判('㉞ 归并判据真在管事（A/B）：把 `冬降水` 桩成恒 false ⇒ 冬季雨天退回"雨"——水洼 ≥60、蜗牛 ≥60',
+    冬洼假.洼 >= 60 && 冬蜗假.壳色 >= 60, { 水洼: [冬洼.洼, 冬洼假.洼], 蜗牛: [冬蜗.壳色, 冬蜗假.壳色] });
+  /* ★为什么雪花那一条**不设像素判据**（照实登记）：本单试过"数亮像素"，但**斜雨丝也是亮像素**
+     （26 条长线 ≫ 34 个点，方向还反了：真 27330 vs 假 28193）；试过"连通块形状"，静态亮块
+     两边都在、数不出干净差值。⇒ 落雪那一条由 **harness 闸三（源码侧：这一支画的是 `arc` 圆点、
+     `moveTo` 雨丝被挪进 else）＋ 目验图**背书，像素级判据只落在能精确计数的水洼／蜗牛上。 */
 }
 
 const 结论 = { 版本: BEFORE || '（工作区当前版本）', 读数: 甲, 第二次: 乙, 江边: 江甲, 江边第二次: 江乙,

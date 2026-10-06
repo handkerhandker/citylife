@@ -554,7 +554,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v214</span>
+<span class="num dim" id="set-build">v215</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -1710,6 +1710,18 @@ function seasonIdx(w){
 function seasonOutMul(w){
   const m=SEASON_OUT[seasonIdx(w)];
   return (isFinite(m)&&m>0)?m:1;
+}
+/* 第 289 单·一处定义：**冬季的降水按"雪"算**——画面画雪花／地面不积水洼／不出蜗牛／不播雨声／
+   日志说雪，五处共用本判据（季节段用世界侧现成的 `seasonIdx`，不另起第二套日历）。
+   出处（与第 279 单同一条，2026-10-06 实取 HTTP 200，逐字）：Nookipedia·Winter
+   「Snow will fall… but will not **settle on the ground**… until the 11th day of the first month of
+   winter…」——即"冬天降的本来就是雪，只是**落定**要等到入冬第 11 天"。
+   （"雪落无声"是常识、不引第三方，故冬季降水不播雨声。）
+   ★为什么放在 SIM 块里（本单踩过）：原先写在渲染层、引 `seasonOfDay`，而 Node 下的 `app.js`
+   在 4238 行就早退 ⇒ 渲染层那些 `const` 永不初始化，`worldsig/sim30/harness` 一跑就 TDZ 崩。
+   SIM 块的函数在早退之前定义 ⇒ 无头环境照样可用。 */
+function 冬降水(w){
+  return !!(w && w.weather && w.weather.rain) && seasonIdx(w)===SEASON_OUT.length-1;   // 末段＝冬
 }
 /* ---------- 第 126 单·作息随季节漂移（夏晚睡、冬早睡；春/秋＝基准）----------
    出处（2026-10-03 实测）：星露谷 wiki·Day Cycle（HTTP 200）「Depending on the season, nightfall is at
@@ -4497,13 +4509,18 @@ function advance10(w){
   missStep(w);      // 第 74 单·住户主动惦记你（周日 18:00；这周没收到短信的人各留一条）
   noteStep(w);      // 第 77 单·别的时候也开口（每天 21:00；生日／放灯／目标达成各留一句）
   reqStep(w);       // 第 212 单·居民委托（每天 09:00 发请求、20:00 结算；零 rng）
+  /* 第 289 单：冬季降水的文案一起归到"雪"（世界行为一字不动，只有这两句台词分季；
+     判据在 冬降水() 那**一处定义**里，画面／地面／声音／文案五处共用同一个判据）。
+     ★注释写在 `if` 之前而不是里面：第 61 单那条源码闸要求 `{` 后第一句就是清 `rain` 标。 */
   if(w.weather.rain && w.t>=w.weather.until){
-    w.weather.rain=false; logSys(w,'雨停了，街道亮得像洗过。'); w.lastSpark=w.t;
+    w.weather.rain=false;
+    logSys(w, 冬降水({weather:{rain:true},t:w.t}) ? '雪停了，屋顶上薄薄一层。' : '雨停了，街道亮得像洗过。');
+    w.lastSpark=w.t;
   }
   if(!w.weather.rain && (w.t-w.lastSpark)>200 && mod>9*60 && mod<21*60 && w.rng()<0.3){
     w.weather.rain=true; w.weather.until=w.t+90+Math.floor(w.rng()*6)*10;
     w.stats.rain++;
-    logSys(w,'☔ 突然下起雨来，屋檐下多了几分躲雨的默契。');
+    logSys(w, 冬降水(w) ? '❄ 下起雪来了，落在地上就化了。' : '☔ 突然下起雨来，屋檐下多了几分躲雨的默契。');
     w.lastSpark=w.t;
   }
   /* 第 171 单·加急短信：能停的事先停——把忙点拉到下一拍，让 decide() 先读到这封信；
@@ -5985,7 +6002,8 @@ function 雨声关(){
   }catch(_){ try{ o.src.stop(); }catch(_){} }
 }
 function 环境音步(){
-  const 应响=!!(state.ambienceOn && state.world.weather && state.world.weather.rain)
+  /* 第 289 单：冬季降水是雪——**雪落无声**，不播雨声（夏天照旧）。 */
+  const 应响=!!(state.ambienceOn && state.world.weather && state.world.weather.rain) && !冬降水(state.world)
     && document.visibilityState!=='hidden';        // 切走的那一段不响（rAF 停之外再兜一道，由构造保证）
   if(应响) 雨声开(); else 雨声关();
 }
@@ -7904,6 +7922,7 @@ const 蜗牛点=[
 function 画蜗牛(){
   const w=state.world;
   if(!(w&&w.weather&&w.weather.rain)) return;          // 雨天才出来（出处：Rain only）
+  if(冬降水(w)) return;                                 // 第 289 单：冬季降水是雪——雪面上不该有蜗牛
   const s=state.view.s;
   for(const 点 of 蜗牛点){
     const bx=sx(点.x), by=sy(点.y), u=s*0.30;
@@ -7951,6 +7970,7 @@ const 水洼点=[                    // 区＝耦合闸的判据：广场 PLAZA�
 function 雨天湿地(){
   const w=state.world;
   if(!(w&&w.weather&&w.weather.rain)) return;        // 雨天才积水；雨停即收（出处：Puddle·precipitation）
+  if(冬降水(w)) return;                               // 第 289 单：冬季降水是雪——雪面上不积水洼
   const s=state.view.s, t=w.t;
   for(const p of 水洼点){
     const cx=sx(p.x), cy=sy(p.y);
@@ -9588,7 +9608,20 @@ function draw(now){
     sayBubble(px, actChip(px, nt, ag), ag);          // 第 31 单的指示器 ＋ 第 51 单的气泡（兜底路径同样两支都有）
   }
   // 雨幕
-  if(state.world.weather.rain && !state.reduceMotion){
+  /* 第 289 单：**冬季降水画成雪**（同一处判据 冬降水()）。雪片小、慢、微微左右摆；
+     不压暗（雷雨只属于非冬季）；落点用同一套确定性相位（rainSeed），零 rng。 */
+  if(冬降水(state.world) && !state.reduceMotion){
+    rainSeed=(rainSeed+dtFrame*30)%40;
+    const 雪白='rgba(240,246,255,';
+    for(let i=0;i<34;i++){
+      const 相=ox+((i*37+rainSeed*5)%(Sim.MAPW*s+80))-40;
+      const 落=(i*61+rainSeed*13)%(Sim.MAPH*s);
+      const x=相+Math.sin((rainSeed*0.4+i)*0.7)*s*0.25;
+      const y=oy+落;
+      ctx.fillStyle=雪白+(0.55+(i%3)*0.15).toFixed(2)+')';
+      ctx.beginPath(); ctx.arc(x,y,Math.max(1,s*0.05),0,7); ctx.fill();
+    }
+  } else if(state.world.weather.rain && !state.reduceMotion){
     const 雷=雷雨场(state.world);                                 // 第 251 单：这场雨是不是雷雨（一处定义）
     if(雷){ ctx.fillStyle='rgba(24,32,48,.16)'; ctx.fillRect(0,0,state.cvW,state.cvH); }   // 雷雨压暗一档
     rainSeed=(rainSeed+dtFrame*(雷?190:140))%40;
