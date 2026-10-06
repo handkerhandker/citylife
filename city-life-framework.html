@@ -554,7 +554,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v206</span>
+<span class="num dim" id="set-build">v207</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -7835,6 +7835,47 @@ function 碎石点(){
 }
 /*PARK3-END*/
 
+/*SNAIL-START*/
+/* 第 272 单·雨天的小蜗牛（公园灌木南沿一只／广场江畔树池东沿一只）——出处（2026-10-06 实取 HTTP 200，
+   逐字见 docs/规划/借鉴调研-2026-10-06-雨天蜗牛.md）：Nookipedia·Snail「They appear on flowers, bushes,
+   or rocks (depending on the game) **during rainy weather**」；New Horizons 那栏「Location: On rocks
+   and bushes — **Weather: Rain only**」。落成＝**只有下雨天才画**（雨停即收，纯读 `weather.rain`）、
+   两处固定点（公园灌木南沿／树池东沿，坐标常量一处登记）、手绘小蜗牛（足／螺旋壳／两根触角）；
+   纯渲染：零 rng、零新增字段、不占格 ⇒ 三指纹原样；画在 `snowGround()` 之前（冬日积雪照旧盖住）。
+   大小约 0.6 格——照家具口径**不进"房间名让位"账**（那么小的东西不挡房间名）。 */
+const 蜗牛点=[
+  {x:4.6,  y:17.92, 向:1 },     // ① 滨江公园·西段灌木的南沿（灌木 ROOM_FURN.park：[2,17,5×1]）
+  {x:25.5, y:22.86, 向:1 },     // ② 云港广场·江畔景观锚树池的**南沿**（PLAZA_TREE 树心 25.5,21.5、树池半径≈1.38 格——**放在南沿**，避开树冠（树画在蜗牛之后，东沿那只被树冠压了一角） */
+];
+function 画蜗牛(){
+  const w=state.world;
+  if(!(w&&w.weather&&w.weather.rain)) return;          // 雨天才出来（出处：Rain only）
+  const s=state.view.s;
+  for(const 点 of 蜗牛点){
+    const bx=sx(点.x), by=sy(点.y), u=s*0.30;
+    ctx.save();
+    ctx.fillStyle='rgba(0,0,0,.25)';                   // 影子
+    ctx.beginPath(); ctx.ellipse(bx,by+u*0.44,u*0.95,u*0.26,0,0,7); ctx.fill();
+    ctx.fillStyle='#b7bd9f';                           // 身体（足）
+    ctx.beginPath(); ctx.ellipse(bx,by+u*0.16,u*0.95,u*0.30,0,0,7); ctx.fill();
+    ctx.fillStyle='#a8763f';                           // 壳（外圈）
+    ctx.beginPath(); ctx.arc(bx-u*0.15,by-u*0.30,u*0.62,0,7); ctx.fill();
+    ctx.fillStyle='#c99a5b';                           // 壳（内圈）
+    ctx.beginPath(); ctx.arc(bx-u*0.15,by-u*0.30,u*0.40,0,7); ctx.fill();
+    ctx.strokeStyle='#7a5426';                         // 螺旋纹
+    ctx.lineWidth=Math.max(1,u*0.16);
+    ctx.beginPath(); ctx.arc(bx-u*0.15,by-u*0.30,u*0.52,-0.6,2.2); ctx.stroke();
+    ctx.strokeStyle='#b7bd9f'; ctx.lineWidth=Math.max(1,u*0.14); ctx.lineCap='round';
+    ctx.beginPath(); ctx.moveTo(bx+点.向*u*0.52,by);        ctx.lineTo(bx+点.向*u*0.94,by-u*0.50); ctx.stroke();   // 触角
+    ctx.beginPath(); ctx.moveTo(bx+点.向*u*0.32,by+u*0.02); ctx.lineTo(bx+点.向*u*0.60,by-u*0.62); ctx.stroke();
+    ctx.fillStyle='#3a3a30';                           // 触角尖
+    ctx.beginPath(); ctx.arc(bx+点.向*u*0.94,by-u*0.50,u*0.10,0,7); ctx.fill();
+    ctx.beginPath(); ctx.arc(bx+点.向*u*0.60,by-u*0.62,u*0.10,0,7); ctx.fill();
+    ctx.restore();
+  }
+}
+/*SNAIL-END*/
+
 /* ---------- 楼身分组表与楼内连通（第 16 单）：同楼房间互访走内部路径，不出楼门、不上街 ----------
    归属判定用集中登记的分组表（ROOMS 的 door.via 只有 kitchen 一条且卧室缺位，见总规文档「室内连通」节，
    故取任务书许可的「等价楼身分组表」路线；door.via 字段本身零触碰）。表外房间一律按跨楼处理，照旧经动脉。 */
@@ -9183,6 +9224,7 @@ function draw(now){
   }
   江边铺装();                  // 第 270 单·室外篇·二期：江边步道＋岸线步道的石板纹样（在雪之前——冬日积雪照旧盖上去）
   碎石点();                    // 第 271 单·室外篇·三期：碎石路上的小石子（画在路之后、雪之前）
+  画蜗牛();                    // 第 272 单：雨天才出来的小蜗牛（公园灌木南沿／广场树池东沿；在雪之前）
   snowGround(state.world.t);   // 第 168 单：冬日积雪——街道/岸线/广场＋雪堆（房间循环之后、摊位与人物之前）
   // 广场常设件（B 案）：街市摊位 ×3 贴排于广场西列（已撤离步行动脉）＋夜谈角＋江畔景观锚；脚底全部 ≥ 行 15，零压主干道
   /* 第 85 单·门洞记号（**零素材**）：此前门洞就是墙上一个"纯地板留口"——尤其被拼合图接管的

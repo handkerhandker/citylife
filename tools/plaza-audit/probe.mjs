@@ -126,6 +126,33 @@ const 园甲 = await 数园();
 await page.waitForTimeout(400);
 const 园乙 = await 数园();
 await page.screenshot({ path: path.join(OUT, BEFORE ? '公园-改前.png' : '公园.png') });
+// ── 第 272 单：雨天蜗牛（雨天才画；相机对到公园灌木那处）────────────────────────────
+const 数蜗 = () => page.evaluate(() => {
+  const st = __pv.state;
+  const s = st.view.s, cv = document.querySelector('#cv'), g = cv.getContext('2d');
+  const dpr = cv.width / cv.clientWidth;
+  const p = { x: 4.6, y: 17.92 };                              // ① 公园西段灌木南沿（与源码蜗牛点①同坐标）
+  const cx = st.view.ox + p.x * s, cy = st.view.oy + p.y * s;
+  const x0 = Math.max(0, Math.round((cx - s * 0.6) * dpr)), y0 = Math.max(0, Math.round((cy - s * 0.6) * dpr));
+  const wp = Math.max(1, Math.min(Math.round(s * 1.2 * dpr), cv.width - x0)), hp = Math.max(1, Math.round(s * 1.2 * dpr));
+  const dd = g.getImageData(x0, y0, wp, hp).data;
+  const 壳 = [201, 154, 91], 足 = [183, 189, 159];
+  const 近 = (r, gg, b, q) => Math.abs(r - q[0]) <= 2 && Math.abs(gg - q[1]) <= 2 && Math.abs(b - q[2]) <= 2;
+  let 壳色 = 0, 足色 = 0;
+  for (let i = 0; i < dd.length; i += 4) {
+    const r = dd[i], gg = dd[i + 1], b = dd[i + 2];
+    if (近(r, gg, b, 壳)) 壳色++; else if (近(r, gg, b, 足)) 足色++;
+  }
+  return { 壳色, 足色, box: [x0, y0, wp, hp] };
+});
+await page.evaluate(() => { const st = __pv.state;
+  st.world.weather = { rain: true, until: st.world.t + 600 }; st.cam.manual = true; st.cam.fx = 4.6; st.cam.fy = 18.6; });
+await page.waitForTimeout(600);
+const 蜗雨 = await 数蜗();
+await page.screenshot({ path: path.join(OUT, BEFORE ? '蜗牛-改前.png' : '蜗牛.png') });
+await page.evaluate(() => { const st = __pv.state; st.world.weather = { rain: false, until: 0 }; });
+await page.waitForTimeout(400);
+const 蜗晴 = await 数蜗();
 await browser.close(); srv.close();
 
 const 断言 = [];
@@ -147,8 +174,10 @@ const 判 = (n, ok, 读数_) => { 断言.push({ n, ok, 读数_ }); console.log((
 判('⑩ 公园花点色 ≥ 40（(232,224,200)±2，米色花；旧版 0）', 园甲.花色 >= 40, { 花色: 园甲.花色 });
 判('⑪ 公园重复稳定（各差 ≤ 30）',
    Math.abs(园甲.草色 - 园乙.草色) <= 30 && Math.abs(园甲.花色 - 园乙.花色) <= 30, { 甲: 园甲, 乙: 园乙 });
+判('⑫ 雨天蜗牛：下雨时壳色 ≥ 60（(201,154,91)±2）', 蜗雨.壳色 >= 60, { 壳色: 蜗雨.壳色, 足色: 蜗雨.足色, box: 蜗雨.box });
+判('⑬ 雨停就收：不下雨时壳色 ≤ 4（出处 Nookipedia·Snail「Rain only」）', 蜗晴.壳色 <= 4, { 壳色: 蜗晴.壳色 });
 const 结论 = { 版本: BEFORE || '（工作区当前版本）', 读数: 甲, 第二次: 乙, 江边: 江甲, 江边第二次: 江乙,
-  公园: 园甲, 公园第二次: 园乙,
+  公园: 园甲, 公园第二次: 园乙, 蜗牛: 蜗雨, 蜗牛雨停: 蜗晴,
   断言, 页面错误: 错, 通过: 断言.every(x => x.ok) };
 fs.writeFileSync(path.join(OUT, 'report.json'), JSON.stringify(结论, null, 2), 'utf8');
 const 红 = 断言.filter(x => !x.ok).length;
