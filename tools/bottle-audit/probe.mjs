@@ -5,6 +5,10 @@
 //     瓶日 ≥ 40、非瓶日 ≤ 4、重复一次差 ≤ 2（设备像素；dpr=2、s≈26.6）。
 //   再真点一下瓶身：纸条面板要开，且文字＝当天那句＋落款（与 `瓶纸` 现算逐字一致）；点三格外不许弹。
 //   --改前=<git-ref>：旧版没有漂流瓶概念（`瓶席` 读不到）⇒ 探针判红（判据不是恒绿）。
+// 第 274 单追加（第 277 单批后审计加固）：
+//   ⑧ 手账那一条「捡到第一个漂流瓶」——**文案逐字**也要对（原来只认"含漂流瓶"，改名骗得过去）；
+//   ⑩ 点瓶子前后 **`state.world` 序列化逐字不变**——274 声称"瓶子不进背包、不写世界"，但那条原来只被
+//      "跑 sim 的三指纹／rel-audit"覆盖，**没有一条闸去看"点瓶子这个动作本身有没有写世界"**（本单补上）。
 // 用法：node tools/bottle-audit/probe.mjs [输出目录] [--改前=<git-ref>]   （要 CITYLIFE_CHROME）
 import http from 'http';
 import fs from 'fs';
@@ -90,9 +94,11 @@ const 非 = await 数();
 await page.locator('#cv').screenshot({ path: path.join(OUT, '非瓶日.png') }).catch(() => {});
 // 点它一下（回到 D4）
 let 点 = { 开了: false, 文: '', 盒: null, 对: false, 空地弹: null };
+let 世界前 = null, 世界后 = null;
 if (席) {
   await page.evaluate(() => { const st = __pv.state; st.world.t = (4 - 1) * 1440 + 12 * 60; });
   await page.waitForTimeout(500);
+  世界前 = await page.evaluate(() => JSON.stringify(__pv.state.world));
   const 盒 = await page.evaluate(() => __pv.瓶当前盒);
   if (盒) {
     const dpr = 2;
@@ -112,6 +118,7 @@ if (席) {
     await page.mouse.click(cx + 3 * 步, cy - 2 * 步);
     await page.waitForTimeout(400);
     点.空地弹 = await page.evaluate(() => !!document.querySelector('#dialog-root.open'));
+    世界后 = await page.evaluate(() => JSON.stringify(__pv.state.world));
   }
 }
 /* 第 274 单：点开之后 ⇒ 手账那一条打勾；**刷新后仍在**（小账随存档信封走，不靠内存） */
@@ -134,11 +141,15 @@ const 判 = (n, ok, 读数_) => { 断言.push({ n, ok, 读数_ }); console.log((
 判('⑤ 点它开纸条面板：文字＝当天那句＋落款（逐字对）', !!点.对, 点);
 判('⑥ 点三格外的空地不弹面板', 点.空地弹 === false, { 空地弹: 点.空地弹 });
 判('⑦ 全程零 pageerror', 错.length === 0, { 错: 错.slice(0, 3) });
-判('⑧ 手账四期（274）：点开前 0/1、点开后打勾（条数 21）',
-   String(账前.条 || '').includes('0/1') && String(账后.条 || '').startsWith('✓') && 账后.条数 === 21,
+判('⑧ 手账四期（274）：点开前 0/1、点开后打勾（条数 21；文案逐字「捡到第一个漂流瓶」）',
+   String(账前.条 || '').includes('0/1') && String(账后.条 || '').startsWith('✓') && 账后.条数 === 21
+   && String(账后.条 || '').includes('捡到第一个漂流瓶'),
    { 前: 账前, 后: 账后 });
 判('⑨ 手账四期（274）：**刷新后仍在**（小账走存档信封，不靠内存）',
    String(账刷后.条 || '').startsWith('✓'), { 刷新后: 账刷后 });
+判('⑩ 点瓶子前后**世界逐字不变**（"不进背包、不写世界"由这条盯住）',
+   !!点.开了 && 世界前 !== null && 世界前 === 世界后,
+   { 世界前长: 世界前 === null ? null : 世界前.length, 世界后长: 世界后 === null ? null : 世界后.length, 逐字相同: 世界前 === 世界后 });
 const 结论 = { 版本: BEFORE || '（工作区当前版本）', 席, 读数: 甲, 第二次: 乙, 非瓶日: 非, 点,
   手账: { 前: 账前, 后: 账后, 刷新后: 账刷后 }, 断言, 页面错误: 错,
   通过: 断言.every(x => x.ok) };
