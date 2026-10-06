@@ -554,7 +554,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v198</span>
+<span class="num dim" id="set-build">v199</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -8771,14 +8771,17 @@ function 画布告板(){
 /* 第 213 单·让猫看得见（纯渲染层；读 `catOfDay` 与时间窗，零世界改动）：
    蹲坐小猫，约半格宽×四分之三格高，三档花色都手绘（照家具/精灵先例全是 canvas 图元）。
    画进 `ents` 的"按脚底 y 排序"队列（有人站在同一点时猫先画、人在前），盒子进"房间名让位"账。 */
-function 画猫(猫){
-  const s=state.view.s, A=Sim.ANCHORS[猫.spot]; if(!A) return;
+function 画猫(猫, ax, ay){
+  const s=state.view.s, A=Sim.ANCHORS[猫.spot];
+  const X=(ax!==undefined)?ax:(A?A.x:undefined), Y=(ay!==undefined)?ay:(A?A.y:undefined);
+  if(X===undefined||Y===undefined) return;
   const C={
     三花:{底:'#ece5d8', 深:'#3b3b40', 斑:'#d98f5a'},
     黑:  {底:'#2c2c33', 深:'#141418', 斑:'#c9a24a'},
     橘:  {底:'#e0923f', 深:'#a8631f', 斑:'#f3c98f'},
+    灰:  {底:'#8d939e', 深:'#5f6874', 斑:'#c9ccd4'},   // 第 260 单·店猫「灰灰」
   }[猫.花色]||{底:'#ece5d8',深:'#3b3b40',斑:'#d98f5a'};
-  const u=s/2, bx=sx(A.x), by=sy(A.y)+s*0.16;
+  const u=s/2, bx=sx(X), by=sy(Y)+s*0.16;
   ctx.save();
   // 影子
   ctx.fillStyle='rgba(0,0,0,.28)';
@@ -8819,6 +8822,24 @@ function 画猫(猫){
   }
   ctx.restore();
   labelBlockBoxes.push({l:bx-u*1.1, r:bx+u*0.5, t:by-u*1.2, b:by+u*0.5});   // 房间名给猫让位（照第 42 单先例）
+}
+/* ---------- 第 260 单·便利店·店猫「灰灰」（常住的窝）----------------------------------------
+   来历：第 210 单的猫事调研把"常住猫的窝"留在"留给以后"；本单兑现——**纯渲染层**（零 rng、零 SIM）。
+   位置：收银台东端那一格（世界格 30,4）——**本来就在 PIX_SOLID 里**（第 143 单的吧台 24–30,4），
+   故不新增走线占格、行为零改动（世界指纹与逐拍活动全同；SIM 块也不动）。
+   画法：先铺一只藤色窝垫，再复用**同一支** `画猫()`（同一套图元、同一档盒子登记 ⇒ 房间名照样给它让位）。 */
+const 店猫席={x:30.45, y:4.45};
+const 店猫={名:'灰灰', 花色:'灰'};
+function 画猫垫(x,y){
+  const s=state.view.s, bx=sx(x), by=sy(y)+s*0.18;
+  ctx.save();
+  ctx.fillStyle='rgba(0,0,0,.25)';
+  ctx.beginPath(); ctx.ellipse(bx,by+s*0.06,s*0.52,s*0.16,0,0,7); ctx.fill();
+  ctx.fillStyle='#8a5a3c';                                   // 藤篮圈（与吧台的 #4a3b33／#6b5447 拉开）
+  ctx.beginPath(); ctx.ellipse(bx,by,s*0.50,s*0.155,0,0,7); ctx.fill();
+  ctx.fillStyle='#c8a45c';                                   // 草垫面（暖黄，衬灰猫）
+  ctx.beginPath(); ctx.ellipse(bx,by-s*0.03,s*0.42,s*0.12,0,0,7); ctx.fill();
+  ctx.restore();
 }
 function draw(now){
   const {s,ox,oy}=state.view;
@@ -8937,6 +8958,7 @@ function draw(now){
   /* 第 213 单·让猫看得见：在来访窗口（15:00–17:00）且有猫的日子，把小猫塞进排序队列 */
   const 猫今=(()=>{ const mod=PURE.minuteOfDay(state.world.t); if(mod<Sim.CAT.on||mod>=Sim.CAT.off) return null; return Sim.catOfDay(state.world); })();
   if(猫今 && Sim.ANCHORS[猫今.spot]) ents.push({kind:'c', 猫:猫今, fy:Sim.ANCHORS[猫今.spot].y+0.4});
+  ents.push({kind:'c', 猫:店猫, x:店猫席.x, y:店猫席.y, fy:店猫席.y+0.4});   // 第 260 单·店猫（常住；纯渲染、零 rng）
   if(Sim.ANCHORS.board) ents.push({kind:'b', fy:Sim.ANCHORS.board.y+0.5});   // 第 216 单·公告栏（固定一处、按脚底排序）
   ents.sort((a,b)=>a.fy-b.fy);
   const 本帧道=分名牌道(Object.fromEntries(state.world.agents.map(a=>[a.id, sx(dispPos[a.id].x)])),
@@ -8947,7 +8969,7 @@ function draw(now){
       ctx.drawImage(pix.apt, fr[0],fr[1],fr[2],fr[3], sx(APT.x+fr[0]/48), sy(APT.y+fr[1]/48), fr[2]/48*s, fr[3]/48*s);
       continue;
     }
-    if(en.kind==='c'){ 画猫(en.猫); continue; }
+    if(en.kind==='c'){ if(en.x!==undefined) 画猫垫(en.x,en.y); 画猫(en.猫,en.x,en.y); continue; }
     if(en.kind==='b'){ const bb=画布告板(); if(bb) labelBlockBoxes.push(bb); continue; }
     const ag=en.ag;
     const v=state.vis[ag.id];
