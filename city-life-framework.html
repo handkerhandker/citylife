@@ -554,7 +554,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v196</span>
+<span class="num dim" id="set-build">v197</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -3804,10 +3804,25 @@ function decide(w, ag){
   }
   const spot=w.rng()<0.5?'home_table':'home_tv';
   /* 第 255 单·爱好日：标签与独白换成他的爱好——落在**同一锚点、同一时长、同一抽签次数**上（行为不变）。
-     非爱好日照旧走天气词（雨＞雪＞晴）与「在家待着／在家听雨」。 */
+     非爱好日照旧走天气词（雨＞雪＞晴）与「在家待着／在家听雨」。
+     第 256 单·爱好进剪辑：爱好日的**第一拍**再落一条日志＋一个事件锚（每人每爱好日至多一条）——
+     摘原文走"落笔抄录"（事件项自带 tx）；墙上那一行也让「日志」页直接看得见这件事。
+     ⚠ 抽签账：爱好词**只抽一次**（好词）——墙上那句与活动里那句共用这一枚签，两路次数一字不差。 */
   const 好=爱好日(w,ag)?HOBBY[ag.id]:null;
+  let 好词=null;
+  /* ⚠ 抽签**次序**也要一字不差（256 单第一版栽在这）：这一签必须仍在 `tempoDur` 之后、原参数位里抽——
+     先前把它挪到 setActivity 之前 ⇒ 次数没变、次序变了 ⇒ 世界轨迹分叉（worldsig 从 5d4e281f 变 658b7558）。 */
   setActivity(w,ag,spot,'idle',(好?好.label:(raining?RAIN_RULES.indoorLabel:'在家待着')),tempoDur(w,ag,30),
-    (好?爱好词(w,ag):天气词(w,IDLE_THOUGHTS,RAIN_IDLE_THOUGHTS,SNOW_IDLE_THOUGHTS,ag,'li')),null);
+    (好?(好词=爱好词(w,ag)):天气词(w,IDLE_THOUGHTS,RAIN_IDLE_THOUGHTS,SNOW_IDLE_THOUGHTS,ag,'li')),null);
+  if(好){
+    const d=PURE.dayOf(w.t);
+    if(ag.hobbyDay!==d){
+      ag.hobbyDay=d;
+      const 句='在家做自己的事——'+好词;
+      ag.lastHobby={t:w.t, label:好.label, tx:句};
+      logAct(w,ag,句,好词,null);
+    }
+  }
 }
 
 /*CLIP-START*/
@@ -3875,6 +3890,7 @@ const CLIP_W={
   bday_cake:2.6,                                  // 第 64 单·生日蛋糕（甲级：一年一次的个人日，与江灯节同档——"值得当天的卡"）
   talk_go:1.0,                                    // 第 73 单·去了一趟夜谈角（乙级弱信号，与夜市 `mkt_go` 同档）
   cat_go:1.0,                                     // 第 211 单·蹲下来看了一会儿猫（乙级弱信号，与 `talk_go` 同档）
+  hobby_go:1.0,                                   // 第 256 单·做自己的事（乙级弱信号，与 `talk_go` 同档）
   req_done:1.0,                                   // 第 215 单·你应下的那件小事他办完了（乙级弱信号，同档）
   report:1.2,                                     // 第 180 单·把采访写成了署名报道（乙级上档：与 `gift` 同档——一件"做完的事"）
   gift:1.2,                                       // 第 81 单·给寿星带了点东西（乙级上档：它是"两个人之间的事"）
@@ -3889,7 +3905,7 @@ const CLIP_W={
   hunger_nomeal:2.6, hunger_peak:2.0, hunger_high:1.5, worn_out:2.2, worn_low:1.6,
   freq:0.2,
 };
-const CLIP_TIER={sit_flat:'b', sit_none:'b', money_debt:'b', freq:'c', mkt_go:'b', talk_go:'b', cat_go:'b', req_done:'b', report:'b', gift:'b',
+const CLIP_TIER={sit_flat:'b', sit_none:'b', money_debt:'b', freq:'c', mkt_go:'b', talk_go:'b', cat_go:'b', hobby_go:'b', req_done:'b', report:'b', gift:'b',
                  bday_co:'b', rel_cold:'b'};   // 第 88 单·冷线归乙级（第 110 单·陪坐同归乙级）；未列者一律甲级（rel_up 走甲级）
 // 日志正文 → 类目。取的是 decide() 实际写出的字串（harness 有覆盖率断言：30 天里
 // 每条 act 条目都必须归到某一类，谁改了 logText 那条断言即红）。
@@ -3917,10 +3933,11 @@ const CLIP_LOGCAT=[
   ['rel',   ['关系：']],             // 第 88 单·关系涨档／冷线两句（前缀固定"关系："，一处管两句话）
   ['heart', ['交心：']],             // 第 91 单·交心那两条日志（前缀固定"交心："，两人各一条都归这类）
   ['cat',   ['蹲下来看', '🐈']],     // 第 210 单·云港的猫（住户照面那句与城市那条都归"猫事"；v1 只保覆盖率，不出卡）
+  ['hobby', ['在家做自己的事']],     // 第 256 单·爱好（爱好者日那条日志归"爱好"类；主路仍是 tx 落笔抄录）
   ['req',   ['忙完了：']],           // 第 212 单·居民委托（答应后那条日志；前缀固定，覆盖率闸照管）
   ['gossip',['念叨起', '总觉得']],   // 第 220 单·邻里闲话（说话方"念叨起"、当事人"总觉得"；两个前缀都固定，v1 只保覆盖率）
 ];
-const CLIP_CATNAME={eat:'吃饭', work:'上班', nap:'小憩', stroll:'散步', sleep:'睡觉', chat:'闲聊', goal:'目标', fest:'放灯', bday:'生日', talk:'夜谈', miss:'惦记', rel:'关系', heart:'交心', visit:'串门', cat:'猫事', req:'委托', gossip:'闲话'};
+const CLIP_CATNAME={eat:'吃饭', work:'上班', nap:'小憩', stroll:'散步', sleep:'睡觉', chat:'闲聊', goal:'目标', fest:'放灯', bday:'生日', talk:'夜谈', miss:'惦记', rel:'关系', heart:'交心', visit:'串门', cat:'猫事', req:'委托', gossip:'闲话', hobby:'爱好'};
 // 丙级只数这几类。刻意不含 chat：闲聊次数已由甲级 social_burst 按同一个数出活，
 // 两级同时命中会在同一张卡上把同一句话印两遍（实测 D10 「闲聊 4 次，平常 2 次」印了两行）。
 // 也不含 idle：在家待着 logText 恒为 null、不上墙，本层「只数上了墙的事」故无从计数。
@@ -3933,6 +3950,7 @@ const CLIP_QCAT={sit:'work', money:'money', social:'chat', sleep:'sleep', wake:'
                  bday_co:'bday',  // 第 110 单：陪坐那句也归 bday ⇒ 摘原文就引"陪着…"那条
                  talk_go:'talk',  // 第 73 单：夜谈那条日志单开一类 ⇒ 摘原文就引它
                  cat:'cat',       // 第 211 单·猫事（`clipHead('cat_go')＝'cat'`——见上面 clipHead 口径；主路仍是 tx 落笔抄录）
+                 hobby:'hobby',   // 第 256 单·爱好（`clipHead('hobby_go')＝'hobby'`；主路仍是 tx 落笔抄录）
                  req:'req',       // 第 215 单·委托办完（`clipHead('req_done')＝'req'`——同款有效键口径）
                  report:'work',   // 第 180 单：报道那条日志归 work 类（兜底用；正路是 `tx` 落笔抄录）
                  gift:'gift',     // 第 81 单：礼物那两句单开一类 ⇒ 摘原文引"带了…"那句
@@ -4078,6 +4096,12 @@ function clipSample(w,sh){
       r.talkT=lt.t; r.talkTopic=(typeof lt.topic==='string')?lt.topic:'';
       r.talkTx0=(typeof lt.tx==='string')?lt.tx:'';
     }
+    // 第 256 单·爱好：同上（`hobbyDay` 已保证每人每爱好日至多一条；落笔抄录）
+    const lhb=ag.lastHobby;
+    if(lhb && typeof lhb==='object' && isFinite(lhb.t) && lhb.t>=t0 && lhb.t<t1 && r.hobbyT!==lhb.t){
+      r.hobbyT=lhb.t; r.hobbyLabel=(typeof lhb.label==='string')?lhb.label:'';
+      r.hobbyTx0=(typeof lhb.tx==='string')?lhb.tx:'';
+    }
     // 第 180 单·署名报道：与上面同一套事件通道（`reportDay` 已保证每个采访日至多一条）
     const lrep=ag.lastReport;
     if(lrep && typeof lrep==='object' && isFinite(lrep.t) && lrep.t>=t0 && lrep.t<t1 && r.repT!==lrep.t){
@@ -4150,6 +4174,7 @@ function clipMake(w,sh,ent,ag,sum,base){
   if(r.bdayT) push('bday_cake',{spent:r.bdaySpent, tx:r.bdayTx0},r.bdayT);   // 第 64 单·生日蛋糕（每人每年至多一条；落笔抄录）
   if(r.talkT) push('talk_go',{topic:r.talkTopic, tx:r.talkTx0},r.talkT);     // 第 73 单·夜谈（每人每周至多一条；落笔抄录）
   if(r.catT) push('cat_go',{cat:r.catName, tx:r.catTx0},r.catT);             // 第 211 单·云港的猫（全城每天至多一条；落笔抄录）
+  if(r.hobbyT) push('hobby_go',{label:r.hobbyLabel, tx:r.hobbyTx0},r.hobbyT);   // 第 256 单·爱好（每人每爱好日至多一条；落笔抄录）
   if(r.reqT) push('req_done',{tx:r.reqTx0},r.reqT);                          // 第 215 单·委托办完（全城每天至多一件；落笔抄录）
   if(r.repT) push('report',{topic:r.repTopic, tx:r.repTx0},r.repT);         // 第 180 单·署名报道（每个采访日至多一条；落笔抄录）
   if(r.giftT) push('gift',{to:r.giftTo, tx:r.giftTx0},r.giftT);              // 第 81 单·生日礼物（每人每年至多一条；落笔抄录）
@@ -4230,6 +4255,7 @@ function clipItemText(it){
     case 'bday_cake':  return '生日 · 给自己买了块蛋糕：花了 ¥'+(v.spent||0)+'（一年一次）';
     case 'talk_go':    return '夜谈 · 去坐了一晚：聊「'+(v.topic||'')+'」';
   case 'cat_go':     return '猫事 · 蹲下来看了一会儿「'+(v.cat||'猫')+'」';
+  case 'hobby_go':   return '爱好 · '+v.label;
   case 'req_done':   return '委托 · 你应下的那件小事，他办完了';
     case 'report':     return '报道 · 写成了《'+(v.topic||'')+'》（署名发走了）';
     case 'gift':       return '生日 · 给'+(v.to||'人')+'带了点东西';
