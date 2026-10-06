@@ -195,6 +195,41 @@ const 洼公园 = await 数洼(9.6, 18.8);
 await page.screenshot({ path: path.join(OUT, BEFORE ? '雨天湿地-改前.png' : '雨天湿地.png') });
 await page.evaluate(() => { const st = __pv.state; st.world.weather = { rain: false, until: 0 }; });
 const 洼雨停 = await 数洼(23.2, 18.6);
+// ── 第 279 单·雪天·缝里留雪：冬天三块各数一次＋重复一次＋无雪对照 ──────────────────
+const 数雪线 = (day, fx, fy, 区) => page.evaluate(([d, x, y]) => {
+  const st = __pv.state; st.world.t = (d - 1) * 1440 + 12 * 60;
+  st.world.weather = { rain: false, until: 0 };
+  st.cam.manual = true; st.cam.fx = x; st.cam.fy = y;
+}, [day, fx, fy]).then(() => page.waitForTimeout(450)).then(() => page.evaluate((k) => {
+  const st = __pv.state, S = __pv.Sim;
+  const s = st.view.s, cv = document.querySelector('#cv'), g = cv.getContext('2d');
+  const dpr = cv.width / cv.clientWidth;
+  let r;
+  if (k === '广场') r = { x: 18, y: 15, w: 9, h: 8 };
+  else if (k === '江边') r = (S.ROOMS || []).find(z => z.id === 'river') || { x: 27, y: 16, w: 19, h: 7 };
+  else r = { x: 7, y: 17, w: 4, h: 3 };                                  // 公园碎石路（与 279 单 source 同矩形）
+  const x0 = Math.max(0, Math.round((st.view.ox + r.x * s) * dpr)), y0 = Math.max(0, Math.round((st.view.oy + r.y * s) * dpr));
+  const x1 = Math.min(cv.width, Math.round((st.view.ox + (r.x + r.w) * s) * dpr));
+  const y1 = Math.min(cv.height, Math.round((st.view.oy + (r.y + r.h) * s) * dpr));
+  const wp = Math.max(1, x1 - x0), hp = Math.max(1, y1 - y0);
+  const dd = g.getImageData(x0, y0, wp, hp).data;
+  /* 雪线实测色（F:\临时\2026-10-06\snowseam279\dump.mjs 取样，D285）：广场/江边落在 (231,234,240) 族；
+     公园碎石路底更亮 ⇒ 雪脊落在 (207,214,213) 族——两族各自 ±8。 */
+  /* 窗宽 ±4：实测"雪堆"落在 (235,239,248)（与雪线差 (4,5,8)）——±4 恰好把雪堆与告示板白纸挡在外面，
+     只认缝里那道雪线（广场 (229,233,242)／江边 (228,232,239)／公园 (207,214,213) 三族）。 */
+  const 雪线 = (k === '公园') ? [207, 214, 213] : [231, 234, 240];
+  let 线 = 0;
+  for (let i = 0; i < dd.length; i += 4)
+    if (Math.abs(dd[i] - 雪线[0]) <= 4 && Math.abs(dd[i + 1] - 雪线[1]) <= 4 && Math.abs(dd[i + 2] - 雪线[2]) <= 4) 线++;
+  return { 线, box: [x0, y0, wp, hp], s: +s.toFixed(2) };
+}, 区));
+const 缝冬广 = await 数雪线(285, 23.2, 18.6, '广场');
+const 缝冬广2 = await 数雪线(285, 23.2, 18.6, '广场');
+const 缝冬江 = await 数雪线(285, 36.5, 20.2, '江边');
+const 缝冬园 = await 数雪线(285, 9.6, 18.8, '公园');
+const 缝夏广 = await 数雪线(200, 23.2, 18.6, '广场');      // 无雪对照（同一机位、同一颜色窗）
+const 缝冬初广 = await 数雪线(275, 23.2, 18.6, '广场');    // 入冬第 5 天：雪在下、**还没落定**（出处那句的边界）
+await page.screenshot({ path: path.join(OUT, BEFORE ? '雪缝-改前.png' : '雪缝.png') });
 await browser.close(); srv.close();
 
 const 断言 = [];
@@ -225,6 +260,13 @@ const 判 = (n, ok, 读数_) => { 断言.push({ n, ok, 读数_ }); console.log((
   Math.abs(洼广场2.洼 - 洼广场.洼) <= 30 && 洼广场2.框 === 洼广场.框, { 一: 洼广场.洼, 二: 洼广场2.洼, 框: 洼广场.框 });
 判('⑯ 雨停就收：不下雨时水洼色 ≤ 4（出处 Wikipedia·Puddle「primarily due to precipitation」）',
   洼雨停.洼 <= 4, { 雨停: 洼雨停 });
+判('⑰ 雪天缝里留雪：冬天三块都数得到雪线（广场 ≥5000／江边 ≥5000／公园 ≥400；色窗 广场江边 (231,234,240)／公园 (207,214,213)，各 ±4——±8 会收进雪堆与告示板白纸）',
+  缝冬广.线 >= 5000 && 缝冬江.线 >= 5000 && 缝冬园.线 >= 400,
+  { 广场: 缝冬广, 江边: 缝冬江, 公园: 缝冬园 });
+判('⑱ 无雪不画：第 200 天（无雪）与**入冬第 5 天**（雪在下、还没落定）同机位都 ≤ 60（出处 Nookipedia·Winter「until the 11th day of the first month of winter」）',
+  缝夏广.线 <= 60 && 缝冬初广.线 <= 60, { 无雪_D200: 缝夏广, 入冬第5天_D275: 缝冬初广 });
+判('⑲ 雪缝·重复稳定（静态景物、speed=0 ⇒ 两次差 ≤ 30）',
+  Math.abs(缝冬广2.线 - 缝冬广.线) <= 30, { 一: 缝冬广.线, 二: 缝冬广2.线 });
 const 结论 = { 版本: BEFORE || '（工作区当前版本）', 读数: 甲, 第二次: 乙, 江边: 江甲, 江边第二次: 江乙,
   公园: 园甲, 公园第二次: 园乙, 蜗牛: 蜗雨, 蜗牛雨停: 蜗晴,
   断言, 页面错误: 错, 通过: 断言.every(x => x.ok) };

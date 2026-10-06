@@ -554,7 +554,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v209</span>
+<span class="num dim" id="set-build">v210</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -7929,6 +7929,53 @@ function 雨天湿地(){
 }
 /*RAINPOOL-END*/
 
+/* 第 279 单·室外篇·五期：雪天·缝里留雪（铺装缝／缘石／碎石路缘上的雪线）——接第 278 单"雨天湿地"，
+   把三块铺装的**雪天差异**补上：雪落在缝里、缘石上、路缘上，亮一线 ⇒ 冬日里三块各自的纹样仍认得出来。
+   出处（2026-10-06 实取 HTTP 200，与第 168／169 单**同一条**）：Nookipedia·Winter「Snow will fall during
+   the late fall period, but will not **settle on the ground**, trees, and buildings until the 11th day of the
+   first month of winter…」——168 单落了"ground 这一半"、169 单补了"trees"，本单把**地面上那一层的纹样**
+   补上（雪先盖、缝里再亮），逐字见 docs/规划/借鉴调研-2026-10-06-雪缝留雪.md。
+   口径：① 缝的几何**现读**（广场用 PLAZA* 常量、江边／岸线复用 `石纹()`、公园用 ROOM_FURN.park 的 path）；
+   ② 纯渲染：零 rng／零新增字段／不占格（不碰 PIX_SOLID／ANCHORS／STAND_SPOTS）；
+   ③ 画在 `snowGround()` **之后**、摊位与人物之前（雪先铺满、缝雪再亮上去）；
+   ④ 只加细线、不动任何面层颜色（第 268 单教训；夜间体检有雨雪场景外的基线守着）。 */
+/*SNOWSEAM-START*/
+function 雪缝(){
+  if(!冬积雪(state.world.t)) return;        // 与积雪同一条时间口径（第 168 单：入冬第 11 天起）
+  const s=state.view.s;
+  ctx.save();
+  ctx.lineCap='butt';
+  const 雪线='rgba(250,252,255,.8)';
+  // ① 广场：与 plazaPave 同套缝（每格细、每三格粗）＋缘石圈＋树池圈（粗细分档、亮度一档）
+  const X0=sx(PLAZA.x), Y0=sy(PLAZA.y), W=PLAZA.w*s, H=PLAZA.h*s;
+  ctx.strokeStyle=雪线;
+  ctx.lineWidth=Math.max(1,s*0.05);
+  for(let i=1;i<PLAZA.w;i++){ ctx.beginPath(); ctx.moveTo(sx(PLAZA.x+i),Y0); ctx.lineTo(sx(PLAZA.x+i),Y0+H); ctx.stroke(); }
+  for(let j=1;j<PLAZA.h;j++){ ctx.beginPath(); ctx.moveTo(X0,sy(PLAZA.y+j)); ctx.lineTo(X0+W,sy(PLAZA.y+j)); ctx.stroke(); }
+  ctx.lineWidth=Math.max(1,s*0.10);
+  for(let i=3;i<PLAZA.w;i+=3){ ctx.beginPath(); ctx.moveTo(sx(PLAZA.x+i),Y0); ctx.lineTo(sx(PLAZA.x+i),Y0+H); ctx.stroke(); }
+  for(let j=3;j<PLAZA.h;j+=3){ ctx.beginPath(); ctx.moveTo(X0,sy(PLAZA.y+j)); ctx.lineTo(X0+W,sy(PLAZA.y+j)); ctx.stroke(); }
+  ctx.lineWidth=Math.max(2,s*0.14);
+  ctx.strokeRect(X0+s*0.05,Y0+s*0.05,W-s*0.10,H-s*0.10);                       // 缘石一圈
+  ctx.beginPath();                                                              // 树池缘石
+  ctx.arc(sx(PLAZA_TREE.x+PLAZA_TREE.w/2), sy(PLAZA_TREE.y+PLAZA_TREE.h*0.5),
+          Math.min(PLAZA_TREE.w,PLAZA_TREE.h)*s*0.46, 0, Math.PI*2);
+  ctx.stroke();
+  // ② 江边步道＋岸线：复用 石纹() 的几何（同参数、只换雪色）
+  const 江=(Sim.ROOMS||[]).find(r=>r.id==='river');
+  if(江) 石纹(江, 3, 雪线, 雪线);
+  石纹({x:0,y:SHORE_Y,w:Sim.MAPW,h:1}, 3, 雪线, 雪线);
+  // ③ 公园碎石路：路缘两道雪脊（从 ROOM_FURN.park 的 path 现读）
+  const 路=(ROOM_FURN.park||[]).find(z=>z.k==='path');
+  if(路){
+    ctx.fillStyle=雪线;
+    ctx.fillRect(sx(路.x), sy(路.y), Math.max(1,s*0.16), 路.h*s);
+    ctx.fillRect(sx(路.x+路.w)-Math.max(1,s*0.16), sy(路.y), Math.max(1,s*0.16), 路.h*s);
+  }
+  ctx.restore();
+}
+/*SNOWSEAM-END*/
+
 /* ---------- 楼身分组表与楼内连通（第 16 单）：同楼房间互访走内部路径，不出楼门、不上街 ----------
    归属判定用集中登记的分组表（ROOMS 的 door.via 只有 kitchen 一条且卧室缺位，见总规文档「室内连通」节，
    故取任务书许可的「等价楼身分组表」路线；door.via 字段本身零触碰）。表外房间一律按跨楼处理，照旧经动脉。 */
@@ -9280,6 +9327,7 @@ function draw(now){
   画蜗牛();                    // 第 272 单：雨天才出来的小蜗牛（公园灌木南沿／广场树池东沿；在雪之前）
   雨天湿地();                  // 第 278 单·室外篇·四期：雨天水洼＋雨点涟漪（纯画面件；在雪之前——积雪照旧盖上去）
   snowGround(state.world.t);   // 第 168 单：冬日积雪——街道/岸线/广场＋雪堆（房间循环之后、摊位与人物之前）
+  雪缝();                      // 第 279 单·室外篇·五期：雪天缝里留雪（雪先铺满、缝雪再亮上去；摊位与人物之前）
   // 广场常设件（B 案）：街市摊位 ×3 贴排于广场西列（已撤离步行动脉）＋夜谈角＋江畔景观锚；脚底全部 ≥ 行 15，零压主干道
   /* 第 85 单·门洞记号（**零素材**）：此前门洞就是墙上一个"纯地板留口"——尤其被拼合图接管的
      公寓三间（两格门洞），一眼看过去像断墙。本单给**每个有 door 的房间**补两样记号：
