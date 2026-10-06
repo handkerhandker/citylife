@@ -22,6 +22,8 @@
 // 用法：node versiongate.js
 //   （不依赖 app.js，故不必先跑门禁第 1 步；可单独跑）
 //   node versiongate.js --登记              把当前号与字节补进对照表（**只新增，不覆盖**）
+//   node versiongate.js --登记 --单="第 N 单 · 题"   新条目直接带上"单"（第 259 单起：不许再留"待填"占位；
+//                                            也可用环境变量 VERSIONGATE_UNIT 传同一句话）
 //   node versiongate.js --登记 --覆盖 --理由="…"   显式覆盖已发版号的登记，会在表里留一条覆盖记录
 const fs = require('fs'), path = require('path'), crypto = require('crypto');
 const { execFileSync } = require('child_process');
@@ -104,7 +106,7 @@ function checkLedger(htmlBuf, ledger, mainVer) {
     return {
       ok: false, kind: 'MISMATCH',
       msg: `${v} 是已发版的号，而 HTML 字节已变：登记 ${hit.sha256.slice(0, 8)}… ≠ 实际 ${h.slice(0, 8)}…\n`
-        + `        ⇒ 改了 ${HTML_REL} 却没涨号。**先**把 ${HTML_REL} 里 id="set-build" 那个号改成 v${max + 1}，改完再跑 node versiongate.js --登记。\n`
+        + `        ⇒ 改了 ${HTML_REL} 却没涨号。**先**把 ${HTML_REL} 里 id="set-build" 那个号改成 v${max + 1}，改完再跑 node versiongate.js --登记 --单="第 N 单 · 题"。\n`
         + `        （直接跑 --登记 不会放行：已发版的号不许就地改写字节，那等于这道闸自己把自己关了）`,
     };
   }
@@ -115,7 +117,7 @@ function checkLedger(htmlBuf, ledger, mainVer) {
   return {
     ok: true, kind: 'NEW',
     msg: `${v} 尚未登记且恰为表内最大号 v${max} 的下一位（施工中的新号，本层放行）`
-      + `\n        ※ 收工前必须补登：node versiongate.js --登记`,
+      + `\n        ※ 收工前必须补登：node versiongate.js --登记 --单="第 N 单 · 题"`,
   };
 }
 
@@ -237,6 +239,7 @@ if (process.argv.includes('--登记') || process.argv.includes('--register')) {
   const hit = rows.find(r => r.版本 === curVer);
   const 覆盖 = process.argv.includes('--覆盖') || process.argv.includes('--override');
   const 理由 = (process.argv.find(a => a.startsWith('--理由=') || a.startsWith('--reason=')) || '').split('=').slice(1).join('=');
+  const 单参 = (process.argv.find(a => a.startsWith('--单=')) || '').split('=').slice(1).join('=').trim();
   const mv = mainVersion();
   const 已发出 = !(mv && Number.isFinite(verNum(mv)) && verNum(curVer) > verNum(mv));
   if (hit && hit.sha256 === curSha) { console.log(`${curVer} 已登记且字节一致，无需变更。`); process.exit(0); }
@@ -263,7 +266,7 @@ if (process.argv.includes('--登记') || process.argv.includes('--register')) {
     hit.sha256 = curSha; hit.SIM块md5 = simMd5(htmlBuf);
     console.log(`已**覆盖**登记 ${curVer} → ${curSha}（理由：${理由 || '（未填写）'}；已在对照表留痕）`);
   } else {
-    rows.push({ 版本: curVer, 单: process.env.VERSIONGATE_UNIT || '（待填：第 NN 单）', 状态: '已发', sha256: curSha, SIM块md5: simMd5(htmlBuf), 备注: '' });
+    rows.push({ 版本: curVer, 单: process.env.VERSIONGATE_UNIT || 单参 || '（待填：第 NN 单）', 状态: '已发', sha256: curSha, SIM块md5: simMd5(htmlBuf), 备注: '' });
     console.log(`已登记 ${curVer} → ${curSha}`);
   }
   rows.sort((a, b) => verNum(a.版本) - verNum(b.版本));
