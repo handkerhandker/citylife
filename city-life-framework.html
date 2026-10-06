@@ -554,7 +554,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v205</span>
+<span class="num dim" id="set-build">v206</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -7781,6 +7781,60 @@ function 江边铺装(){
 }
 /*OUTDOOR2-END*/
 
+/*PARK3-START*/
+/* 第 271 单·室外篇·三期（滨江公园：草地纹理＋花点＋碎石路上的小石子）——前三期是"铺装"，
+   本单把公园从"一块平绿"变成"有草有花的路边公园"：
+   ① `草簇(r)`：在 park 房矩形上按**格哈希**撒草簇（每 5 格一簇、三根草叶，淡绿低对比）
+      与花点（每 17 格一朵，粉／米／金三色按同一个哈希）——纯哈希、零 rng、同屏逐帧稳定；
+      画在 `roomFurn(r)` **之前** ⇒ 树／灌木／碎石路／长椅照旧盖在上面；
+   ② `碎石点()`：在碎石路（`ROOM_FURN.park` 的 `path` 条目，现读，不写第二套坐标）上撒小石子
+      （每格 1–3 点，一亮一暗两色），画在路之后 ⇒ 石子落在路面上、不压长椅（两矩形不重叠）。
+   口径与一期／二期同源：**只加纹样、不动底色**（夜间体检的"户外不漂移"照旧盯着）、零占格／站位、零 rng。 */
+function 格哈希(x, y){
+  let h=((Math.imul(x,73856093) ^ Math.imul(y,19349663))>>>0);
+  h=Math.imul(h^(h>>>13),0x27d4eb2d)>>>0;
+  return (h^(h>>>16))>>>0;
+}
+function 草簇(r){
+  const s=state.view.s;
+  ctx.save();
+  for(let x=r.x;x<r.x+r.w;x++) for(let y=r.y;y<r.y+r.h;y++){
+    const h=格哈希(x,y);
+    if(h%5===0){                                  // 草簇：三根草叶（低对比）
+      const cx=sx(x+0.25+((h>>>3)%50)/100), cy=sy(y+0.35+((h>>>9)%50)/100);
+      ctx.strokeStyle='rgba(190,230,170,.20)';
+      ctx.lineWidth=Math.max(1,s*0.045);
+      for(let k=-1;k<=1;k++){
+        ctx.beginPath(); ctx.moveTo(cx+k*s*0.09,cy); ctx.lineTo(cx+k*s*0.13,cy-s*0.16); ctx.stroke();
+      }
+    }
+    if(h%17===3){                                 // 花点：四瓣小方（粉／米／金按哈希）
+      const fx=sx(x+0.3+((h>>>5)%40)/100), fy=sy(y+0.35+((h>>>11)%40)/100);
+      ctx.fillStyle=['#d9a0b8','#e8e0c8','#d9b96c'][(h>>>7)%3];
+      for(const d of [[0,0],[0.09,0.05],[-0.09,0.05],[0,0.10]])
+        ctx.fillRect(fx+d[0]*s-s*0.035, fy+d[1]*s-s*0.035, s*0.07, s*0.07);
+    }
+  }
+  ctx.restore();
+}
+function 碎石点(){
+  const s=state.view.s;
+  const f=(ROOM_FURN.park||[]).find(z=>z.k==='path');
+  if(!f) return;
+  ctx.save();
+  for(let x=f.x;x<f.x+f.w;x++) for(let y=f.y;y<f.y+f.h;y++){
+    const h=格哈希(x+101,y+57), n=1+(h%3);
+    for(let i=0;i<n;i++){
+      const hh=格哈希(x*13+i, y*7+i*3);
+      const px=sx(x+((hh>>>4)%80)/100), py=sy(y+((hh>>>12)%80)/100);
+      ctx.fillStyle=(hh&1)?'rgba(200,190,160,.18)':'rgba(18,26,18,.30)';
+      ctx.fillRect(px,py,Math.max(1,s*0.055),Math.max(1,s*0.055));
+    }
+  }
+  ctx.restore();
+}
+/*PARK3-END*/
+
 /* ---------- 楼身分组表与楼内连通（第 16 单）：同楼房间互访走内部路径，不出楼门、不上街 ----------
    归属判定用集中登记的分组表（ROOMS 的 door.via 只有 kitchen 一条且卧室缺位，见总规文档「室内连通」节，
    故取任务书许可的「等价楼身分组表」路线；door.via 字段本身零触碰）。表外房间一律按跨楼处理，照旧经动脉。 */
@@ -9124,9 +9178,11 @@ function draw(now){
     else ctx.fillRect(sx(dx-0.5),sy(r.y)-1,s,4);
     snowRoom(r);                                   // 第 168 单：冬日积雪——公园/江边步道的地面（在树/长椅之前）
     if(TILE_ROOMS.indexOf(r.id)>=0) roomTile(r);   // 第 36 单：店面铺装（只对没被拼合图接管的房间）
+    if(r.id==='park') 草簇(r);                     // 第 271 单：公园草地纹理＋花点（画在家具之前 ⇒ 路/椅/树盖在上面）
     roomFurn(r);                                   // 第 143／144 单：陈设（表外房间自动跳过；家具占格在 PIX_SOLID）
   }
   江边铺装();                  // 第 270 单·室外篇·二期：江边步道＋岸线步道的石板纹样（在雪之前——冬日积雪照旧盖上去）
+  碎石点();                    // 第 271 单·室外篇·三期：碎石路上的小石子（画在路之后、雪之前）
   snowGround(state.world.t);   // 第 168 单：冬日积雪——街道/岸线/广场＋雪堆（房间循环之后、摊位与人物之前）
   // 广场常设件（B 案）：街市摊位 ×3 贴排于广场西列（已撤离步行动脉）＋夜谈角＋江畔景观锚；脚底全部 ≥ 行 15，零压主干道
   /* 第 85 单·门洞记号（**零素材**）：此前门洞就是墙上一个"纯地板留口"——尤其被拼合图接管的

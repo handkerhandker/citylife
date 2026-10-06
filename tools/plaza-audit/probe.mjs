@@ -100,6 +100,32 @@ const 江甲 = await 数江();
 await page.waitForTimeout(400);
 const 江乙 = await 数江();
 await page.screenshot({ path: path.join(OUT, BEFORE ? '江边-改前.png' : '江边.png') });
+// ── 第 271 单：滨江公园（草地纹理＋花点；相机挪到公园）──────────────────────────────
+await page.evaluate(() => { const st = __pv.state; st.cam.manual = true; st.cam.fx = 9; st.cam.fy = 19.5; });
+await page.waitForTimeout(600);
+const 数园 = () => page.evaluate(() => {
+  const st = __pv.state, S = __pv.Sim;
+  const s = st.view.s, cv = document.querySelector('#cv'), g = cv.getContext('2d');
+  const dpr = cv.width / cv.clientWidth;
+  const 园 = (S.ROOMS || []).find(r => r.id === 'park') || { x: 1, y: 16, w: 17, h: 7 };
+  const x0 = Math.max(0, Math.round((st.view.ox + 园.x * s) * dpr)), y0 = Math.max(0, Math.round((st.view.oy + 园.y * s) * dpr));
+  const x1 = Math.min(cv.width, Math.round((st.view.ox + (园.x + 园.w) * s) * dpr));
+  const y1 = Math.min(cv.height, Math.round((st.view.oy + (园.y + 园.h) * s) * dpr));
+  const wp = Math.max(1, x1 - x0), hp = Math.max(1, y1 - y0);
+  const dd = g.getImageData(x0, y0, wp, hp).data;
+  const 草 = [66, 86, 64], 花 = [232, 224, 200];
+  const 近 = (r, gg, b, p) => Math.abs(r - p[0]) <= 2 && Math.abs(gg - p[1]) <= 2 && Math.abs(b - p[2]) <= 2;
+  let 草色 = 0, 花色 = 0;
+  for (let i = 0; i < dd.length; i += 4) {
+    const r = dd[i], gg = dd[i + 1], b = dd[i + 2];
+    if (近(r, gg, b, 草)) 草色++; else if (近(r, gg, b, 花)) 花色++;
+  }
+  return { 草色, 花色, box: [x0, y0, wp, hp], s: +s.toFixed(2) };
+});
+const 园甲 = await 数园();
+await page.waitForTimeout(400);
+const 园乙 = await 数园();
+await page.screenshot({ path: path.join(OUT, BEFORE ? '公园-改前.png' : '公园.png') });
 await browser.close(); srv.close();
 
 const 断言 = [];
@@ -115,7 +141,14 @@ const 判 = (n, ok, 读数_) => { 断言.push({ n, ok, 读数_ }); console.log((
 判('⑦ 岸线步道石纹缝 ≥ 40（(68,74,94)±2）', 江甲.岸缝 >= 40, { 岸缝: 江甲.岸缝 });
 判('⑧ 江边／岸线重复稳定（各差 ≤ 30）',
    Math.abs(江甲.江缝 - 江乙.江缝) <= 30 && Math.abs(江甲.岸缝 - 江乙.岸缝) <= 30, { 甲: 江甲, 乙: 江乙 });
+/* 阈值口径：旧版公园里本就有一族接近 (66,86,64) 的绿（灌木边／树影，实测 810）⇒ 草色判据定 ≥1000
+   （新版 1285，薄但稳——两次读数逐字相同）；米色花是**全新**色（旧版 0）⇒ ≥40（新版 66）。 */
+判('⑨ 公园草地草簇色 ≥ 1000（(66,86,64)±2；旧版同色族实测 810 ⇒ 阈值取 1000）', 园甲.草色 >= 1000, { 草色: 园甲.草色, box: 园甲.box, s: 园甲.s });
+判('⑩ 公园花点色 ≥ 40（(232,224,200)±2，米色花；旧版 0）', 园甲.花色 >= 40, { 花色: 园甲.花色 });
+判('⑪ 公园重复稳定（各差 ≤ 30）',
+   Math.abs(园甲.草色 - 园乙.草色) <= 30 && Math.abs(园甲.花色 - 园乙.花色) <= 30, { 甲: 园甲, 乙: 园乙 });
 const 结论 = { 版本: BEFORE || '（工作区当前版本）', 读数: 甲, 第二次: 乙, 江边: 江甲, 江边第二次: 江乙,
+  公园: 园甲, 公园第二次: 园乙,
   断言, 页面错误: 错, 通过: 断言.every(x => x.ok) };
 fs.writeFileSync(path.join(OUT, 'report.json'), JSON.stringify(结论, null, 2), 'utf8');
 const 红 = 断言.filter(x => !x.ok).length;
