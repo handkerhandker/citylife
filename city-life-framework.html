@@ -554,7 +554,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v201</span>
+<span class="num dim" id="set-build">v202</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -5652,6 +5652,17 @@ function openBoardDialog(){
     if(Sim.贴留言(state.world, +b.dataset.post)) openBoardDialog();
   }));
 }
+/* 第 266 单·江边漂流瓶：点开读纸条（内容由渲染段现算，DOM 只排版；读完放回原处，不写世界） */
+function openBottleDialog(){
+  const 纸=瓶纸(state.world);
+  openDialog('<div class="dlg-head"><span class="grab"></span>'
+    +'<b class="ellip grow">🍾 江边的漂流瓶</b>'
+    +'<button class="btn small" data-fx data-close>✕</button></div>'
+    +'<div class="dlg-body"><p class="back-lead">'+esc(纸.词)+'</p>'
+    +'<div class="faint">——落款被水泡花了，只看清一个「'+esc(纸.姓)+'」字。</div>'
+    +'<div class="faint" style="margin-top:.5rem">纸条发软，边角卷着。读完把它放回原处——江会把它带走。'
+    +'（江边每三天左右漂来一个）</div></div>');
+}
 function openAgentDialog(id){
   const ag=state.world.agents.find(a=>a.id===id); if(!ag) return;
   const recent=ag.personalLog.slice(-5).reverse().map(e=>
@@ -8916,6 +8927,66 @@ function 店猫活态(现在){
   return {势,看};
 }
 /*CATLIFE-END*/
+/* ---------- 第 266 单·江边漂流瓶（一张泡软的纸条；纯渲染＋DOM，零 rng、零世界写入）--------------
+   出处（2026-10-06 实取，均 HTTP 200；逐字见 docs/规划/借鉴调研-2026-10-06-漂流瓶.md）：
+     · Nookipedia·Message bottle：「…an item in Animal Crossing: Wild World and Animal Crossing:
+       New Horizons that **can wash up on the beach containing a letter**.」「in Animal Crossing:
+       New Horizons, message bottles contain **a letter from a villager** alongside a DIY recipe.」
+     · Wikipedia·Message in a bottle：「a form of communication in which **a message is sealed in a
+       container (typically a bottle) and released into a conveyance medium (typically a body of
+       water)**.」
+   三条落成：① 江边步道贴水的一处（`瓶席`，世界格；不占走线）**每三天漂来一个**
+      （日号 `%3===1`：D1／D4／D7…——**可预期**（看完一个就知道下一个哪天来），**零 rng**）；
+      ② 纸条＝一句池里按**同一天号**取的话
+      ＋一枚被水泡花的落款（顾／沈／陆／白，按同一天号取）——同一天谁来看都是同一张纸；
+      ③ 点它开一张"纸条"面板（DOM 只排版）。**不进背包、不入档、不写世界**：它只在"漂来的那天"
+      画在画上，第二天江自己把它带走。 */
+/*BOTTLE-START*/
+const 瓶席={x:42.5, y:22.55};          // 江边步道东南角、贴水那一线（river 房内：x27–46／y16–23）
+const 瓶纸池=[
+  '今天的风把江面吹皱了，像有人在上面写字。',
+  '如果捡到这个——说明你今天恰好走到了江边。',
+  '我把一件小事放进去了，别问是什么，问就是忘了。',
+  '楼下便利店的关东煮，萝卜比鱼丸好吃。',
+  '别熬夜。这句是抄的，但也是真的。',
+  '江对岸的灯每晚十一点熄，我数过三天。',
+  '今天没赶上日落，明天早点。',
+  '写名字太郑重了。你好，陌生人。',
+  '想让谁过得好，就先把自己弄暖一点。',
+  '这张纸本来要写别的，写到一半忘了。',
+];
+let 瓶当前盒=null;                     // 画的时候按帧登记（点在它身上才算读到）
+function 瓶日(w){ return (PURE.dayOf((w&&w.t)||0)%3)===1; }   // 每三天一个（D1／D4／D7…；零 rng、可预期）
+function 瓶纸(w){
+  const day=PURE.dayOf((w&&w.t)||0), h=(day*2246822519)>>>0;
+  return { 词:瓶纸池[(h>>>5)%瓶纸池.length], 姓:'顾沈陆白'[(h>>>13)%4] };
+}
+function 画漂流瓶(){
+  const s=state.view.s, bx=sx(瓶席.x), by=sy(瓶席.y), u=s;
+  ctx.save();
+  ctx.fillStyle='rgba(0,0,0,.28)';
+  ctx.beginPath(); ctx.ellipse(bx,by+u*0.12,u*0.34,u*0.09,0,0,7); ctx.fill();
+  // 瓶身：躺着的绿玻璃（瓶颈朝东、木塞在外）
+  ctx.fillStyle='#5f8e77';
+  ctx.beginPath(); ctx.ellipse(bx,by,u*0.30,u*0.13,0,0,7); ctx.fill();
+  ctx.fillStyle='#79ab90';                                            // 高光那一半
+  ctx.beginPath(); ctx.ellipse(bx-u*0.03,by-u*0.035,u*0.22,u*0.07,0,0,7); ctx.fill();
+  // 瓶里的纸卷（奶油色，露在玻璃里）
+  ctx.fillStyle='#e8e0c8';
+  ctx.fillRect(bx-u*0.16,by-u*0.05,u*0.30,u*0.09);
+  // 瓶颈＋木塞
+  ctx.fillStyle='#5f8e77'; ctx.fillRect(bx+u*0.27,by-u*0.045,u*0.14,u*0.09);
+  ctx.fillStyle='#b08a5a'; ctx.fillRect(bx+u*0.41,by-u*0.05,u*0.07,u*0.10);
+  // 玻璃上的一点反光
+  ctx.fillStyle='rgba(255,255,255,.65)';
+  ctx.fillRect(bx-u*0.22,by-u*0.075,u*0.05,u*0.03);
+  ctx.restore();
+  /* 命中盒与"房间名让位"盒＝同一张（照第 265 单批后审计立的规矩：判定必须读登记盒） */
+  const 盒={l:bx-u*0.42, r:bx+u*0.50, t:by-u*0.20, b:by+u*0.18, bx, by};
+  瓶当前盒=盒;
+  return {l:盒.l, r:盒.r, t:盒.t, b:盒.b};
+}
+/*BOTTLE-END*/
 function draw(now){
   const {s,ox,oy}=state.view;
   ctx.setTransform(state.dpr,0,0,state.dpr,0,0);
@@ -9028,6 +9099,7 @@ function draw(now){
     dispPos[ag.id]={x:v.dspX,y:v.dspY};
   }
   nameChipReset();   // 第 32 单：名牌登记表按帧清账；第 125 单：道号改由 分名牌道() 先算（与绘制顺序无关）
+  瓶当前盒=null;   // 第 266 单：命中盒按帧清账——它不在的那天，那个位置点不出纸条（照 nameChipReset 先例）
   const ents=state.world.agents.map(ag=>({kind:'a',ag,fy:dispPos[ag.id].y+0.5}));
   if(pixOn) for(const f of PIX_FURN_TALL) ents.push({kind:'f',f,fy:f[4]});
   /* 第 213 单·让猫看得见：在来访窗口（15:00–17:00）且有猫的日子，把小猫塞进排序队列 */
@@ -9035,6 +9107,7 @@ function draw(now){
   if(猫今 && Sim.ANCHORS[猫今.spot]) ents.push({kind:'c', 猫:猫今, fy:Sim.ANCHORS[猫今.spot].y+0.4});
   ents.push({kind:'c', 猫:店猫, x:店猫席.x, y:店猫席.y, 活:true, fy:店猫席.y+0.4});   // 第 260 单·店猫（常住）＋第 263 单·活态（换姿势／看店员；纯渲染、零 rng）
   if(Sim.ANCHORS.board) ents.push({kind:'b', fy:Sim.ANCHORS.board.y+0.5});   // 第 216 单·公告栏（固定一处、按脚底排序）
+  if(瓶日(state.world)) ents.push({kind:'v', fy:瓶席.y+0.4});                // 第 266 单·江边漂流瓶（只在那天在）
   ents.sort((a,b)=>a.fy-b.fy);
   const 本帧道=分名牌道(Object.fromEntries(state.world.agents.map(a=>[a.id, sx(dispPos[a.id].x)])),
                          Object.fromEntries(state.world.agents.map(a=>[a.id, sy(dispPos[a.id].y)])));   // 第 125 单 / 第 149 单补纵轴
@@ -9046,6 +9119,7 @@ function draw(now){
     }
     if(en.kind==='c'){ if(en.x!==undefined) 画猫垫(en.x,en.y); 画猫(en.猫,en.x,en.y, en.活?店猫活态():null); continue; }
     if(en.kind==='b'){ const bb=画布告板(); if(bb) labelBlockBoxes.push(bb); continue; }
+    if(en.kind==='v'){ const bb=画漂流瓶(); if(bb) labelBlockBoxes.push(bb); continue; }
     const ag=en.ag;
     const v=state.vis[ag.id];
     const px=sx(dispPos[ag.id].x), py=sy(dispPos[ag.id].y);
@@ -9205,6 +9279,13 @@ cv.addEventListener('pointerup',e=>{
         openBoardDialog();
         if(e.pointerType==='touch') 吞点击=performance.now();
       }
+    }
+    /* 第 266 单·江边漂流瓶：点它读纸条——判定读的是**画的时候登记的那张盒子**（四条边），
+       不另算框；它不在的那天 `瓶当前盒` 已被清账（第 265 单批后审计立的规矩）。 */
+    const vb=瓶当前盒;
+    if(vb && cxp>=vb.l-6 && cxp<=vb.r+6 && cyp>=vb.t-6 && cyp<=vb.b+6){
+      openBottleDialog();
+      if(e.pointerType==='touch') 吞点击=performance.now();
     }
   }
 });
