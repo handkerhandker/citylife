@@ -554,7 +554,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v207</span>
+<span class="num dim" id="set-build">v208</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -4920,6 +4920,9 @@ const bootMiles=(()=>{
   const n=x=>(isFinite(x)&&x>=0)?Math.floor(x):0;
   return { sms:n(m.sms), replies:n(m.replies), notes:n(m.notes), bdays:n(m.bdays),
            calls:n(m.calls), delivers:n(m.delivers), picks:n(m.picks),   // 第 237 单·手账二期
+           /* 第 274 单·手账四期：漂流瓶只记"第一次捡到"这一笔（布尔归一：true/1 才算，其余归 0；
+              旧档没有这一项 ⇒ 0——照 phSeen／ai 小账的归一先例，绝不因小账畸形拒载存档）。 */
+           bottle:(m.bottle===true||m.bottle===1)?1:0,
            countedLid:(isFinite(m.countedLid)&&m.countedLid>=0)?Math.floor(m.countedLid):(bootWorld?bootWorld.lidSeq:0) };
 })();
 /* 第 177 单·AI 成本闸的本地小账（《AI 通道与成本闸方案 v1》阶段一）：{day, used}。
@@ -5654,6 +5657,9 @@ function openBoardDialog(){
 }
 /* 第 266 单·江边漂流瓶：点开读纸条（内容由渲染段现算，DOM 只排版；读完放回原处，不写世界） */
 function openBottleDialog(){
+  /* 第 274 单·手账四期：点开漂流瓶那一刻＝"捡到第一个漂流瓶"（只记第一次；小账随存档信封走——
+     与 miles／keeps／ai 同一处，不进世界状态 ⇒ 世界指纹与 SIM 块 md5 都不受影响）。 */
+  if(state.miles && !state.miles.bottle){ state.miles.bottle=1; saveNow(); }
   const 纸=瓶纸(state.world);
   openDialog('<div class="dlg-head"><span class="grab"></span>'
     +'<b class="ellip grow">🍾 江边的漂流瓶</b>'
@@ -6047,6 +6053,7 @@ function milesList(){
   加('赶上第一阵凉风', d>=181, 'D'+Math.min(d,181)+'/181');
   加('看过第一场雪', d>=271, 'D'+Math.min(d,271)+'/271');
   加('发满 100 条短信', M.sms>=100, Math.min(M.sms,100)+'/100');
+   加('捡到第一个漂流瓶', M.bottle>=1, M.bottle>=1?'✓':'0/1');      // 第 274 单·手账四期（点开漂流瓶那一刻记一笔）
   加('看过一整年', d>=360, 'D'+Math.min(d,360)+'/360');
   return 条;
 }

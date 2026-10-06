@@ -72,6 +72,17 @@ const 甲 = await 数();
 await page.waitForTimeout(400);
 const 乙 = await 数();
 await page.locator('#cv').screenshot({ path: path.join(OUT, '瓶日.png') }).catch(() => {});
+/* 第 274 单·手账四期：点开漂流瓶**之前**那一条该是 0/1（读手账卡真 DOM） */
+const 读手账 = () => page.evaluate(() => {
+  const lis = [...document.querySelectorAll('#mile-list li')];
+  const li = lis.find(x => x.textContent.indexOf('漂流瓶') >= 0);
+  return { 条数: lis.length, 条: li ? li.textContent.trim().replace(/\s+/g, ' ') : null };
+});
+await page.click('button.tab[data-tab="roles"]');
+await page.waitForTimeout(400);
+const 账前 = await 读手账();
+await page.click('button.tab[data-tab="live"]');
+await page.waitForTimeout(300);
 // 非瓶日（D5）
 await page.evaluate(() => { const st = __pv.state; st.world.t = (5 - 1) * 1440 + 12 * 60; });
 await page.waitForTimeout(500);
@@ -103,6 +114,15 @@ if (席) {
     点.空地弹 = await page.evaluate(() => !!document.querySelector('#dialog-root.open'));
   }
 }
+/* 第 274 单：点开之后 ⇒ 手账那一条打勾；**刷新后仍在**（小账随存档信封走，不靠内存） */
+await page.click('button.tab[data-tab="roles"]');
+await page.waitForTimeout(400);
+const 账后 = await 读手账();
+await page.reload({ waitUntil: 'load' });
+await page.waitForTimeout(2400);
+await page.click('button.tab[data-tab="roles"]');
+await page.waitForTimeout(400);
+const 账刷后 = await 读手账();
 await browser.close(); srv.close();
 
 const 断言 = [];
@@ -114,7 +134,13 @@ const 判 = (n, ok, 读数_) => { 断言.push({ n, ok, 读数_ }); console.log((
 判('⑤ 点它开纸条面板：文字＝当天那句＋落款（逐字对）', !!点.对, 点);
 判('⑥ 点三格外的空地不弹面板', 点.空地弹 === false, { 空地弹: 点.空地弹 });
 判('⑦ 全程零 pageerror', 错.length === 0, { 错: 错.slice(0, 3) });
-const 结论 = { 版本: BEFORE || '（工作区当前版本）', 席, 读数: 甲, 第二次: 乙, 非瓶日: 非, 点, 断言, 页面错误: 错,
+判('⑧ 手账四期（274）：点开前 0/1、点开后打勾（条数 21）',
+   String(账前.条 || '').includes('0/1') && String(账后.条 || '').startsWith('✓') && 账后.条数 === 21,
+   { 前: 账前, 后: 账后 });
+判('⑨ 手账四期（274）：**刷新后仍在**（小账走存档信封，不靠内存）',
+   String(账刷后.条 || '').startsWith('✓'), { 刷新后: 账刷后 });
+const 结论 = { 版本: BEFORE || '（工作区当前版本）', 席, 读数: 甲, 第二次: 乙, 非瓶日: 非, 点,
+  手账: { 前: 账前, 后: 账后, 刷新后: 账刷后 }, 断言, 页面错误: 错,
   通过: 断言.every(x => x.ok) };
 fs.writeFileSync(path.join(OUT, 'report.json'), JSON.stringify(结论, null, 2), 'utf8');
 const 红 = 断言.filter(x => !x.ok).length;

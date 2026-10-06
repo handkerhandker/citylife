@@ -1,6 +1,6 @@
 // 第 131 单·云港手账探针（真浏览器；只读诊断，进冒烟档 2）
 //
-// 判据：① 开局手账卡在（20 条、0/20）；② 发一条短信 →（等回音落定）小账 sms≥1、replies≥1，
+// 判据：① 开局手账卡在（21 条、0/21；第 274 单四期 +1＝漂流瓶）；② 发一条短信 →（等回音落定）小账 sms≥1、replies≥1，
 // 卡上也勾上那两条；③ 刷新 → 小账不重不漏（值与刷新前一致，**不翻倍**）；
 // ④ 第 237 单·二期：打一通电话／回一次主意／捎一句话／收藏一张卡 ⇒ 三本小账各 +1、
 //    四条新里程碑逐条打勾（"收藏满十张"仍空）；全程零 pageerror。
@@ -61,8 +61,8 @@ await page.waitForTimeout(800);
 await page.click('button.tab[data-tab="roles"]');
 await page.waitForTimeout(400);
 let R = await 读数(page);
-判('① 开局：手账卡 20 条、计数 0/20、小账清零',
-  R.枚数 === 20 && R.计数 === '0/20' && R.小账.sms === 0 && R.小账.replies === 0, R);
+判('① 开局：手账卡 21 条、计数 0/21、小账清零',
+  R.枚数 === 21 && R.计数 === '0/21' && R.小账.sms === 0 && R.小账.replies === 0, R);
 await page.click('button.tab[data-tab="phone"]');
 await page.waitForSelector('#ph-msgs button[data-msg]:not([disabled])', { timeout: 10000 }).catch(() => {});
 await page.waitForTimeout(200);
