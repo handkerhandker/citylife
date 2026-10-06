@@ -4,7 +4,7 @@
 //   数"灰猫色板"（#8d939e／#5f6874／#c9ccd4）与"窝垫色"（#6f5b41／#9b8258）像素：
 //     灰斑 ≥ 40、垫色 ≥ 20、重复一次差 ≤ 2（设备像素；dpr=2、s≈30）。
 //   --改前=<git-ref>：旧版没有店猫概念（`店猫席` 读不到）⇒ 两条读数 0、探针判红（判据不是恒绿）。
-// 第 263 单追加（店猫活态）：
+// 第 263 单追加（店猫活态；第 267 单起函数改名 猫活态(谁,现在)——两只猫共用一份戳表分账）：
 //   ⑥ 三姿势（端坐／打盹／舔爪）在同一时刻同一光照下渲染两两不同（≥40 设备像素差）——用
 //      `__pv.店猫活态 = ()=>({势,看})` 桩把姿势钉住，只有猫在变；旧版忽略第 4 参 ⇒ 三张逐像素相同、判红。
 //   ⑦ 看她：醒着 + 看 −1 与 看 0 的渲染差 ≥30；且**真实函数**三读数——醒着＋店员在柜台 ⇒ 看=−1、
@@ -29,8 +29,8 @@ const rawHtml = BEFORE
 const html = rawHtml.replace(/\}\)\(\);\s*<\/script>/,
   'window.__pv={get state(){return state},get Sim(){return Sim},'
   +'get 店猫席(){try{return (typeof 店猫席!==\'undefined\')?店猫席:null}catch(e){return null}},'
-  +'get 店猫活态(){try{return (typeof 店猫活态===\'function\')?店猫活态:null}catch(e){return null}},'
-  +'set 店猫活态(f){try{店猫活态=f}catch(e){}}};\n})();\n</script>');
+  +'get 猫活态(){try{return (typeof 猫活态===\'function\')?猫活态:null}catch(e){return null}},'
+  +'set 猫活态(f){try{猫活态=f}catch(e){}}};\n})();\n</script>');
 if (html === rawHtml) { console.error('注入点没找到'); process.exit(2); }
 const PORT = 18979;
 const srv = http.createServer((q, r) => {
@@ -99,11 +99,11 @@ const 差 = (a, b) => { let n = 0;
   for (let i = 0; i < a.px.length; i += 4)
     if (Math.abs(a.px[i] - b.px[i]) > 8 || Math.abs(a.px[i + 1] - b.px[i + 1]) > 8 || Math.abs(a.px[i + 2] - b.px[i + 2]) > 8) n++;
   return n; };
-const 置势 = (势, 看) => page.evaluate(([势, 看]) => { window.__pv.店猫活态 = () => ({ 势, 看 }); }, [势, 看]);
-const 有活态 = await page.evaluate(() => { try { return typeof window.__pv.店猫活态 === 'function'; } catch (e) { return false; } });
+const 置势 = (势, 看) => page.evaluate(([势, 看]) => { window.__pv.猫活态 = (谁) => ({ 谁: 谁 || '店', 势, 看 }); }, [势, 看]);
+const 有活态 = await page.evaluate(() => { try { return typeof window.__pv.猫活态 === 'function'; } catch (e) { return false; } });
 let 图端 = null, 图睡 = null, 图洗 = null, 图看 = null, 差端睡 = -1, 差端洗 = -1, 差睡洗 = -1, 差看 = -1, 活态读数 = null, 戳读数 = null;
 if (有活态) {
-  await page.evaluate(() => { window.__原活态 = window.__pv.店猫活态; });
+  await page.evaluate(() => { window.__原活态 = window.__pv.猫活态; });
   await 置势('端坐', 0); await page.waitForTimeout(300); 图端 = await 取盒();
   await page.locator('#cv').screenshot({ path: path.join(OUT, '店猫-端坐.png') }).catch(() => {});
   await 置势('打盹', 0); await page.waitForTimeout(300); 图睡 = await 取盒();
@@ -121,14 +121,14 @@ if (有活态) {
     for (let 日 = 1; 日 <= 7 && (!结.醒 || !结.睡); 日++) for (let 档 = 0; 档 < 8; 档++) {
       st.world.t = (日 - 1) * 1440 + 档 * 180 + 30;
       st.vis.a2 = { dspX: S.ANCHORS.store_counter.x, dspY: S.ANCHORS.store_counter.y };
-      const r = f();
+      const r = f('店');
       if (r.势 !== '打盹' && !结.醒) 结.醒 = { 日, 档, 看: r.看, 势: r.势 };
       if (r.势 === '打盹' && !结.睡) 结.睡 = { 日, 档, 看: r.看, 势: r.势 };
     }
-    if (结.醒) { st.world.t = (结.醒.日 - 1) * 1440 + 结.醒.档 * 180 + 30; st.vis.a2 = { dspX: 8, dspY: 14 }; 结.醒远 = { 看: f().看 }; }
+    if (结.醒) { st.world.t = (结.醒.日 - 1) * 1440 + 结.醒.档 * 180 + 30; st.vis.a2 = { dspX: 8, dspY: 14 }; 结.醒远 = { 看: f('店').看 }; }
     return 结;
   });
-  await page.evaluate(() => { try { window.__pv.店猫活态 = window.__原活态; } catch (e) {} });
+  await page.evaluate(() => { try { window.__pv.猫活态 = window.__原活态; } catch (e) {} });
   // ⑧ 第 264 单·玩家的手：点她一下 ⇒ 抬头看你一眼（1.5 秒后回作息）；点空处不触发
   {
     /* ⑦ 的读数扫描把世界时间留在了某个夜里——夜里店内点灯、星光按真时刻动，整块盒子每帧都在变。

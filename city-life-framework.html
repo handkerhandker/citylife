@@ -554,7 +554,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v202</span>
+<span class="num dim" id="set-build">v203</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -8782,7 +8782,7 @@ function 画布告板(){
 /* 第 213 单·让猫看得见（纯渲染层；读 `catOfDay` 与时间窗，零世界改动）：
    蹲坐小猫，约半格宽×四分之三格高，三档花色都手绘（照家具/精灵先例全是 canvas 图元）。
    画进 `ents` 的"按脚底 y 排序"队列（有人站在同一点时猫先画、人在前），盒子进"房间名让位"账。 */
-function 画猫(猫, ax, ay, 活){
+function 画猫(猫, ax, ay, 活, 谁){
   const s=state.view.s, A=Sim.ANCHORS[猫.spot];
   const X=(ax!==undefined)?ax:(A?A.x:undefined), Y=(ay!==undefined)?ay:(A?A.y:undefined);
   if(X===undefined||Y===undefined) return;
@@ -8857,11 +8857,11 @@ function 画猫(猫, ax, ay, 活){
     }
   }
   ctx.restore();
-  /* 房间名给猫让位（照第 42 单先例）；第 264 单起这张盒子**一处两用**——店猫那张同时记给
-     "点她一下"的命中判定（`店猫当前盒`），不再写第二套数字。 */
+  /* 房间名给猫让位（照第 42 单先例）；第 264 单起这张盒子**一处两用**——同一张也记给"点她一下"
+     的命中判定；第 267 单起**两只猫都记**（`猫盒表`，按帧清账）：谁被点，就以谁的身份起反应。 */
   const 盒={l:bx-u*1.1, r:bx+u*0.5, t:by-u*1.2, b:by+u*0.5};
   labelBlockBoxes.push(盒);
-  if(活) 店猫当前盒={l:盒.l, r:盒.r, t:盒.t, b:盒.b, cx:bx, cy:by};
+  if(谁) 猫盒表.push({谁, l:盒.l, r:盒.r, t:盒.t, b:盒.b, cx:bx, cy:by});
 }
 /* ---------- 第 260 单·便利店·店猫「灰灰」（常住的窝）----------------------------------------
    来历：第 210 单的猫事调研把"常住猫的窝"留在"留给以后"；本单兑现——**纯渲染层**（零 rng、零 SIM）。
@@ -8906,16 +8906,20 @@ function 店猫哈希(n){ let h=(Math.imul(n,374761393)+668265263)|0; h=Math.imu
 /* 第 264 单·玩家的手：点她一下 ⇒ 醒来＋耳朵立起＋睁大眼＋头朝你偏，1.5 真秒后自动回作息。
    出处：Stardew Valley Wiki·Animals「Click on the pet once each day to pet it, and they express
    love for you」（2026-10-06 HTTP 200；逐字见 docs/规划/借鉴调研-2026-10-06-店猫二期.md §出处二）。
+   第 267 单·二期：**两只猫都点得动**——戳表按"谁"分账（`店`／`访`），互不影响；访客猫
+   **不被戳时返回 null**（⇒ `画猫` 走缺省路径、逐像素与旧版相同：她只是路过坐一会儿，没有作息可切）。
    纯渲染：反应表只在内存（不入档、不写世界、零 rng）；`现在` 可注入 ⇒ 闸里可判"到点回落"。 */
-let 店猫戳表=null;                                  // {x,y,到}：x,y＝世界格坐标（戳点），到＝performance.now() 刻度
-const 店猫反应毫秒=1500;
-let 店猫当前盒=null;                                // 画猫时按帧登记（供点选命中；与"房间名让位"同一张盒子）
-function 戳店猫(x,y,到){ 店猫戳表={x,y,到}; }        // 唯一入口（画布点选处调用）
-function 店猫活态(现在){
+let 猫戳表={};                                      // {店|访: {看,到}}：看＝朝哪边偏（−1 左／1 右），到＝performance.now 刻度
+const 猫反应毫秒=1500;
+let 猫盒表=[];                                      // 画猫时按帧登记（供点选命中；与"房间名让位"同一张盒子）
+function 戳猫(谁,看,到){ 猫戳表[谁]={看,到}; }       // 唯一入口（画布点选处调用；方向由点选处算）
+function 猫活态(谁,现在){
   const 现=(现在===undefined)?performance.now():现在;
-  if(店猫戳表 && 现<店猫戳表.到){
-    return {势:'端坐', 看:(店猫戳表.x<店猫席.x-0.3)?-1:1, 戳:true};
+  const 戳=猫戳表[谁];
+  if(戳 && 现<戳.到){
+    return {谁, 势:'端坐', 看:戳.看, 戳:true};
   }
+  if(谁!=='店') return null;                        // 访客猫：没被戳就照旧（缺省路径）
   const t=(state.world&&state.world.t)||0, 日=PURE.dayOf(t), 档=店猫档(PURE.minuteOfDay(t));
   const 池=店猫姿势池[店猫段(档)];
   const 势=池[店猫哈希(日*8+档)%池.length];
@@ -8924,7 +8928,7 @@ function 店猫活态(现在){
     const v=state.vis&&state.vis.a2, A=Sim.ANCHORS&&Sim.ANCHORS.store_counter;
     if(v&&A&&Math.abs(v.dspX-A.x)<=3.5&&Math.abs(v.dspY-A.y)<=2.5) 看=(v.dspX<店猫席.x-0.6)?-1:1;
   }
-  return {势,看};
+  return {谁:'店', 势, 看};
 }
 /*CATLIFE-END*/
 /* ---------- 第 266 单·江边漂流瓶（一张泡软的纸条；纯渲染＋DOM，零 rng、零世界写入）--------------
@@ -9100,12 +9104,13 @@ function draw(now){
   }
   nameChipReset();   // 第 32 单：名牌登记表按帧清账；第 125 单：道号改由 分名牌道() 先算（与绘制顺序无关）
   瓶当前盒=null;   // 第 266 单：命中盒按帧清账——它不在的那天，那个位置点不出纸条（照 nameChipReset 先例）
+  猫盒表=[];       // 第 267 单：两只猫的命中盒同样按帧清账（访客猫不来、店猫被挪走的帧都不会留下影子）
   const ents=state.world.agents.map(ag=>({kind:'a',ag,fy:dispPos[ag.id].y+0.5}));
   if(pixOn) for(const f of PIX_FURN_TALL) ents.push({kind:'f',f,fy:f[4]});
   /* 第 213 单·让猫看得见：在来访窗口（15:00–17:00）且有猫的日子，把小猫塞进排序队列 */
   const 猫今=(()=>{ const mod=PURE.minuteOfDay(state.world.t); if(mod<Sim.CAT.on||mod>=Sim.CAT.off) return null; return Sim.catOfDay(state.world); })();
-  if(猫今 && Sim.ANCHORS[猫今.spot]) ents.push({kind:'c', 猫:猫今, fy:Sim.ANCHORS[猫今.spot].y+0.4});
-  ents.push({kind:'c', 猫:店猫, x:店猫席.x, y:店猫席.y, 活:true, fy:店猫席.y+0.4});   // 第 260 单·店猫（常住）＋第 263 单·活态（换姿势／看店员；纯渲染、零 rng）
+  if(猫今 && Sim.ANCHORS[猫今.spot]) ents.push({kind:'c', 猫:猫今, 谁:'访', fy:Sim.ANCHORS[猫今.spot].y+0.4});   // 第 213 单·访客猫＋第 267 单·她也点得动
+  ents.push({kind:'c', 猫:店猫, x:店猫席.x, y:店猫席.y, 谁:'店', fy:店猫席.y+0.4});   // 第 260 单·店猫（常住）＋第 263 单·活态；第 267 单起两只猫同一张盒表
   if(Sim.ANCHORS.board) ents.push({kind:'b', fy:Sim.ANCHORS.board.y+0.5});   // 第 216 单·公告栏（固定一处、按脚底排序）
   if(瓶日(state.world)) ents.push({kind:'v', fy:瓶席.y+0.4});                // 第 266 单·江边漂流瓶（只在那天在）
   ents.sort((a,b)=>a.fy-b.fy);
@@ -9117,7 +9122,7 @@ function draw(now){
       ctx.drawImage(pix.apt, fr[0],fr[1],fr[2],fr[3], sx(APT.x+fr[0]/48), sy(APT.y+fr[1]/48), fr[2]/48*s, fr[3]/48*s);
       continue;
     }
-    if(en.kind==='c'){ if(en.x!==undefined) 画猫垫(en.x,en.y); 画猫(en.猫,en.x,en.y, en.活?店猫活态():null); continue; }
+    if(en.kind==='c'){ if(en.x!==undefined) 画猫垫(en.x,en.y); 画猫(en.猫,en.x,en.y, 猫活态(en.谁), en.谁); continue; }
     if(en.kind==='b'){ const bb=画布告板(); if(bb) labelBlockBoxes.push(bb); continue; }
     if(en.kind==='v'){ const bb=画漂流瓶(); if(bb) labelBlockBoxes.push(bb); continue; }
     const ag=en.ag;
@@ -9264,11 +9269,11 @@ cv.addEventListener('pointerup',e=>{
     renderTopbar(); openAgentDialog(best.id);
     if(e.pointerType==='touch') 吞点击=performance.now();   // 第 145 单：吞掉紧随而来的合成 click
   } else {
-    /* 第 264 单·玩家的手：点店猫一下 ⇒ 她抬头看你一眼（纯渲染；放在公告栏之前——猫在店里、板子在广场，不重叠） */
-    const cb=店猫当前盒;
-    if(cb && cxp>=cb.l-6 && cxp<=cb.r+6 && cyp>=cb.t-6 && cyp<=cb.b+6){
-      const W=state.view;
-      戳店猫((cxp-W.ox)/W.s, (cyp-W.oy)/W.s, performance.now()+店猫反应毫秒);
+    /* 第 264 单·玩家的手（第 267 单二期：两只猫都点得动）：点在**画的时候登记的盒**里 ⇒ 起反应。
+       判定读的就是那张登记盒的四条边（第 265 单批后审计立的规矩）；方向由点选处算（点在她左/右）。 */
+    const cb=(猫盒表||[]).find(c=>cxp>=c.l-6 && cxp<=c.r+6 && cyp>=c.t-6 && cyp<=c.b+6);
+    if(cb){
+      戳猫(cb.谁, cxp<cb.cx?-1:1, performance.now()+猫反应毫秒);
       return;
     }
     /* 第 216 单·公告栏：点板子开"云港公告栏"（agents 优先；板子在广场固定一处、命中小一号） */

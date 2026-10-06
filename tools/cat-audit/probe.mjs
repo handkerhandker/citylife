@@ -23,7 +23,9 @@ const rawHtml = BEFORE
   ? execFileSync('git', ['show', `${BEFORE}:city-life-framework.html`], { cwd: REPO, maxBuffer: 1 << 28, encoding: 'utf8' })
   : fs.readFileSync(path.join(REPO, 'city-life-framework.html'), 'utf8');
 const html = rawHtml.replace(/\}\)\(\);\s*<\/script>/,
-  'window.__pv={get state(){return state},get Sim(){return Sim}};\n})();\n</script>');
+  "window.__pv={get state(){return state},get Sim(){return Sim},"
+  + "get 猫活态(){try{return (typeof 猫活态==='function')?猫活态:null}catch(e){return null}},"
+  + "get 猫盒表(){try{return (typeof 猫盒表!=='undefined')?猫盒表:null}catch(e){return null}}};\n})();\n</script>");
 if (html === rawHtml) { console.error('注入点没找到'); process.exit(2); }
 const PORT = 18967;
 const srv = http.createServer((q, r) => {
@@ -86,10 +88,33 @@ await page.waitForTimeout(500);
 const 乙 = await 数色板();
 await page.screenshot({ path: path.join(OUT, '非猫日.png') });
 
+/* 第 267 单·访客猫也点得动：点她**登记的盒子**（`猫盒表` 里 `谁:'访'` 那张）⇒ `猫活态('访')`
+   从 null 变成"端坐＋戳＋看"，1.9 秒后回 null。--改前（v202）没有 `猫活态` ⇒ 读数落空、判红。 */
+let 戳访 = null;
+{
+  await 布置(true, null);                 // 回到猫日（上一步的"非猫日"布置已经把她送走了）
+  await page.evaluate(sp => { window.__catSpot = sp; }, 猫日.spot);
+  await page.waitForTimeout(500);
+  const 前 = await page.evaluate(() => { try { return window.__pv.猫活态 ? window.__pv.猫活态('访') : '无此函数'; } catch (e) { return '抛错'; } });
+  const 盒 = await page.evaluate(() => { try { const b = (window.__pv.猫盒表 || []).find(c => c.谁 === '访');
+    return b ? { l: b.l, r: b.r, t: b.t, b: b.b, cx: b.cx, cy: b.cy } : null; } catch (e) { return null; } });
+  if (盒) {
+    await page.mouse.click((盒.l + 盒.r) / 2, (盒.t + 盒.b) / 2);
+    await page.waitForTimeout(250);
+    const 中 = await page.evaluate(() => window.__pv.猫活态('访'));
+    await page.screenshot({ path: path.join(OUT, '猫日-点访客猫.png') });
+    await page.waitForTimeout(1900);
+    const 后 = await page.evaluate(() => window.__pv.猫活态('访'));
+    戳访 = { 前, 中, 后, 好: 前 === null && !!中 && 中.戳 === true && 后 === null };
+  } else {
+    戳访 = { 前, 盒: null, 好: false };
+  }
+}
 const 差 = 甲.n - 乙.n;
-const 过 = 差 >= 80 && 错.length === 0;
+const 过 = 差 >= 80 && 错.length === 0 && !!戳访 && 戳访.好;
 console.log((过 ? ' ok ' : ' FAIL') + ' 猫日色板像素 ' + 甲.n + ' · 非猫日 ' + 乙.n + ' · 差 ' + 差 + '（判据 ≥80）'
   + ' · s=' + 甲.s + ' · 猫=' + JSON.stringify(猫日.cat) + ' · 页错 ' + 错.length);
+console.log('  · 第 267 单·访客猫点一下：' + JSON.stringify(戳访));
 console.log('报表与截图：' + OUT);
 await browser.close(); srv.close();
 process.exit(过 ? 0 : 1);

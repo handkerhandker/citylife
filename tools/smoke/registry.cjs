@@ -47,7 +47,7 @@ const 清单 = [
   { 路径: 'tools/back-audit/probe.mjs',       档: 2, 参数: ['{OUT}/back-audit'],        超时: 180000, 备注: '手机返回键（第 183 单：没弹窗 false／有弹窗关弹窗 true／不在现场页回现场页 true／次序不粘）' },
   { 路径: 'tools/diag-overlay/probe.mjs',     档: 2, 参数: ['{OUT}/diag-overlay'],      超时: 180000, 备注: '诊断浮层（第 184 单：默认不显示／绝不拦触摸／刷新保持／再点关掉；第 189／190 单：平台原始值＋屏/壳/边带＋页面主动问壳；第 201／202 单：设备三样＋内核版本）' },
   { 路径: 'tools/safearea-audit/probe.mjs',   档: 2, 参数: ['{OUT}/safearea-audit'],    超时: 180000, 备注: '安全区取数（第 186 单：不注入=0／平台注入 37px 顶栏内容让位／壳自补 24px 也认；官方 SystemBars 配方）' },
-{ 路径: 'tools/cat-audit/probe.mjs',        档: 2, 参数: ['{OUT}/cat-audit'],         超时: 180000, 备注: '云港的猫·看得见（第 213 单：同点位猫日色板像素 − 非猫日 ≥ 80；--改前 对照≈0）' },
+{ 路径: 'tools/cat-audit/probe.mjs',        档: 2, 参数: ['{OUT}/cat-audit'],         超时: 180000, 备注: '云港的猫·看得见（第 213 单：同点位猫日色板像素 − 非猫日 ≥ 80；第 267 单：点访客猫一下 ⇒ 她抬头看一眼；--改前 对照≈0／点不动判红）' },
   { 路径: 'tools/board-audit/probe.mjs',      档: 2, 参数: ['{OUT}/board-audit'],       超时: 180000, 备注: '云港公告栏（第 216 单：点牌子开弹窗／有活金字 174 vs 0／✕ 关得掉；--改前 对照点不出）' },
   { 路径: 'tools/board-post-audit/probe.mjs', 档: 2, 参数: ['{OUT}/board-post-audit'],  超时: 180000, 备注: '玩家留言进板（第 217 单：贴一句→弹窗刷新→一贴一读；--改前 对照没有入口）' },
   { 路径: 'tools/cookbook-audit/probe.mjs',   档: 2, 参数: ['{OUT}/cookbook-audit'],    超时: 180000, 备注: '菜谱本（第 188 单：有菜按顺序全列／空账照实说／只读不动世界／零报错）' },
