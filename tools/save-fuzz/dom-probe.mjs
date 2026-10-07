@@ -71,10 +71,10 @@ const 例 = [
          这是设计，不是漏网）；**严格布尔只对 `bottle`**。故这里钉的是"绝不出现 NaN／负数／怪东西"＋瓶那一条。 */
       const 好 = ['sms', 'replies', 'notes', 'bdays', 'calls', 'delivers', 'picks', 'countedLid']
         .every(k => Number.isInteger(m[k]) && m[k] >= 0)
-        /* 第 294 单：手账 21 → **25** 条（五期 +4＝见过的风景）；`saw` 四键一律**布尔 0/1**
+        /* 第 294／302 单：手账 21 → **26** 条（五期 +4＝见过的风景、六期 +1＝极光）；`saw` 五键一律**布尔 0/1**
            （★不能钉"全是 0"：开局那一屏本来就看得见公园的蝴蝶 ⇒ 蝶 会被正当点亮——本单第一版栽过） */
-        && m.bottle === 0 && m.countedLid === r.lidSeq && r.条数 === 25 && /^\d+\/25$/.test(r.计数)
-        && m.saw && ['蝶','蜓','蜗牛','雪人'].every(k => m.saw[k] === 0 || m.saw[k] === 1);
+        && m.bottle === 0 && m.countedLid === r.lidSeq && r.条数 === 26 && /^\d+\/26$/.test(r.计数)
+        && m.saw && ['蝶','蜓','蜗牛','雪人','极光'].every(k => m.saw[k] === 0 || m.saw[k] === 1);
       return { 好, 读数: r };
     }],
   ['小账·keeps 混合垃圾', s => (s.meta = Object.assign({}, s.meta, {
@@ -123,9 +123,9 @@ const 例 = [
       const 好 = r && r.a1 === 7 && r.a2 === 7 && r.a3 === 5 && r.a4 === 7;
       return { 好, 读数: r };
     }],
-  /* 第 294 单·手账五期：`saw`（见过的风景）畸形 ⇒ 四键一律布尔归 0（只有 true／1 才算见过） */
+  /* 第 294／302 单·手账五／六期：`saw`（见过的风景）畸形 ⇒ 五键一律布尔归 0（只有 true／1 才算见过） */
   ['小账·miles.saw 畸形', s => (s.meta = Object.assign({}, s.meta, { miles: Object.assign({}, s.meta && s.meta.miles, {
-      saw: { 蝶: 'x', 蜓: -1, 蜗牛: 2, 雪人: true } }) }), s), false,
+      saw: { 蝶: 'x', 蜓: -1, 蜗牛: 2, 雪人: true, 极光: 'x' } }) }), s), false,
     async page => {
       await page.click('button.tab[data-tab="roles"]').catch(() => {});
       await page.waitForTimeout(300);
@@ -133,12 +133,14 @@ const 例 = [
         const S = window.__pv && window.__pv.state;
         const 行 = [...document.querySelectorAll('#mile-list li')].map(li => li.textContent.replace(/\s+/g, ' ').trim());
         return { saw: S ? JSON.parse(JSON.stringify(S.miles.saw)) : null,
-                 行: 行.filter(t => /蝴蝶|蜻蜓|蜗牛|雪人/.test(t)) };
+                 行: 行.filter(t => /蝴蝶|蜻蜓|蜗牛|雪人|极光/.test(t)) };
       });
-      /* 畸形入的 `{蝶:'x', 蜓:-1, 蜗牛:2, 雪人:true}` ⇒ 归一只认 true/1：蜓／蜗牛归 0、雪人留 1；
+      /* 畸形入的 `{蝶:'x', 蜓:-1, 蜗牛:2, 雪人:true, 极光:'x'}` ⇒ 归一只认 true/1：蜓／蜗牛／极光归 0、雪人留 1；
          蝶 归 0 但可能被开局那一屏（默认就看得见公园的蝴蝶）正当点亮 ⇒ 只要求它是 0/1。 */
       const 好 = r.saw && (r.saw.蝶 === 0 || r.saw.蝶 === 1) && r.saw.蜓 === 0 && r.saw.蜗牛 === 0 && r.saw.雪人 === 1
-        && r.行.length === 4 && /小雪人/.test(r.行[3]) && /✓/.test(r.行[3]) && !/✓/.test(r.行[1]) && !/✓/.test(r.行[2]);
+        && r.saw.极光 === 0
+        && r.行.length === 5 && /小雪人/.test(r.行[3]) && /✓/.test(r.行[3]) && !/✓/.test(r.行[1]) && !/✓/.test(r.行[2])
+        && !/✓/.test(r.行[4]);
       return { 好, 读数: r };
     }],
 ];

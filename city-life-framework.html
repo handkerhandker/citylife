@@ -558,7 +558,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v221</span>
+<span class="num dim" id="set-build">v222</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -4977,10 +4977,11 @@ const bootMiles=(()=>{
            /* 第 274 单·手账四期：漂流瓶只记"第一次捡到"这一笔（布尔归一：true/1 才算，其余归 0；
               旧档没有这一项 ⇒ 0——照 phSeen／ai 小账的归一先例，绝不因小账畸形拒载存档）。 */
            bottle:(m.bottle===true||m.bottle===1)?1:0,
-           /* 第 294 单·手账五期·见过的风景：四个布尔键（true/1 才算，其余归 0；旧档没有 ⇒ 全 0）——
-              口径照 bottle 那条（布尔归一，绝不因小账畸形拒载存档）。键表在下面 `见过键`。 */
+           /* 第 294 单·手账五期·见过的风景：五个布尔键（true/1 才算，其余归 0；旧档没有 ⇒ 全 0）——
+              口径照 bottle 那条（布尔归一，绝不因小账畸形拒载存档）。键表在下面 `见过键`。
+              （第 302 单·六期 +`极光`：冬夜极光也归"见过的风景"。） */
            saw:(()=>{ const s=(m.saw&&typeof m.saw==='object')?m.saw:{}; const o={};
-             for(const k of ['蝶','蜓','蜗牛','雪人']) o[k]=(s[k]===true||s[k]===1)?1:0; return o; })(),
+             for(const k of ['蝶','蜓','蜗牛','雪人','极光']) o[k]=(s[k]===true||s[k]===1)?1:0; return o; })(),
            countedLid:(isFinite(m.countedLid)&&m.countedLid>=0)?Math.floor(m.countedLid):(bootWorld?bootWorld.lidSeq:0) };
 })();
 /* 第 177 单·AI 成本闸的本地小账（《AI 通道与成本闸方案 v1》阶段一）：{day, used}。
@@ -6063,7 +6064,7 @@ document.addEventListener('visibilitychange',()=>{        // 切走静音（礼�
    entry shows the creature's **seasonality, active hours, location**…」——本作取它两半：
    ①"见过就记一笔"；②每条**带上季节／时段／地点**（写在到手账那一行的提示位）。
    判据：屏幕坐标落在画布内（留 8px 边）⇒ 才算"看见了"；一次记一笔、当场落盘（不写世界）。 */
-const 见过键=['蝶','蜓','蜗牛','雪人'];
+const 见过键=['蝶','蜓','蜗牛','雪人','极光'];
 function 见过(键, 屏x, 屏y){
   const M=state.miles; if(!M || !M.saw || !(键 in M.saw)) return;
   if(M.saw[键]) return;
@@ -6128,11 +6129,13 @@ function milesList(){
   加('发满 100 条短信', M.sms>=100, Math.min(M.sms,100)+'/100');
    加('捡到第一个漂流瓶', M.bottle>=1, M.bottle>=1?'✓':'0/1');      // 第 274 单·手账四期（点开漂流瓶那一刻记一笔）
    /* 第 294 单·手账五期·见过的风景（照 Critterpedia：见过就记一笔，**每条带季节／时段／地点**；
-      四项都靠渲染层"画进屏幕那一刻"记账 ⇒ 不碰世界、不改 SIM）。未见过时提示位写"去哪看"。 */
+      五项（第 302 单＋"冬夜的极光"）都靠渲染层"画进屏幕那一刻"记账 ⇒ 不碰世界、不改 SIM）。
+      未见过时提示位写"去哪看"。 */
    加('见过白天的蝴蝶', M.saw.蝶>=1, M.saw.蝶>=1?'✓':'公园花丛 · 非冬白天');
    加('见过秋天的蜻蜓', M.saw.蜓>=1, M.saw.蜓>=1?'✓':'江边岸线 · 秋天 08:00–19:00');
    加('见过雨天的蜗牛', M.saw.蜗牛>=1, M.saw.蜗牛>=1?'✓':'下雨时的灌木边／树池边');
    加('见过路边的小雪人', M.saw.雪人>=1, M.saw.雪人>=1?'✓':'积雪期（入冬第 11 天起）的广场路边');
+  加('见过冬夜的极光', M.saw.极光>=1, M.saw.极光>=1?'✓':'晴冬夜 20:00–22:00 · 江面／天上');
   加('看过一整年', d>=360, 'D'+Math.min(d,360)+'/360');
   return 条;
 }
@@ -9317,6 +9320,8 @@ function auroraPaint(now){
   const 下带高=Math.max(0,Math.round(cvH-下带起));
   const 天空高=上带高+下带高;
   if(天空高<24) return;
+  /* 第 302 单·手账六期：真画进屏幕才记一笔（见过() 自有 8px 边带判据；天空带太窄就不算"看见"）。 */
+  if(上带高>=24||下带高>=24) 见过('极光', Math.round(cvW/2), Math.round(上带高>=24 ? 上带高/2 : 下带起+下带高/2));
   const m=PURE.minuteOfDay(state.world.t);
   const K=Math.max(0.15, 1-Math.abs(m-21*60)/60);            // 21:00=1，20:00/22:00 两端=0.15
   const 带=[{y:0.26,h:0.34,色:'170,250,90',相:0.0},         // 绿（蓝分量压低：夜色罩层会把蓝抬上去）
@@ -9356,6 +9361,7 @@ function auroraRiver(now){
   if(!冬极光(state.world)) return;
   const s=state.view.s, x0=sx(0), w=Sim.MAPW*s, y0=sy(RIVER_Y), h=(Sim.MAPH-RIVER_Y)*s;
   if(h<6 || w<40) return;
+  见过('极光', Math.round(x0+w/2), Math.round(y0+h/2));   // 第 302 单：江面倒影同样记一笔（点要真在屏内）
   const m=PURE.minuteOfDay(state.world.t);
   const K=Math.max(0.15, 1-Math.abs(m-21*60)/60);
   const 带=[{y:0.24,h:0.34,色:'170,250,90',相:0.0},          // 绿

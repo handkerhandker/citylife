@@ -1,6 +1,6 @@
 // 第 131 单·云港手账探针（真浏览器；只读诊断，进冒烟档 2）
 //
-// 判据：① 开局手账卡在（25 条、0/25；第 274 单四期 +1＝漂流瓶、第 294 单五期 +4＝见过的风景）；
+// 判据：① 开局手账卡在（26 条；第 274 单四期 +1＝漂流瓶、第 294 单五期 +4＝见过的风景、第 302 单六期 +1＝冬夜的极光）；
 //   ①b 第 294 单五期：开局四把"见过"都是未见过（提示位写"去哪看"）；**秋天把相机对准江边岸线等一帧 ⇒ 蜓 变 ✓**（端到端）；
 //   ② 发一条短信 →（等回音落定）小账 sms≥1、replies≥1，
 // 卡上也勾上那两条；③ 刷新 → 小账不重不漏（值与刷新前一致，**不翻倍**）；
@@ -63,10 +63,10 @@ await page.waitForTimeout(800);
 await page.click('button.tab[data-tab="roles"]');
 await page.waitForTimeout(400);
 let R = await 读数(page);
-/* ★口径：开局那一屏**本来就看得见公园的蝴蝶** ⇒ "见过白天的蝴蝶"开局即 ✓（计数不是 0/25 而是 1/25）；
-   这里钉的是"25 条 ＋ 计数与勾一致 ＋ 短信两条小账清零"，不再拿 0/25 当判据（本单第一版栽过）。 */
-判('① 开局：手账卡 25 条、计数与勾一致、短信两条小账清零（蝴蝶那行开局即 ✓——相机默认就对着公园）',
-  R.枚数 === 25 && /^\d+\/25$/.test(R.计数) && R.勾 === Number(R.计数.split('/')[0]) && R.小账.sms === 0 && R.小账.replies === 0, R);
+/* ★口径：开局那一屏**本来就看得见公园的蝴蝶** ⇒ "见过白天的蝴蝶"开局即 ✓（计数不是 0/26 而是 1/26）；
+   这里钉的是"26 条 ＋ 计数与勾一致 ＋ 短信两条小账清零"，不再拿 0/26 当判据（本单第一版栽过）。 */
+判('① 开局：手账卡 26 条、计数与勾一致、短信两条小账清零（蝴蝶那行开局即 ✓——相机默认就对着公园）',
+  R.枚数 === 26 && /^\d+\/26$/.test(R.计数) && R.勾 === Number(R.计数.split('/')[0]) && R.小账.sms === 0 && R.小账.replies === 0, R);
 /* ①b／①c 第 294 单·见过的风景。
    ★口径（本单第一版栽过两条）：① 开局那一屏**本来就看得见公园的蝴蝶**（相机默认对着园区）⇒
    "四项全未见"这个前提不成立，不能那么钉；② "看见"只在**现场页**才发生——`draw()` 只在
@@ -74,10 +74,10 @@ let R = await 读数(page);
 {
   const 初 = await page.evaluate(() => ({ ...window.__pv.state.miles.saw }));
   const 提示 = await page.evaluate(() => [...document.querySelectorAll('#mile-list li')]
-    .filter(li => /蝴蝶|蜻蜓|蜗牛|雪人/.test(li.textContent)).map(li => li.textContent.replace(/\s+/g, ' ').trim()));
-  判('①b 第 294 单·见过的风景：四行都在、四把钥匙都是布尔 0/1，**没见着的那几行写清"去哪看"**（已见着的那行是 ✓）',
-    Object.values(初).every(v => v === 0 || v === 1) && 提示.length === 4
-    && 提示.every((t, i) => { const 键 = ['蝶', '蜓', '蜗牛', '雪人'][i]; return 初[键] === 1 ? /✓/.test(t) : /公园|江边|下雨|积雪期/.test(t); }),
+    .filter(li => /蝴蝶|蜻蜓|蜗牛|雪人|极光/.test(li.textContent)).map(li => li.textContent.replace(/\s+/g, ' ').trim()));
+  判('①b 第 294／302 单·见过的风景：五行都在、五把钥匙都是布尔 0/1，**没见着的那几行写清"去哪看"**（已见着的那行是 ✓）',
+    Object.values(初).every(v => v === 0 || v === 1) && 提示.length === 5
+    && 提示.every((t, i) => { const 键 = ['蝶', '蜓', '蜗牛', '雪人', '极光'][i]; return 初[键] === 1 ? /✓/.test(t) : /公园|江边|下雨|积雪期|晴冬夜/.test(t); }),
     { saw: 初, 提示 });
   await page.evaluate(() => {
     const st = window.__pv.state;
@@ -89,9 +89,25 @@ let R = await 读数(page);
   });
   await page.waitForTimeout(900);
   const 后 = await page.evaluate(() => ({ saw: { ...window.__pv.state.miles.saw } }));
-  判('①c 端到端：回现场页＋秋日把相机对准岸线 ⇒ 蜻蜓画进屏幕 ⇒ 手账"见过秋天的蜻蜓"当场打勾（蜗牛／雪人仍未见）',
-    后.saw.蜓 === 1 && 后.saw.蜗牛 === 0 && 后.saw.雪人 === 0, 后.saw);
+  判('①c 端到端：回现场页＋秋日把相机对准岸线 ⇒ 蜻蜓画进屏幕 ⇒ 手账"见过秋天的蜻蜓"当场打勾（蜗牛／雪人／极光仍未见）',
+    后.saw.蜓 === 1 && 后.saw.蜗牛 === 0 && 后.saw.雪人 === 0 && 后.saw.极光 === 0, 后.saw);
   await page.evaluate(() => { window.__pv.state.world.speed = 1; });   // ★把世界放开：②③ 要靠世界跑起来才等得到回音
+  /* ①d 第 302 单·手账六期：冬夜 21:00 把相机对准江面 ⇒ 极光（倒影）画进屏幕 ⇒ 那一行当场打勾。 */
+  await page.evaluate(() => {
+    const st = window.__pv.state;
+    document.querySelector('button.tab[data-tab="live"]').click();
+    st.world.speed = 0;
+    st.world.t = (300 - 1) * 1440 + 21 * 60;      // 冬·晴夜 21:00（极光窗口，出处"9 点最亮"）
+    st.world.weather = { rain: false, until: 0 };
+    st.cam.manual = true; st.cam.fx = 24; st.cam.fy = 25;   // 相机对江面
+  });
+  await page.waitForTimeout(900);
+  const 后2 = await page.evaluate(() => ({ saw: { ...window.__pv.state.miles.saw } }));
+  /* 注意：这一屏（冬夜、江面机位）**广场小雪人也在画面里** ⇒ 雪人同样被正当点亮，不能拿它当对照；
+     蜗牛（雨天限定）不受影响，作对照。 */
+  判('①d 端到端：冬夜 21:00 对准江面 ⇒ 极光在画 ⇒ 手账"见过冬夜的极光"当场打勾（蜗牛不受影响）',
+    后2.saw.极光 === 1 && 后2.saw.蜗牛 === 0, 后2.saw);
+  await page.evaluate(() => { window.__pv.state.world.speed = 1; });
 }
 await page.click('button.tab[data-tab="phone"]');
 await page.waitForSelector('#ph-msgs button[data-msg]:not([disabled])', { timeout: 10000 }).catch(() => {});
