@@ -558,7 +558,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v219</span>
+<span class="num dim" id="set-build">v220</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -2193,6 +2193,11 @@ const TALK_TOPICS=['这周的雨','楼下那家便利店','阳台上晾的东西
    22:00 散场播报三处读到的必然是同一句；下雨从雨池取，否则照旧日号哈希。两处都**不摇 rng**
    （照第 52 单哈希派活那条先例：确定性、可复现，且不位移事件流的抽签）。 */
 const TALK_TOPICS_RAIN=['这雨要下到什么时候','谁出门又没带伞','雨天的路灯','阳台上没收的衣服'];
+/* 第 298 单·雪天话题：第 289 单"冬降水按雪算"的口径补到**话题**这一处——原来雪夜的夜谈会聊出
+   「这雨要下到什么时候」（第 297 单扫同类时登记、本体收口）。出处（Nookipedia·Weather「Villagers
+   who are outside during winter may talk about the abundance of snow or the cold.」，2026-10-07 实取
+   HTTP 200，逐字见 `docs/规划/借鉴调研-2026-10-07-下雪天更宅.md`）；治法与取题口径同第 199 单。 */
+const TALK_TOPICS_SNOW=['这雪要下到什么时候','谁出门踩了一脚雪','雪天的路灯','阳台上落了薄薄一层雪'];
 function 题材取(池, day){
   const d=Math.max(0,(isFinite(day)?day:1)-1);
   return 池[((d*2654435761)>>>0)%池.length];
@@ -2202,7 +2207,8 @@ function 题材取(池, day){
 function talkTopicOf(w){
   const day=PURE.dayOf(w.t);
   if(w.talkPin && w.talkPin.day===day && typeof w.talkPin.topic==='string') return w.talkPin.topic;
-  const 题=题材取(!!(w.weather&&w.weather.rain)?TALK_TOPICS_RAIN:TALK_TOPICS, day);
+  const 雨=!!(w.weather&&w.weather.rain);
+  const 题=题材取(冬降水(w)?TALK_TOPICS_SNOW:(雨?TALK_TOPICS_RAIN:TALK_TOPICS), day);   // 第 298 单：冬降水走雪池
   w.talkPin={day:day, topic:题};
   return 题;
 }
@@ -4844,7 +4850,7 @@ const Sim={makeWorld, step, sendMessage, sendCustomMessage, decide, MSGS, ANCHOR
   SNOW, 入冬首日, snowStep,   // 第 240 单·入冬·第一场雪（门禁按真值读：一处定义、零 rng）
   AUTUMN, 入秋首日, autumnStep,   // 第 246 单·入秋·第一阵凉风（与 SNOW 同款：一处定义、零 rng）
   TALK, nightTalkStartAt, inTalk, thisWeekTalkAt, talkStep,   // 第 70 单·周日夜谈（门禁按真值读）
-  TALK_TOPICS, TALK_TOPICS_RAIN, talkTopicOf,   // 第 71 单·夜谈话题（第 199 单补雨池；门禁按真值读：不摇 rng）
+  TALK_TOPICS, TALK_TOPICS_RAIN, TALK_TOPICS_SNOW, talkTopicOf,   // 第 71 单·夜谈话题（第 199 单补雨池、第 298 单补雪池；门禁按真值读：不摇 rng）
   TALK_OPEN, talkOpenLine, talkTopicOnDay,   // 第 72 单·题面带着台词走（门禁按真值读：占位符一处替换）
   CATS, CAT_SPOTS, CAT, catOfDay, catStep,   // 第 210 单·云港的猫（门禁按真值读：不摇 rng、一周约两天）
   CAT_SMS,                                   // 第 257 单·猫进短信（回话尾巴那一句；门禁按真值读同一份表）

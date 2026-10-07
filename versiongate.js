@@ -24,6 +24,8 @@
 //   node versiongate.js --登记              把当前号与字节补进对照表（**只新增，不覆盖**）
 //   node versiongate.js --登记 --单="第 N 单 · 题"   新条目直接带上"单"（第 259 单起：不许再留"待填"占位；
 //                                            也可用环境变量 VERSIONGATE_UNIT 传同一句话）
+//   （第 298 单起：同 sha 时可用同一条命令**就地补名**——曾漏 --单= 的占位不必手改台账；
+//     新条目忘了带 --单= 会打一条 ⚠ 警告。）
 //   node versiongate.js --登记 --覆盖 --理由="…"   显式覆盖已发版号的登记，会在表里留一条覆盖记录
 const fs = require('fs'), path = require('path'), crypto = require('crypto');
 const { execFileSync } = require('child_process');
@@ -242,11 +244,22 @@ if (process.argv.includes('--登记') || process.argv.includes('--register')) {
   const 单参 = (process.argv.find(a => a.startsWith('--单=')) || '').split('=').slice(1).join('=').trim();
   const mv = mainVersion();
   const 已发出 = !(mv && Number.isFinite(verNum(mv)) && verNum(curVer) > verNum(mv));
-  if (hit && hit.sha256 === curSha) { console.log(`${curVer} 已登记且字节一致，无需变更。`); process.exit(0); }
+  if (hit && hit.sha256 === curSha) {
+    // 第 298 单：同 sha 时就地补名——曾漏 --单= 的条目会留"（待填）"占位，手改台账是事故源；
+    // 用同一条命令补写即可（其余字段一字不动）。
+    if (单参 && /待填|NN/.test(String(hit.单 || ''))) {
+      hit.单 = 单参;
+      fs.writeFileSync(LEDGER_PATH, JSON.stringify(ledger, null, 2) + '\n');
+      console.log(`已就地补名 ${curVer}：「${单参}」（原为占位）`);
+      process.exit(0);
+    }
+    console.log(`${curVer} 已登记且字节一致，无需变更。`); process.exit(0);
+  }
   // 这个号还没发到 main 上 ⇒ 是本单施工中的号，刷新登记值是日常动作，不必 --覆盖。
   // （拦的是「已发版的号被就地改写」，不是「还没发的号被刷新」。）
   if (hit && !已发出) {
     hit.sha256 = curSha; hit.SIM块md5 = simMd5(htmlBuf);
+    if (单参 && /待填|NN/.test(String(hit.单 || ''))) { hit.单 = 单参; console.log(`顺带就地补名 ${curVer}：「${单参}」`); }
     rows.sort((a, b) => verNum(a.版本) - verNum(b.版本));
     fs.writeFileSync(LEDGER_PATH, JSON.stringify(ledger, null, 2) + '\n');
     console.log(`已刷新登记 ${curVer} → ${curSha}（该号尚未发到 main，main 上是 ${mv}，属施工中）`);
@@ -266,8 +279,11 @@ if (process.argv.includes('--登记') || process.argv.includes('--register')) {
     hit.sha256 = curSha; hit.SIM块md5 = simMd5(htmlBuf);
     console.log(`已**覆盖**登记 ${curVer} → ${curSha}（理由：${理由 || '（未填写）'}；已在对照表留痕）`);
   } else {
-    rows.push({ 版本: curVer, 单: process.env.VERSIONGATE_UNIT || 单参 || '（待填：第 NN 单）', 状态: '已发', sha256: curSha, SIM块md5: simMd5(htmlBuf), 备注: '' });
+    const 单值 = process.env.VERSIONGATE_UNIT || 单参 || '（待填：第 NN 单）';
+    rows.push({ 版本: curVer, 单: 单值, 状态: '已发', sha256: curSha, SIM块md5: simMd5(htmlBuf), 备注: '' });
     console.log(`已登记 ${curVer} → ${curSha}`);
+    if (/待填/.test(单值)) console.log('⚠ 未带 --单=：本条先记成「（待填）」占位——第 259 单闸会在门禁里判红。\n'
+      + '  补法：node versiongate.js --登记 --单="第 N 单 · 题"（同 sha 时就地补名，不必手改台账）。');
   }
   rows.sort((a, b) => verNum(a.版本) - verNum(b.版本));
   fs.writeFileSync(LEDGER_PATH, JSON.stringify(ledger, null, 2) + '\n');
