@@ -11341,16 +11341,17 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
    `docs/规划/借鉴调研-2026-10-07-冬夜极光.md`）：
      「visible on clear winter nights, and can be seen from 8 PM until 10 PM. It is at its brightest at 9 PM,
        shining bright shades of pink and green and moving constantly in a folding motion.」
-   被验（渲染层，零 rng／不改 SIM）：
-     ① `冬极光(w)` 一处定义：冬（seasonIdx===3）＋晴（!weather.rain）＋20:00–22:00＋reduceMotion 跳过；
+   被验（零 rng；★第 303 单把窗口判据搬进 SIM 后，本块随之收紧成"两件套"）：
+     ① 极光窗判据＝SIM 的 `冬极光时(w)` 一处定义（冬＋晴＋20:00–22:00）＋渲染壳 `冬极光(w)` 委托它
+        （壳只留 reduceMotion 门）——判据散在两处时本块照绿，故收紧谓词、让破壳也能被本块直接咬住；
      ② `auroraPaint` 一处定义、**恰一处调用**，且排在 `starField` 之前（同层、星在极光之上）；
      ③ 绿（122,226,168）／粉（246,166,226）两色与 21:00 亮度峰值写法在位；
      ④ 反向自查×2：把时段放开成全天 ⇒ ①红；抠掉调用点 ⇒ ②红。 */
 {
   const fs301=require('fs'), path301=require('path');
   const src301=fs301.readFileSync(path301.resolve(__dirname,'city-life-framework.html'),'utf8');
-  const 判冬=(s)=>/function 冬极光\(w\)\{/.test(s)&&/seasonIdx\(w\)!==3/.test(s)&&/m>=20\*60 && m<22\*60/.test(s)&&/reduceMotion/.test(s);
-  ok(判冬(src301),'第 301 单·结构：`冬极光` 一处定义（冬＋晴＋20:00–22:00；reduceMotion 跳过）');
+  const 判冬=(s)=>/function 冬极光时\(w\)\{/.test(s)&&/seasonIdx\(w\)!==3/.test(s)&&/m>=20\*60 && m<22\*60/.test(s)&&/reduceMotion && 冬极光时\(w\)/.test(s);
+  ok(判冬(src301),'第 301／303 单·结构：极光窗判据在位（SIM 一处定义：冬＋晴＋20:00–22:00）＋渲染壳委托（reduceMotion 门）——第 304 单收紧');
   ok((src301.match(/function auroraPaint\(now\)\{/g)||[]).length===1
      &&(src301.match(/auroraPaint\(now\);/g)||[]).length===1,
      '第 301 单·结构：`auroraPaint`（天上）一处定义、恰一处调用');
