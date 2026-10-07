@@ -558,7 +558,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v222</span>
+<span class="num dim" id="set-build">v223</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -1751,6 +1751,16 @@ function seasonOutMul(w){
 function 冬降水(w){
   return !!(w && w.weather && w.weather.rain) && seasonIdx(w)===SEASON_OUT.length-1;   // 末段＝冬
 }
+/* 第 303 单·极光时段（**世界侧一处定义**）：从渲染层搬进 SIM——第 289 单的坑（SIM 不许读渲染层的
+   `state`，Node 下 app.js 早退 ⇒ TDZ 崩）。渲染层的 `冬极光(w)` 只再加一道 reduceMotion 门；
+   夜谈取题（`talkTopicOf`）与画面共用这一处判据。窗口取 20:00–22:00（出处：8 PM–10 PM）。 */
+function 冬极光时(w){
+  if(!(w && w.weather)) return false;
+  if(w.weather.rain) return false;
+  if(seasonIdx(w)!==3) return false;
+  const m=PURE.minuteOfDay(w.t);
+  return m>=20*60 && m<22*60;
+}
 /* ---------- 第 126 单·作息随季节漂移（夏晚睡、冬早睡；春/秋＝基准）----------
    出处（2026-10-03 实测）：星露谷 wiki·Day Cycle（HTTP 200）「Depending on the season, nightfall is at
    different times. In Spring and Summer, it is 8pm, while in Fall it is at 7pm and Winter is 6pm.」；
@@ -2198,6 +2208,11 @@ const TALK_TOPICS_RAIN=['这雨要下到什么时候','谁出门又没带伞','�
    who are outside during winter may talk about the abundance of snow or the cold.」，2026-10-07 实取
    HTTP 200，逐字见 `docs/规划/借鉴调研-2026-10-07-下雪天更宅.md`）；治法与取题口径同第 199 单。 */
 const TALK_TOPICS_SNOW=['这雪要下到什么时候','谁出门踩了一脚雪','雪天的路灯','阳台上落了薄薄一层雪'];
+/* 第 303 单·极光进夜谈：晴冬夜的 20:00–22:00 正好盖住周日夜谈（第 70 单）——出处那句
+   「Residents of the player's town may comment on the aurora when it is in the sky.」
+   （Nookipedia·Weather §Aurora，见 `docs/规划/借鉴调研-2026-10-07-冬夜极光.md`）就落在"今晚聊什么"上：
+   **极光窗内取题走极光池**（零 rng、照旧钉住；与前三个池零交集）。 */
+const TALK_TOPICS_AURORA=['今晚的极光','江面上那层光','这一晚天上在动','冬天里最值钱的一夜'];
 function 题材取(池, day){
   const d=Math.max(0,(isFinite(day)?day:1)-1);
   return 池[((d*2654435761)>>>0)%池.length];
@@ -2208,7 +2223,7 @@ function talkTopicOf(w){
   const day=PURE.dayOf(w.t);
   if(w.talkPin && w.talkPin.day===day && typeof w.talkPin.topic==='string') return w.talkPin.topic;
   const 雨=!!(w.weather&&w.weather.rain);
-  const 题=题材取(冬降水(w)?TALK_TOPICS_SNOW:(雨?TALK_TOPICS_RAIN:TALK_TOPICS), day);   // 第 298 单：冬降水走雪池
+  const 题=题材取(冬极光时(w)?TALK_TOPICS_AURORA:(冬降水(w)?TALK_TOPICS_SNOW:(雨?TALK_TOPICS_RAIN:TALK_TOPICS)), day);   // 第 298／303 单：极光→雪→雨→晴
   w.talkPin={day:day, topic:题};
   return 题;
 }
@@ -4850,7 +4865,7 @@ const Sim={makeWorld, step, sendMessage, sendCustomMessage, decide, MSGS, ANCHOR
   SNOW, 入冬首日, snowStep,   // 第 240 单·入冬·第一场雪（门禁按真值读：一处定义、零 rng）
   AUTUMN, 入秋首日, autumnStep,   // 第 246 单·入秋·第一阵凉风（与 SNOW 同款：一处定义、零 rng）
   TALK, nightTalkStartAt, inTalk, thisWeekTalkAt, talkStep,   // 第 70 单·周日夜谈（门禁按真值读）
-  TALK_TOPICS, TALK_TOPICS_RAIN, TALK_TOPICS_SNOW, talkTopicOf,   // 第 71 单·夜谈话题（第 199 单补雨池、第 298 单补雪池；门禁按真值读：不摇 rng）
+  TALK_TOPICS, TALK_TOPICS_RAIN, TALK_TOPICS_SNOW, TALK_TOPICS_AURORA, talkTopicOf, 冬极光时,   // 第 71 单·夜谈话题（第 199 单补雨池、第 298 单补雪池、第 303 单补极光池）＋极光时段；门禁按真值读：不摇 rng
   TALK_OPEN, talkOpenLine, talkTopicOnDay,   // 第 72 单·题面带着台词走（门禁按真值读：占位符一处替换）
   CATS, CAT_SPOTS, CAT, catOfDay, catStep,   // 第 210 单·云港的猫（门禁按真值读：不摇 rng、一周约两天）
   CAT_SMS,                                   // 第 257 单·猫进短信（回话尾巴那一句；门禁按真值读同一份表）
@@ -9305,12 +9320,8 @@ function meteorPaint(now){
    本段：纯渲染层（零 rng、零存档、不改 SIM）——**冬（SEASON 末段）＋晴＋20:00–22:00**：
    粉、绿两条**折叠式**波带画在**背景天空带**（与星空同层；先画极光再画星 ⇒ 星在极光之上），
    亮度随钟点折算：20:00／22:00 两端淡、**21:00 最亮**（三角波）。`reduceMotion` 跳过。 */
-function 冬极光(w){                          // 一处定义：冬＋晴＋极光时段（20:00–22:00）
-  if(state.reduceMotion) return false;
-  if(Sim.seasonIdx(w)!==3) return false;
-  if(w.weather && w.weather.rain) return false;
-  const m=PURE.minuteOfDay(w.t);
-  return m>=20*60 && m<22*60;
+function 冬极光(w){                          // 第 301／303 单：时段判据在 SIM 的 `冬极光时`（一处定义）；这里只加 reduceMotion 门
+  return !state.reduceMotion && 冬极光时(w);
 }
 function auroraPaint(now){
   if(!冬极光(state.world)) return;
