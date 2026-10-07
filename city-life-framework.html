@@ -558,7 +558,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v218</span>
+<span class="num dim" id="set-build">v219</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -822,10 +822,13 @@ const SNOW_IDLE_THOUGHTS=['窗玻璃上哈了口气，画了个圈，又化回�
   '给绿萝挪了个晒太阳的位置，冬天也得晒晒。','翻出毛线，想织点什么，起了个头又放下。','睡前把明天的厚袜子放在床头。'];
 function 冬厚天(w){ const Y=FESTIVAL.yearDays, d=((PURE.dayOf(w.t)-1)%Y+Y)%Y; return d>=Y*3/4+10; }   // 入冬第 11 天起（168／242 同一口径）
 /* 天气词：**三池一函数**——下雨走雨池（键 `lo→lor`）、雪厚了走雪池（键 `lo→low`）、否则晴池；
-   优先级 **雨＞雪＞晴**（雨里的雪话说不出口）。抽签次数/时机/去重口径与 97 单一字不改。 */
+   优先级 **雪＞雨＞晴**（第 297 单改）：入冬第 11 天起（冬厚天）一律说雪话——**包括正在下雪的拍**
+   （第 289 单：冬季降水按雪算；原来"雨优先"会让积雪期的雪天说雨话"没带伞…都湿了"）。
+   入冬头 10 天雪未落定，若正下雪仍走雨池（该窗口的专属池待另立，见交付件"已知接受项"）。
+   抽签次数/时机/去重口径与 97 单一字不改。 */
 function 天气词(w, 晴池, 雨池, 雪池, ag, 键){
-  const 雨=!!(w.weather&&w.weather.rain), 雪=!雨&&冬厚天(w);
-  return pickV(w, 雨?雨池:(雪?雪池:晴池), ag, 雨?(键+'r'):(雪?(键+'w'):键));
+  const 雨=!!(w.weather&&w.weather.rain), 雪=冬厚天(w);
+  return pickV(w, 雪?雪池:(雨?雨池:晴池), ag, 雪?(键+'w'):(雨?(键+'r'):键));
 }
 /*HOBBY-START*/
 /* ---------- 第 255 单·四个人的爱好（独白与标签层）------------------------------------------
@@ -1692,6 +1695,27 @@ const RAIN_RULES={
   indoorLabel:'在家听雨',   // 雨天在家那一段换个说法（角色页／角色卡上看得见；晴天仍是「在家待着」）
 };
 /*RAIN-END*/
+/*SNOWOUT-START*/
+/* ---------- 第 297 单·下雪天更宅（雪档回流进行为）----------
+   调研出处（2026-10-07 实取 HTTP 200，逐字见 `docs/规划/借鉴调研-2026-10-07-下雪天更宅.md`）：
+     · 星露谷 wiki·Weather：「Daily weather affects the types of fish that can be caught, as well as
+       villager dialogues and behavior.」；同页绿雨档：「most villagers will stay indoors all day」；
+     · Nookipedia·Weather：「Villagers who are outside when rain is falling carry umbrellas and might
+       also comment on the weather.」／冬：「Villagers who are outside during winter may talk about the
+       abundance of snow or the cold.」——同类里天气**要被看见、被说出口**（本作雨档见第 49 单）。
+   治法照第 49／113 单那套：**只把"出去玩"那三支的阈值在"雪"这一档换成下表的值**，
+   上班／吃饭／回家／睡觉一概不碰（不夺走收入，也不夺走饭点）；
+   **不新增任何 rng 调用**：每一支照旧只掷它自己那一次，换的只是比较用的阈值。
+   口径：四档都夹在「雨 ＜ 雪 ＜ 晴」之间——下雪天更宅，但没雨天那么劝退
+   （雪是看的、雨是躲的）；四个数都是拍的（同类没有可逐字引的百分点），照第 63 单口径登记清楚、一处可调。 */
+const SNOW_RULES={
+  market:    0.35,   // 周日街市：晴 0.5 ／ 雨 0.25 → 雪 0.35
+  dayOut:    0.22,   // 周六白天出门：晴 0.35 ／ 雨 0.15 → 雪 0.22
+  eveWeekend:0.25,   // 周末傍晚散步：晴 0.45 ／ 雨 0.15 → 雪 0.25
+  eveWorkday:0.18,   // 工作日傍晚散步：晴 0.3 ／ 雨 0.10 → 雪 0.18
+  indoorLabel:'在家看雪',   // 雪天在家那一段的说法（与顶栏 ❄、独白雪池同一件事）
+};
+/*SNOWOUT-END*/
 /*SEASONWX-START*/
 /* ---------- 第 113 单·四季行为二期：季节落进"日子" ----------
    第 111／112 单把季节画进了画面（色罩、晨昏），本单让它落到**行为**上：夏天更常出门、冬天更宅。
@@ -3633,17 +3657,19 @@ function decide(w, ag){
   // 6. 周日街市 / 周六出门逛逛 / 傍晚散步 / 在家待着
   const wd=PURE.weekday(w.t);
   const sunday=wd===6, 周末=wd>=5;
-  // 第 49 单·雨回流进行为：**只把"出去玩"这三支的概率换成 RAIN_RULES 里的值**，
+  // 第 49 单·雨回流进行为：**只把"出去玩"这三支的概率换成雨／雪档里的值**
+  // （第 297 单起：非冬下雨走 RAIN_RULES、冬季降水走 SNOW_RULES）；
   // 上班／吃饭／回家那几支一个字不改（不夺走收入、也不夺走饭点）；每支仍只掷一次 rng。
   const raining=!!(w.weather&&w.weather.rain);
+  const 降雪=冬降水(w);   // 第 297 单：冬季降水＝雪（与画面／日志同一处判据——不另立第二套）
   /* 第 113 单：三支"出去玩"各乘季节因子（夏 1.15／冬 0.75）——只换比较的那一边，rng 调用一字不动。 */
-  if(sunday && mod>=10*60 && mod<17*60 && w.rng()<Math.min(0.90,(raining?RAIN_RULES.market:0.5)*seasonOutMul(w))){
+  if(sunday && mod>=10*60 && mod<17*60 && w.rng()<Math.min(0.90,(raining?(降雪?SNOW_RULES.market:RAIN_RULES.market):0.5)*seasonOutMul(w))){
     setActivity(w,ag,'market','stroll','逛街市',tempoDur(w,ag,40),'人挤人，但热闹是真热闹。','去周日街市逛逛');
     return;
   }
   // 第 46 单后半：**周六**白天也出门（工作日到不了这一支：白天在上班或在家的那一支之前就返回了，
   // 而这里的 `dayOut` 在工作日为 0）。去处从 `WEEKEND_OUT.daySpots` 三选一，**独立掷一次**。
-  if(周末 && !sunday && mod>=10*60 && mod<17*60 && w.rng()<Math.min(0.90,(raining?RAIN_RULES.dayOut:WEEKEND_OUT.dayOut)*seasonOutMul(w))){
+  if(周末 && !sunday && mod>=10*60 && mod<17*60 && w.rng()<Math.min(0.90,(raining?(降雪?SNOW_RULES.dayOut:RAIN_RULES.dayOut):WEEKEND_OUT.dayOut)*seasonOutMul(w))){
     const spots=WEEKEND_OUT.daySpots;                 // 表只有这一处取用（门禁按出现次数钉住）
     const spot=spots[Math.floor(w.rng()*spots.length)%spots.length];
     setActivity(w,ag,spot,'stroll','出门逛逛',tempoDur(w,ag,40),天气词(w,STROLL_THOUGHTS,RAIN_STROLL_THOUGHTS,SNOW_STROLL_THOUGHTS,ag,'lo'),'周末出门逛逛');
@@ -3825,7 +3851,7 @@ function decide(w, ag){
     return;
   }
   const eveClear=(周末?WEEKEND_OUT.eveStroll:0.3)+goalKnob(ag,'out');   // 晴天那一档（原值 0.3／0.45 原样保留）
-  if(mod>=18.5*60 && mod<21*60 && w.rng()<Math.min(0.95,(raining?(周末?RAIN_RULES.eveWeekend:RAIN_RULES.eveWorkday):eveClear)*seasonOutMul(w))){
+  if(mod>=18.5*60 && mod<21*60 && w.rng()<Math.min(0.95,(raining?(降雪?(周末?SNOW_RULES.eveWeekend:SNOW_RULES.eveWorkday):(周末?RAIN_RULES.eveWeekend:RAIN_RULES.eveWorkday)):eveClear)*seasonOutMul(w))){
     /* 第 106 单·B 档①：照旧先摇那一下（**次序与次数一字不动**），只是把落点换给老友。
        摇签不动 ⇒ 时长/后续决策逐拍不变，唯一变的是"他往哪儿走、日志写哪句"。 */
     const 掷=w.rng()<0.5?'park_bench':'river_walk';
@@ -3838,7 +3864,7 @@ function decide(w, ag){
   }
   const spot=w.rng()<0.5?'home_table':'home_tv';
   /* 第 255 单·爱好日：标签与独白换成他的爱好——落在**同一锚点、同一时长、同一抽签次数**上（行为不变）。
-     非爱好日照旧走天气词（雨＞雪＞晴）与「在家待着／在家听雨」。
+     非爱好日照旧走天气词（雪＞雨＞晴）与「在家待着／在家听雨／在家看雪」。
      第 256 单·爱好进剪辑：爱好日的**第一拍**再落一条日志＋一个事件锚（每人每爱好日至多一条）——
      摘原文走"落笔抄录"（事件项自带 tx）；墙上那一行也让「日志」页直接看得见这件事。
      ⚠ 抽签账：爱好词**只抽一次**（好词）——墙上那句与活动里那句共用这一枚签，两路次数一字不差。 */
@@ -3846,7 +3872,7 @@ function decide(w, ag){
   let 好词=null;
   /* ⚠ 抽签**次序**也要一字不差（256 单第一版栽在这）：这一签必须仍在 `tempoDur` 之后、原参数位里抽——
      先前把它挪到 setActivity 之前 ⇒ 次数没变、次序变了 ⇒ 世界轨迹分叉（worldsig 从 5d4e281f 变 658b7558）。 */
-  setActivity(w,ag,spot,'idle',(好?好.label:(raining?RAIN_RULES.indoorLabel:'在家待着')),tempoDur(w,ag,30),
+  setActivity(w,ag,spot,'idle',(好?好.label:(raining?(降雪?SNOW_RULES.indoorLabel:RAIN_RULES.indoorLabel):'在家待着')),tempoDur(w,ag,30),
     (好?(好词=爱好词(w,ag)):天气词(w,IDLE_THOUGHTS,RAIN_IDLE_THOUGHTS,SNOW_IDLE_THOUGHTS,ag,'li')),null);
   if(好){
     const d=PURE.dayOf(w.t);
@@ -4808,6 +4834,7 @@ const Sim={makeWorld, step, sendMessage, sendCustomMessage, decide, MSGS, ANCHOR
   rhyBedClock, rhyDur, rhyPressed,
   WEEK_RULES, workWindow, WEEKEND_OUT,   // 第 46 单·星期进入世界（门禁调同一份算法，不另写一套）
   RAIN_RULES,   // 第 49 单·雨回流进行为（门禁按真值断言，不另抄一份概率）
+  SNOW_RULES,   // 第 297 单·下雪天更宅（门禁按真值读：雨＜雪＜晴 三档一处定义）
   GOALS, GOAL_MAP, GOAL_TARGETS, GOAL_DAYS, goalOf, goalKnob, goalTagHit, goalAssign,   // 第 52 单·目标系统（门禁与诊断工具按真值读）
   GOAL_BREAK_TICKS, nextGoalAt, weekMemory, weekTick,   // 第 53 单·周打包／周记忆／前提破裂（门禁按真值读，不另抄一套日历）
   NIGHT_MKT, nightMktStartAt, thisWeekMktAt, inNightMkt, nightMktStep,   // 第 56／57 单·周五夜市（门禁按真值读）
@@ -4841,7 +4868,7 @@ const Sim={makeWorld, step, sendMessage, sendCustomMessage, decide, MSGS, ANCHOR
   DISH_POOL, 试新菜,   // 第 170 单·自己研究一道菜（门禁按真值读：池子一处定义＋纯哈希取词）
   REPORT_TOPICS, REPORT_SPOTS, 采访日, 采访点, 采访题,   // 第 172 单·出门采访（门禁按真值读：纯哈希、零 rng）
   HEART, heartMate,   // 第 91 单·交心（门禁按真值读：门槛与时长一处定义）
-  RAIN_STROLL_THOUGHTS, RAIN_IDLE_THOUGHTS, SNOW_STROLL_THOUGHTS, SNOW_IDLE_THOUGHTS, 冬厚天, 天气词,   // 第 97／250 单·天气独白：晴／雨／雪三池一函数（门禁按真值读同一份池）
+  RAIN_STROLL_THOUGHTS, RAIN_IDLE_THOUGHTS, SNOW_STROLL_THOUGHTS, SNOW_IDLE_THOUGHTS, 冬厚天, 冬降水, 天气词,   // 第 97／250 单·天气独白：晴／雨／雪三池一函数（门禁按真值读同一份池；第 297 单把 冬降水 一并导出）
   IDLE_THOUGHTS, STROLL_THOUGHTS,                     // 第 97 单：两张基础池也一并导出（门禁要按真值比对"串没串池"）
   HOBBY, 爱好日, 爱好词,                              // 第 255 单·四个人的爱好（门禁按真值读：纯哈希选日、爱好词恰耗 1 次 rng）
   CATCHUP_MIN_PER_MIN, CATCHUP_MAX_DAYS, REFLECT_MIN, SMS_NOREPLY,
@@ -5288,7 +5315,7 @@ function renderTopbar(){
   $('#tb-day').textContent='D'+PURE.dayOf(w.t)+(innerWidth<360?'':' 周'+PURE.weekdayName(w.t));
   $('#tb-clock').textContent=PURE.fmtTime(w.t);
   $('#tb-money').textContent='¥'+Math.round(ag.money);
-  $('#tb-weather').textContent=w.weather.rain?'☔':'';
+  $('#tb-weather').textContent=(w.weather&&w.weather.rain)?(冬降水(w)?'❄':'☔'):'';   // 第 297 单：冬季降水是雪，顶栏画雪花
   $('#tb-msgn').textContent=w.credits;
   $('#tb-pause').textContent=w.speed===0?'▶':'⏸';
   const spd=(w.speed===0?(w.prevSpeed||1):w.speed)+'×';
