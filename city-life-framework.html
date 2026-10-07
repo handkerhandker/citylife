@@ -492,6 +492,10 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
         <button class="btn small" id="set-amb" data-fx>关</button>
       </div>
       <div class="set-row">
+        <span class="lbl">屏幕常亮<small>看他们过日子时不息屏（离开 App 自动放开，不耗后台）</small></span>
+        <button class="btn small" id="set-keepon" data-fx>开</button>
+      </div>
+      <div class="set-row">
         <span class="lbl">像素画风<small>样板间试点：公寓真瓷砖；素材未就位时自动回落</small></span>
         <button class="btn small" id="set-pix" data-fx>开</button>
         <span class="num dim" id="set-pix-stat">—</span>
@@ -554,7 +558,7 @@ h3.clip-sub{ font-size:.72rem; letter-spacing:.15em; color:var(--ink-faint);
       </div>
       <div class="set-row">
         <span class="lbl">构建版本<small>旧卡片不会自动更新，请从最新消息打开</small></span>
-<span class="num dim" id="set-build">v217</span>
+<span class="num dim" id="set-build">v218</span>
       </div>
       <h2 class="sec">输入</h2>
       <div class="set-row">
@@ -7027,6 +7031,38 @@ $('#set-llm').addEventListener('click',()=>{
   };
   const e=$('#set-fs-edge'), i=$('#set-fs-immersive');
   if(e&&i){ e.addEventListener('click',()=>设(false)); i.addEventListener('click',()=>设(true)); 画(); }
+})();
+
+/* ---------- 像素画风：LimeZu 素材运行时侧载（样板间试点：公寓底图＋四住户行走帧，素材缺席自动回落） ---------- */
+/* 第 296 单·"看"的时候别灭屏——这是一款**看**的游戏（住户自己过日子），不碰屏幕时手机的息屏/锁屏
+   会把画面掐掉。两道路一起走，能走哪道走哪道：
+     ① **壳里那道**（安卓 APK）：`SZGOShell.setKeepScreen(1)` ⇒ 主窗口加 `FLAG_KEEP_SCREEN_ON`
+        （真机最稳；网页版没有这个桥，调用为空操作）；
+     ② **网页那道**：Screen Wake Lock API（浏览器／没装壳时用；不支持就静默跳过）。
+   口径：**默认开**（本作就是看的），设置里可关；选择写 localStorage（`'0'` 才算关、缺省即开）；
+   **只在页面可见时持有**（切走／关页就放开——不让它在你离开 App 之后还亮着）。
+   ★壳里的默认同样是"开"：页面还没加载完的那几拍（冷启动／启动图）也不灭屏。 */
+(function(){
+  const 键='citylife-keepon';
+  const 读=()=>{ try{ return localStorage.getItem(键)!=='0'; }catch(_){ return true; } };
+  let 锁=null;
+  const 要锁=()=>{
+    try{
+      if(!读() || 锁 || document.visibilityState==='hidden') return;
+      if(!navigator.wakeLock || !navigator.wakeLock.request) return;
+      navigator.wakeLock.request('screen').then(l=>{ 锁=l; try{ l.addEventListener('release',()=>{ 锁=null; }); }catch(_){} },
+        ()=>{ 锁=null; });
+    }catch(_){ 锁=null; }
+  };
+  const 放锁=()=>{ try{ if(锁){ const l=锁; 锁=null; l.release(); } }catch(_){ 锁=null; } };
+  const 推壳=()=>{ try{ if(window.SZGOShell && window.SZGOShell.setKeepScreen) window.SZGOShell.setKeepScreen(读()?1:0); }catch(_){} };
+  const 画=()=>{ const b=$('#set-keepon'); if(b) b.textContent=读()?'开':'关'; };
+  const 应用=()=>{ 画(); 推壳(); if(读()) 要锁(); else 放锁(); };
+  const b=$('#set-keepon');
+  if(b) b.addEventListener('click',()=>{ try{ localStorage.setItem(键, 读()?'0':'1'); }catch(_){} 应用(); });
+  document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible') 要锁(); else 放锁(); });
+  window.addEventListener('pagehide',放锁);
+  应用();
 })();
 
 /* ---------- 像素画风：LimeZu 素材运行时侧载（样板间试点：公寓底图＋四住户行走帧，素材缺席自动回落） ---------- */

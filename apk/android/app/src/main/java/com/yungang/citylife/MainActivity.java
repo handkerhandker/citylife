@@ -33,6 +33,9 @@ import com.getcapacitor.BridgeActivity;
 public class MainActivity extends BridgeActivity {
     private static final int 底色 = 0xFF171C26;      // ＝ 游戏的 --bg0，与 styles.xml 一致
     private static final String 全屏开关键 = "citylife-immersive";   // '1'＝沉浸（藏系统栏）；空/其它＝铺满
+    /* 第 296 单·屏幕常亮：'0'＝关；缺省/其它＝开（本作是"看"的游戏，冷启动那几拍也不该灭屏）。
+       页面设置里那个开关写这个键，壳里也在开机补读一次（照全屏开关同一套两条腿）。 */
+    private static final String 常亮键 = "citylife-keepon";
     private int 上, 下, 左, 右;
     private boolean 上为兜底 = false;                    // 第 190 单：上值是否来自系统声明高度（宿主不报数时）
     private int 推过上 = -1, 推过下 = -1, 推过左 = -1, 推过右 = -1;
@@ -45,6 +48,7 @@ public class MainActivity extends BridgeActivity {
         挂键盘垫起();
         推值();
         挂全屏开关();
+        设常亮(true);        // 第 296 单：默认开——页面还没加载完的那几拍（冷启动／启动图）也不灭屏
         for (long t : new long[] { 120, 400, 1200, 2500, 5000, 8000 }) {   // 页面加载完前几次推送会落空，补几拍（第 190 单补到 8 秒——鸿蒙冷启动慢）
             getWindow().getDecorView().postDelayed(this::推值, t);
         }
@@ -93,6 +97,14 @@ public class MainActivity extends BridgeActivity {
                 }
                 @JavascriptInterface
                 public int getImmersive() { return 沉浸中 ? 1 : 0; }
+                /* 第 296 单·屏幕常亮：页面设置里那个开关（默认开）。页面用 localStorage 记选择、
+                   这里也留一条"开机自己读一次"的腿（照沉浸开关那套，两处不打架）。 */
+                @JavascriptInterface
+                public void setKeepScreen(final int on) {
+                    getWindow().getDecorView().post(() -> 设常亮(on == 1));
+                }
+                @JavascriptInterface
+                public int getKeepScreen() { return 常亮中 ? 1 : 0; }
                 /* 第 190 单·安全区投递"第二条腿"：页面主动来问。
                    返回 CSS px 的 "上,下,左,右"（除过 density；横屏 top 已按实测坑强制 0）。
                    主线程时顺手现量一次；JS 桥线程调用时返回最近一次量的缓存值（页面会重试几拍）。 */
@@ -116,6 +128,17 @@ public class MainActivity extends BridgeActivity {
     }
 
     private boolean 沉浸中 = false;
+    private boolean 常亮中 = false;
+
+    /* 第 296 单·屏幕常亮：只动主窗口这一个 flag —— App 退到后台/被切走时系统自己不再拦息屏，
+       不需要额外计时或生命周期钩子（"离开 App 自动放开"是系统语义，不是我们手动清的）。 */
+    private void 设常亮(boolean on) {
+        常亮中 = on;
+        try {
+            if (on) getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+            else getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        } catch (Throwable ignored) { }
+    }
 
     private void 读页面开关() {
         try {
@@ -123,6 +146,10 @@ public class MainActivity extends BridgeActivity {
             getBridge().getWebView().evaluateJavascript(
                 "(function(){try{return localStorage.getItem('" + 全屏开关键 + "')||''}catch(e){return ''}})();",
                 v -> 应用沉浸(v != null && v.indexOf("1") >= 0));
+            /* 第 296 单：常亮同理——缺省（null）与读不到都当"开"，只有显式 '0' 才算关。 */
+            getBridge().getWebView().evaluateJavascript(
+                "(function(){try{var v=localStorage.getItem('" + 常亮键 + "');return v===null?'1':v}catch(e){return '1'}})();",
+                v -> 设常亮(!(v != null && v.indexOf("0") >= 0)));
         } catch (Throwable ignored) { }
     }
 

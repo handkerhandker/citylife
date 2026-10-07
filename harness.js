@@ -11071,6 +11071,45 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   }
 }
 
+// ═══ 第 296 单·"看"的时候屏幕别灭（页面设置开关 ＋ 安卓壳 FLAG_KEEP_SCREEN_ON）══════════
+/* 被验的是**两侧**源码：页面那块 IIFE（读法／落盘／推壳／Wake Lock）与
+   `apk/android/app/src/main/java/com/yungang/citylife/MainActivity.java`（加/清 flag、JS 桥、开机默认）。
+     闸一 · 页面侧：设置行 `#set-keepon` 在；读法写死为 `localStorage.getItem('citylife-keepon')!=='0'`
+            （**缺省＝开**）；调 `SZGOShell.setKeepScreen`；请求 wakeLock 并在不可见时放开；
+     闸二 · 壳侧：`FLAG_KEEP_SCREEN_ON` **加**与**清**两处都在；JS 桥 `setKeepScreen` 在；
+            开机 `设常亮(true)`（冷启动那几拍也不灭屏）＋ 开机补读 `常亮键`；
+     闸三 · 反向自查×2：把页面读法改成 `==='1'`（缺省变关）⇒ 闸一判红；
+            把壳里那句 `clearFlags` 抠掉（关不回去）⇒ 闸二判红。 */
+{
+  const fsK=require('fs'), pathK=require('path');
+  const srcK=fsK.readFileSync(pathK.resolve(__dirname,'city-life-framework.html'),'utf8');
+  const javaK=(()=>{ try{ return fsK.readFileSync(pathK.resolve(__dirname,'apk/android/app/src/main/java/com/yungang/citylife/MainActivity.java'),'utf8'); }catch(e){ return ''; } })();
+  ok(!!javaK,'第 296 单·结构：MainActivity.java 可读（'+javaK.length+' 字节）');
+  const 页读=srcK=>/localStorage\.getItem\(键\)!=='0'/.test(srcK);
+  const 页块=(srcK.match(/第 296 单·"看"的时候别灭屏[\s\S]*?\}\)\(\);/)||[''])[0];
+  ok(!!页块,'第 296 单·闸一·结构：页面"屏幕常亮"块可抽取');
+  const 全=页块;
+  ok(/id="set-keepon"/.test(srcK) && 页读(srcK)
+     && /SZGOShell\.setKeepScreen\(/.test(全) && /wakeLock\.request\('screen'\)/.test(全)
+     && /visibilityState==='hidden'\) return;/.test(全) && /visibilitychange/.test(全) && /release\(\)/.test(全),
+     '第 296 单·闸一·页面侧：设置行在＋读法"缺省即开"＋推壳＋请求屏锁＋不可见时放开（块内逐条命中）');
+  ok(/FLAG_KEEP_SCREEN_ON/.test(javaK) && /addFlags\(WindowManager\.LayoutParams\.FLAG_KEEP_SCREEN_ON\)/.test(javaK)
+     && /clearFlags\(WindowManager\.LayoutParams\.FLAG_KEEP_SCREEN_ON\)/.test(javaK),
+     '第 296 单·闸二·壳侧：FLAG_KEEP_SCREEN_ON 的**加**与**清**两处都在（能开也能关）');
+  ok(/public void setKeepScreen\(final int on\)/.test(javaK) && /public int getKeepScreen\(\)/.test(javaK)
+     && /设常亮\(true\);/.test(javaK) && /常亮键/.test(javaK) && /localStorage\.getItem\('" \+ 常亮键 \+ "'\)/.test(javaK),
+     '第 296 单·闸二·壳侧：JS 桥 set/getKeepScreen 在、开机先 设常亮(true)、开机补读 常亮键（缺省 1）');
+  ok(/private boolean 常亮中/.test(javaK), '第 296 单·闸二·壳侧：状态位 常亮中 在（getKeepScreen 读它）');
+  {
+    const 病页=srcK.replace("localStorage.getItem(键)!=='0'", "localStorage.getItem(键)==='1'");
+    ok(病页!==srcK && !页读(病页),
+       '第 296 单·反向自查·拦得住：页面读法改成「只认等于 1」（缺省变关）⇒ 闸一当场判红');
+    const 病壳=javaK.replace('else getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);','/* 注入：关不回去 */;');
+    ok(病壳!==javaK && !/clearFlags\(WindowManager\.LayoutParams\.FLAG_KEEP_SCREEN_ON\)/.test(病壳),
+       '第 296 单·反向自查·拦得住：抠掉壳里那句 clearFlags（关不回去）⇒ 闸二当场判红');
+  }
+}
+
 // ═══ 第 294 单·手账五期·见过的风景（见过就记一笔；纯玩家侧小账，不写世界）══════════════
 /* 被验的是生产源码里 `function 见过(键, 屏x, 屏y){…}` ＋ `const 见过键=[…]`：
      闸一 · **一处定义＋四处调用**：`见过(` 全站恰 5 次（1 定义 ＋ 画蜗牛／画蝶／画蜻蜓／画雪人），
@@ -12310,7 +12349,7 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
   // 闸三 · 反向自查登记（防整条被删）
   const 登记=['第 48 单','第 49 单','第 51 单','第 52 单','第 53 单','第 54 单','第 56 单','第 57 单',
                '第 58 单','第 59 单','第 62 单','第 63 单','第 64 单','第 65 单','第 67 单','第 70 单','第 71 单','第 72 单','第 73 单','第 74 单','第 75 单','第 76 单','第 77 单','第 79 单','第 80 单','第 81 单','第 84 单','第 85 单','第 87 单','第 88 单','第 90 单','第 91 单','第 92 单','第 93 单','第 94 单','第 95 单','第 96 单','第 97 单','第 98 单','第 99 单','第 100 单','第 102 单','第 103 单','第 106 单','第 107 单','第 109 单','第 110 单','第 111 单','第 112 单','第 113 单','第 115 单','第 116 单','第 117 单','第 118 单','第 119 单','第 120 单','第 121 单','第 123 单','第 124 单','第 125 单','第 126 单','第 129 单','第 131 单','第 135 单','第 136 单','第 139 单','第 142 单','第 143 单','第 144 单','第 145 单','第 148 单','第 149 单','第 150 单','第 151 单','第 152 单','第 156 单','第 157 单','第 158 单','第 204 单','第 205 单','第 161 单','第 163 单','第 164 单','第 165 单','第 166 单','第 167 单','第 168 单','第 169 单','第 170 单','第 171 单','第 172 单','第 174 单','第 175 单','第 177 单','第 179 单','第 180 单','第 183 单','第 184 单','第 185 单','第 186 单','第 188 单','第 189 单','第 190 单','第 192 单','第 198 单','第 199 单','第 201 单','第 202 单','第 206 单','第 207 单','第 208 单','第 210 单','第 211 单','第 212 单','第 213 单','第 214 单','第 215 单','第 216 单','第 217 单','第 220 单','第 221 单','第 224 单','第 225 单','第 227 单','第 229 单','第 232 单','第 233 单','第 240 单',
-               '第 242 单','第 243 单','第 244 单','第 246 单','第 247 单','第 250 单','第 251 单','第 252 单','第 254 单','第 255 单','第 256 单','第 257 单','第 259 单','第 260 单','第 263 单','第 264 单','第 265 单','第 266 单','第 267 单','第 268 单','第 269 单','第 270 单','第 271 单','第 272 单','第 273 单','第 274 单','第 278 单','第 279 单','第 282 单','第 285 单','第 286 单','第 288 单','第 289 单','第 291 单','第 294 单','闸十三','闸四','闸五','闸十','闸十一','闸十二'];
+               '第 242 单','第 243 单','第 244 单','第 246 单','第 247 单','第 250 单','第 251 单','第 252 单','第 254 单','第 255 单','第 256 单','第 257 单','第 259 单','第 260 单','第 263 单','第 264 单','第 265 单','第 266 单','第 267 单','第 268 单','第 269 单','第 270 单','第 271 单','第 272 单','第 273 单','第 274 单','第 278 单','第 279 单','第 282 单','第 285 单','第 286 单','第 288 单','第 289 单','第 291 单','第 294 单','第 296 单','闸十三','闸四','闸五','闸十','闸十一','闸十二'];
   const 实有=[...new Set((自源.match(/(第 \d+ 单|闸[一二三四五六七八九十]+)·反向自查/g)||[])
                             .map(x=>x.replace('·反向自查','')))];
   const 缺=登记.filter(x=>实有.indexOf(x)<0);
@@ -12322,6 +12361,7 @@ ok(PURE.gini([0,0,0,10])>0.7,'基尼：极端集中>0.7');
 
 console.log(fails? ('\n'+fails+' FAILURES') : '\nALL PASS');
 process.exit(fails?1:0);
+
 
 
 

@@ -5,7 +5,7 @@ REM Chinese path (verified 2026-10-04: "Your project path contains non-ASCII cha
 setlocal
 set "SRC=%~dp0"
 set "DST=F:\codex\citylife-apk"
-echo [1/2] mirror shell -> %DST%
+echo [1/2] mirror shell -^> %DST%
 robocopy "%SRC%." "%DST%" /E /XD node_modules .gradle build out /XF local.properties >nul
 if errorlevel 8 goto :err
 echo [2/2] build ...
